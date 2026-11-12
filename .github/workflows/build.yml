@@ -1,3 +1,4 @@
+
 name: Build GilrTano VPN APK
 
 on:
@@ -27,7 +28,11 @@ jobs:
           gradle-version: '8.9'
 
       - name: Extract project
-        run: unzip GilrTano-VPN-0.7.5-starter.zip
+        run: unzip -o GilrTano-VPN-0.7.5-starter.zip
+
+      - name: Fix JVM targets
+        run: |
+          python3 -c 'from pathlib import Path; p=Path("GilrTano-VPN-0.7.5/app/build.gradle.kts"); s=p.read_text(); s=s.replace("android {", "android {\n    compileOptions {\n        sourceCompatibility = JavaVersion.VERSION_17\n        targetCompatibility = JavaVersion.VERSION_17\n    }\n    kotlinOptions {\n        jvmTarget = \"17\"\n    }", 1); p.write_text(s)'
 
       - name: Build APK
         working-directory: GilrTano-VPN-0.7.5
