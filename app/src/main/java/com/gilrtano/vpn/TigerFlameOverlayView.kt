@@ -12,7 +12,7 @@ import android.view.animation.DecelerateInterpolator
 /**
  * Displays the uploaded 16-frame photographic-style fire GIF.
  * The GIF contains the tiger and the power orb as one composed hero scene.
- * It plays once on connection and holds its final fiery frame until disconnect.
+ * It loops continuously while connected and fades out when disconnected.
  */
 class TigerFlameOverlayView(context: Context) : View(context) {
     private val movie: Movie = context.resources.openRawResource(R.drawable.gilrtano_fire).use { stream ->
@@ -43,7 +43,7 @@ class TigerFlameOverlayView(context: Context) : View(context) {
             frameTime = 0
             invalidate()
         } else {
-            // Fade the final fire frame, then return to the clean first frame.
+            // Fade the moving fire out, then reset to the clean first frame.
             fadeAnimator = ValueAnimator.ofFloat(1f, 0f).apply {
                 duration = 750L
                 interpolator = DecelerateInterpolator()
@@ -73,8 +73,8 @@ class TigerFlameOverlayView(context: Context) : View(context) {
         if (width <= 0 || height <= 0) return
         if (active) {
             val elapsed = (SystemClock.uptimeMillis() - startedAt).coerceAtLeast(0L)
-            frameTime = elapsed.coerceAtMost(duration.toLong()).toInt()
-            if (elapsed < duration) postInvalidateOnAnimation()
+            frameTime = (elapsed % duration.toLong()).toInt()
+            postInvalidateOnAnimation()
         }
         movie.setTime(frameTime)
         val scale = minOf(width.toFloat() / movie.width().coerceAtLeast(1), height.toFloat() / movie.height().coerceAtLeast(1))
