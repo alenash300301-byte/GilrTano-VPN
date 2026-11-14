@@ -21,6 +21,7 @@ import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.ImageView
 import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
@@ -235,11 +236,29 @@ class MainActivity : Activity() {
                     topMargin = dp(8); bottomMargin = dp(8)
                 })
                 // Approved home composition: large tiger artwork, then one wide action button.
-                addView(TigerMarkView(this@MainActivity), LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, dp(292)
-                ).apply { topMargin = dp(4); bottomMargin = dp(0) })
+                addView(ImageView(this@MainActivity).apply {
+                    setImageResource(R.drawable.tiger_hero)
+                    scaleType = ImageView.ScaleType.CENTER_CROP
+                    contentDescription = "Реалистичный тигр с зелёными глазами и огнём"
+                }, LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(270)
+                ).apply { topMargin = dp(2); bottomMargin = dp(0) })
+                addView(TextView(this@MainActivity).apply {
+                    text = "⏻"; textSize = 54f
+                    gravity = android.view.Gravity.CENTER
+                    setTextColor(Color.WHITE)
+                    background = GradientDrawable().apply {
+                        shape = GradientDrawable.OVAL
+                        setColor(Color.rgb(7, 7, 8))
+                        setStroke(dp(3), Color.rgb(255, 112, 18))
+                    }
+                    elevation = dp(10).toFloat()
+                }, LinearLayout.LayoutParams(dp(112), dp(112)).apply {
+                    gravity = android.view.Gravity.CENTER
+                    topMargin = dp(-24); bottomMargin = dp(2)
+                })
                 addView(status.apply {
-                    text = "Отключено"; textSize = 17f
+                    text = "●  Отключено"; textSize = 17f
                     gravity = android.view.Gravity.CENTER
                     setTextColor(Color.LTGRAY)
                     setPadding(dp(8), dp(4), dp(8), dp(4))
@@ -320,7 +339,36 @@ class MainActivity : Activity() {
                 })
             })
         }
-        root.addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        root.addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        root.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER
+            setPadding(dp(8), dp(8), dp(8), dp(8))
+            setBackgroundColor(Color.rgb(5, 5, 6))
+            fun navItem(symbol: String, label: String, action: () -> Unit, selected: Boolean = false) {
+                addView(LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.VERTICAL
+                    gravity = android.view.Gravity.CENTER
+                    setPadding(dp(8), dp(4), dp(8), dp(4))
+                    addView(TextView(this@MainActivity).apply {
+                        text = symbol; textSize = 23f; gravity = android.view.Gravity.CENTER
+                        setTextColor(if (selected) Color.rgb(255, 112, 18) else Color.LTGRAY)
+                    })
+                    addView(TextView(this@MainActivity).apply {
+                        text = label; textSize = 11f; gravity = android.view.Gravity.CENTER
+                        setTextColor(if (selected) Color.rgb(255, 112, 18) else Color.LTGRAY)
+                    })
+                    setOnClickListener { action() }
+                }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            }
+            navItem("⌂", "Главная", { scroll.smoothScrollTo(0, 0) }, true)
+            navItem("▤", "Серверы", { scroll.post { scroll.smoothScrollTo(0, servers.top) }; servers.performClick() })
+            navItem("⚙", "Настройки", {
+                settingsExpanded = true
+                findImportButtonsVisibility()
+                scroll.post { scroll.smoothScrollTo(0, root.height) }
+            })
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(66)))
         setContentView(root)
         styleDarkInterface()
         installButtonFeedback()
