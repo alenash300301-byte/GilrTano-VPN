@@ -86,16 +86,22 @@ class GilrTanoVpnService : VpnService() {
         }
     }
 
-    @Synchronized private fun stopTunnel() {
+    private fun stopTunnel() {
         stopping = true
-        runCatching { Teapodcore.stopTun2Socks() }
-        runCatching { Teapodcore.stopXray() }
-        runCatching { Teapodcore.registerVpnProtector(null) }
-        runCatching { tun?.close() }
-        tun = null
-        if (Build.VERSION.SDK_INT >= 24) stopForeground(STOP_FOREGROUND_REMOVE) else @Suppress("DEPRECATION") stopForeground(true)
-        broadcastStatus("Отключено")
-        stopSelf()
+        broadcastStatus("Отменяю подключение…")
+        // Native shutdown may block; run it away from Android's main thread.
+        Thread({
+            synchronized(this) {
+                runCatching { Teapodcore.stopTun2Socks() }
+                runCatching { Teapodcore.stopXray() }
+                runCatching { Teapodcore.registerVpnProtector(null) }
+                runCatching { tun?.close() }
+                tun = null
+            }
+            if (Build.VERSION.SDK_INT >= 24) stopForeground(STOP_FOREGROUND_REMOVE) else @Suppress("DEPRECATION") stopForeground(true)
+            broadcastStatus("Отключено")
+            stopSelf()
+        }, "GilrTano-Xray-stop").start()
     }
 
     private fun broadcastStatus(value: String) {
