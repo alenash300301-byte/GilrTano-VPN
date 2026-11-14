@@ -221,6 +221,7 @@ class MainActivity : Activity() {
         })
 
         styleDarkInterface()
+        installButtonFeedback()
         connectButton.apply {
             textSize = 23f
             typeface = android.graphics.Typeface.DEFAULT_BOLD
@@ -230,11 +231,7 @@ class MainActivity : Activity() {
                 (184 * resources.displayMetrics.density).toInt(),
                 (184 * resources.displayMetrics.density).toInt()
             ).apply { gravity = android.view.Gravity.CENTER; topMargin = (12 * resources.displayMetrics.density).toInt(); bottomMargin = (12 * resources.displayMetrics.density).toInt() }
-            background = GradientDrawable(GradientDrawable.Orientation.TL_BR,
-                intArrayOf(Color.rgb(42, 15, 7), Color.rgb(8, 7, 7))).apply {
-                shape = GradientDrawable.OVAL
-                setStroke((3 * resources.displayMetrics.density).toInt(), Color.rgb(48, 48, 52))
-            }
+            background = fireDrawable
             elevation = 12f
             // Subtle fire pulse only while the user presses the power button.
             setOnTouchListener { view, event ->
@@ -267,40 +264,56 @@ class MainActivity : Activity() {
         refreshMode()
     }
 
-    // Keep the power button unlit at rest; gently ignite it only after VPN is connected.
+    // Flame tongues move continuously only while VPN is genuinely connected.
     private fun igniteConnectButton() {
-        val bg = connectButton.background as? GradientDrawable ?: return
-        val dark = Color.rgb(8, 8, 10)
-        val ember = Color.rgb(255, 105, 12)
-        val softGlow = Color.rgb(255, 145, 38)
-        val animator = ValueAnimator.ofFloat(0f, 1f, 0.62f, 1f)
-        animator.duration = 900L
-        animator.interpolator = DecelerateInterpolator()
-        animator.addUpdateListener { animation ->
-            val t = animation.animatedValue as Float
-            val edge = ArgbEvaluator().evaluate(t, Color.rgb(48, 48, 52), softGlow) as Int
-            bg.setColor(ArgbEvaluator().evaluate(t * 0.22f, dark, Color.rgb(55, 20, 7)) as Int)
-            bg.setStroke(dp(3 + (2 * t).toInt()), edge)
-            connectButton.elevation = dp(10 + (3 * t).toInt()).toFloat()
+        fireDrawable.setIgnited(true)
+        if (fireAnimator?.isRunning == true) return
+        fireAnimator = ValueAnimator.ofFloat(0f, (Math.PI * 2).toFloat()).apply {
+            duration = 1250L
+            repeatCount = ValueAnimator.INFINITE
+            interpolator = android.view.animation.LinearInterpolator()
+            addUpdateListener { fireDrawable.setPhase(it.animatedValue as Float) }
+            start()
         }
-        animator.addListener(object : android.animation.AnimatorListenerAdapter() {
-            override fun onAnimationEnd(animation: android.animation.Animator) {
-                bg.setColor(Color.rgb(18, 10, 8))
-                bg.setStroke(dp(4), ember)
-                connectButton.elevation = dp(12).toFloat()
-            }
-        })
-        animator.start()
+        connectButton.elevation = dp(16).toFloat()
     }
 
     private fun resetConnectButtonGlow() {
-        val bg = connectButton.background as? GradientDrawable ?: return
+        fireAnimator?.cancel()
+        fireAnimator = null
+        fireDrawable.setIgnited(false)
+        fireDrawable.setPhase(0f)
         connectButton.animate().cancel()
         connectButton.scaleX = 1f
         connectButton.scaleY = 1f
-        bg.setColor(Color.rgb(8, 7, 7))
-        bg.setStroke(dp(3), Color.rgb(48, 48, 52))
         connectButton.elevation = dp(10).toFloat()
+    }
+
+    private fun installButtonFeedback() {
+        fun visit(group: ViewGroup) {
+            for (i in 0 until group.childCount) {
+                val child = group.getChildAt(i)
+                if (child is Button && child !== connectButton) {
+                    child.setOnTouchListener { view, event ->
+                        when (event.actionMasked) {
+                            MotionEvent.ACTION_DOWN -> {
+                                view.animate().cancel()
+                                view.animate().scaleX(0.965f).scaleY(0.965f)
+                                    .translationZ(dp(4).toFloat()).setDuration(75L)
+                                    .setInterpolator(DecelerateInterpolator()).start()
+                            }
+                            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                                view.animate().scaleX(1f).scaleY(1f).translationZ(0f)
+                                    .setDuration(170L).setInterpolator(DecelerateInterpolator()).start()
+                            }
+                        }
+                        false
+                    }
+                }
+                if (child is ViewGroup) visit(child)
+            }
+        }
+        visit(findViewById(android.R.id.content))
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
