@@ -296,13 +296,15 @@ class MainActivity : Activity() {
                         gravity = android.view.Gravity.CENTER
                         val title = TextView(this@MainActivity).apply {
                             text = "GilrTano"; textSize = 25f
-                            typeface = android.graphics.Typeface.DEFAULT_BOLD
-                            setTextColor(Color.WHITE)
+                            typeface = android.graphics.Typeface.create("serif", android.graphics.Typeface.BOLD_ITALIC)
+                            setTextColor(Color.rgb(245, 242, 238))
+                            setShadowLayer(dp(5).toFloat(), 0f, dp(1).toFloat(), Color.rgb(130, 18, 18))
                         }
                         val vpn = TextView(this@MainActivity).apply {
                             text = " VPN"; textSize = 25f
-                            typeface = android.graphics.Typeface.DEFAULT_BOLD
-                            setTextColor(Color.rgb(255, 112, 18))
+                            typeface = android.graphics.Typeface.create("serif", android.graphics.Typeface.BOLD_ITALIC)
+                            setTextColor(Color.rgb(230, 38, 38))
+                            setShadowLayer(dp(6).toFloat(), 0f, 0f, Color.rgb(170, 0, 0))
                         }
                         addView(title); addView(vpn)
                     }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
@@ -320,37 +322,13 @@ class MainActivity : Activity() {
                 val tigerScene = FrameLayout(this@MainActivity).apply {
                     setBackgroundColor(Color.BLACK)
                     addView(ImageView(this@MainActivity).apply {
-                        setImageResource(R.drawable.tiger_hero_art)
-                        scaleType = ImageView.ScaleType.CENTER_CROP
+                        setImageResource(R.drawable.tiger_hero)
+                        scaleType = ImageView.ScaleType.FIT_CENTER
                         adjustViewBounds = false
                         setBackgroundColor(Color.TRANSPARENT)
                         contentDescription = "Тигр с зелёными глазами"
                     }, FrameLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
-                    ))
-                    addView(LinearLayout(this@MainActivity).apply {
-                        orientation = LinearLayout.VERTICAL
-                        gravity = android.view.Gravity.CENTER
-                        setPadding(dp(8), dp(2), dp(8), 0)
-                        addView(TextView(this@MainActivity).apply {
-                            text = "GilrTano"
-                            textSize = 31f
-                            gravity = android.view.Gravity.CENTER
-                            typeface = android.graphics.Typeface.create("serif", android.graphics.Typeface.BOLD_ITALIC)
-                            setTextColor(Color.rgb(242, 235, 228))
-                            setShadowLayer(dp(9).toFloat(), 0f, dp(2).toFloat(), Color.rgb(255, 54, 18))
-                        })
-                        addView(TextView(this@MainActivity).apply {
-                            text = "V P N"
-                            textSize = 21f
-                            gravity = android.view.Gravity.CENTER
-                            typeface = android.graphics.Typeface.DEFAULT_BOLD
-                            setTextColor(Color.rgb(255, 45, 35))
-                            setShadowLayer(dp(8).toFloat(), 0f, 0f, Color.RED)
-                        })
-                    }, FrameLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
-                        android.view.Gravity.TOP or android.view.Gravity.CENTER_HORIZONTAL
                     ))
                     tigerFlames = TigerFlameOverlayView(this@MainActivity).apply {
                         alpha = 0f
@@ -363,7 +341,7 @@ class MainActivity : Activity() {
                     ))
                 }
                 addView(tigerScene, LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, dp(390)
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(410)
                 ).apply { topMargin = dp(0); bottomMargin = dp(0) })
                 powerOrb = PowerOrbButtonView(this@MainActivity).apply {
                     text = ""
@@ -515,8 +493,8 @@ class MainActivity : Activity() {
                     typeface = android.graphics.Typeface.DEFAULT_BOLD
                     setTextColor(Color.WHITE); setPadding(dp(16), dp(14), dp(12), dp(12))
                     background = GradientDrawable().apply {
-                        setColor(Color.rgb(24, 13, 10)); cornerRadius = dp(18).toFloat()
-                        setStroke(dp(1), Color.rgb(230, 83, 12))
+                        setColor(Color.rgb(14, 8, 9)); cornerRadius = dp(18).toFloat()
+                        setStroke(dp(1), Color.rgb(150, 24, 24))
                     }
                     visibility = View.GONE
                     setOnClickListener {
@@ -573,11 +551,11 @@ class MainActivity : Activity() {
                     setPadding(dp(8), dp(4), dp(8), dp(4))
                     addView(TextView(this@MainActivity).apply {
                         text = symbol; textSize = 23f; gravity = android.view.Gravity.CENTER
-                        setTextColor(if (selected) Color.rgb(255, 112, 18) else Color.LTGRAY)
+                        setTextColor(if (selected) Color.rgb(220, 32, 32) else Color.LTGRAY)
                     })
                     addView(TextView(this@MainActivity).apply {
                         text = label; textSize = 11f; gravity = android.view.Gravity.CENTER
-                        setTextColor(if (selected) Color.rgb(255, 112, 18) else Color.LTGRAY)
+                        setTextColor(if (selected) Color.rgb(220, 32, 32) else Color.LTGRAY)
                     })
                     setOnClickListener { action() }
                 }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
@@ -712,7 +690,7 @@ class MainActivity : Activity() {
         val full = "⏻   $label"
         val styled = SpannableString(full)
         styled.setSpan(
-            ForegroundColorSpan(Color.rgb(255, 112, 18)),
+            ForegroundColorSpan(Color.rgb(220, 32, 32)),
             0, 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
         )
         connectButton.text = styled
@@ -797,9 +775,9 @@ class MainActivity : Activity() {
                     view.textSize = 13f
                     view.isAllCaps = false
                     view.background = GradientDrawable().apply {
-                        setColor(Color.rgb(24, 13, 10))
+                        setColor(Color.rgb(14, 8, 9))
                         cornerRadius = 18f
-                        setStroke(2, Color.rgb(220, 78, 12))
+                        setStroke(2, Color.rgb(150, 24, 24))
                     }
                     view.setPadding(16, 10, 16, 10)
                     val lp = view.layoutParams
@@ -906,7 +884,7 @@ class MainActivity : Activity() {
             setColor(if (selected) Color.rgb(54, 24, 12) else Color.rgb(13, 13, 15))
             cornerRadius = dp(14).toFloat()
             setStroke(dp(if (selected) 2 else 1),
-                if (selected) Color.rgb(255, 112, 18) else Color.rgb(58, 58, 62))
+                if (selected) Color.rgb(220, 32, 32) else Color.rgb(58, 58, 62))
         }
         quattroTab.background = modeBackground(!autoMode && !activeFree)
         freeTab.background = modeBackground(!autoMode && activeFree)
