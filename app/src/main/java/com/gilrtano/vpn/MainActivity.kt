@@ -319,23 +319,14 @@ class MainActivity : Activity() {
                         }
                     })
                 })
-                // Tiger artwork stays clean while disconnected; flames are a separate animated overlay.
+                // The uploaded GIF is the complete hero composition: tiger, realistic fire and orb.
                 val tigerScene = FrameLayout(this@MainActivity).apply {
                     setBackgroundColor(Color.BLACK)
-                    addView(ImageView(this@MainActivity).apply {
-                        setImageResource(R.drawable.tiger_hero)
-                        scaleType = ImageView.ScaleType.FIT_CENTER
-                        adjustViewBounds = false
-                        setBackgroundColor(Color.TRANSPARENT)
-                        contentDescription = "Тигр с зелёными глазами"
-                    }, FrameLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
-                    ))
                     tigerFlames = TigerFlameOverlayView(this@MainActivity).apply {
-                        alpha = 0f
-                        visibility = View.GONE
+                        visibility = View.VISIBLE
                         isClickable = false
                         isFocusable = false
+                        contentDescription = "Тигр с анимированным огнём"
                     }
                     addView(tigerFlames, FrameLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
@@ -344,12 +335,14 @@ class MainActivity : Activity() {
                 addView(tigerScene, LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, dp(410)
                 ).apply { topMargin = dp(0); bottomMargin = dp(0) })
+
+                // Transparent hit target sits over the power symbol already rendered in the GIF.
                 powerOrb = PowerOrbButtonView(this@MainActivity).apply {
                     text = ""
                     gravity = android.view.Gravity.CENTER
-                    setTextColor(Color.WHITE)
-                    typeface = android.graphics.Typeface.create("sans-serif-light", android.graphics.Typeface.NORMAL)
-                    background = powerOrbDrawable
+                    setTextColor(Color.TRANSPARENT)
+                    background = null
+                    alpha = 0f
                     elevation = dp(14).toFloat()
                     setLayerType(View.LAYER_TYPE_SOFTWARE, null)
                 }
@@ -374,9 +367,9 @@ class MainActivity : Activity() {
                     false
                 }
                 powerOrb.contentDescription = "Кнопка питания VPN"
-                addView(powerOrb, LinearLayout.LayoutParams(dp(132), dp(132)).apply {
-                    gravity = android.view.Gravity.CENTER
-                    topMargin = dp(-66); bottomMargin = dp(0)
+                tigerScene.addView(powerOrb, FrameLayout.LayoutParams(dp(132), dp(132)).apply {
+                    gravity = android.view.Gravity.TOP or android.view.Gravity.CENTER_HORIZONTAL
+                    topMargin = dp(242)
                 })
                 addView(status.apply {
                     text = "●  Отключено"; textSize = 17f
