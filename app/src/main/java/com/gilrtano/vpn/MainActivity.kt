@@ -342,10 +342,10 @@ class MainActivity : Activity() {
         }
         scanningFree = true
         bestFreeButton.isEnabled = false
-        status.text = "Проверяю VLESS, шифрование и доступ в интернет через серверы…"
-        val candidates = freeNodes.toList()
+        status.text = "Проверяю до 12 серверов: VLESS, шифрование и реальный доступ в интернет…"
+        val candidates = freeNodes.take(12)
         Thread {
-            val pool = Executors.newFixedThreadPool(12)
+            val pool = Executors.newFixedThreadPool(3)
             try {
                 val tasks = candidates.map { node ->
                     Callable<Pair<ImportedNode, Long>?> {
@@ -364,7 +364,7 @@ class MainActivity : Activity() {
                 }
                 // Keep native Xray probes bounded: many simultaneous cores can exhaust
                 // memory on a phone, even though this scan runs off the UI thread.
-                val checked = pool.invokeAll(tasks, 18, TimeUnit.SECONDS)
+                val checked = pool.invokeAll(tasks, 50, TimeUnit.SECONDS)
                     .mapNotNull { future -> if (future.isCancelled) null else runCatching { future.get() }.getOrNull() }
                     .sortedBy { it.second }
                 runOnUiThread {
