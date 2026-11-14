@@ -171,6 +171,9 @@ class GilrTanoVpnService : VpnService() {
             if (!internetReady) {
                 throw IllegalStateException("Сервер ответил, но интернет через VPN не проходит")
             }
+            if (!verifyRequiredServices()) {
+                throw IllegalStateException("Не все обязательные сервисы доступны через VPN")
+            }
 
             broadcastStatus(
                 if (automaticMode) {
@@ -250,7 +253,28 @@ class GilrTanoVpnService : VpnService() {
         }, "GilrTano-connection-monitor").apply { isDaemon = true }.start()
     }
 
-    private fun probeTunnel(): Long {
+    private fun probeTunnel(): Long = probeTunnelHost("www.gstatic.com", "/generate_204", 204)
+
+    private fun verifyRequiredServices(): Boolean {
+        val hosts = listOf(
+            "www.youtube.com",
+            "www.instagram.com",
+            "api.telegram.org"
+        )
+        val pool = java.util.concurrent.Executors.newFixedThreadPool(hosts.size)
+        return try {
+            val checks = hosts.map { host ->
+                pool.submit<Boolean> {
+                    probeTunnelHost(host, "/", null) >= 0L
+                }
+            }
+            checks.all { runCatching { it.get(4, java.util.concurrent.TimeUnit.SECONDS) }.getOrDefault(false) }
+        } finally {
+            pool.shutdownNow()
+        }
+    }
+
+    private fun probeTunnelHost(hostName: String, path: String, expectedCode: Int?): Long {
         val started = System.nanoTime()
         val socket = Socket()
         try {
@@ -259,14 +283,13 @@ class GilrTanoVpnService : VpnService() {
             val out = socket.getOutputStream()
             val input = socket.getInputStream()
 
-            // SOCKS5 no-auth greeting, then CONNECT to the Google 204 endpoint.
             out.write(byteArrayOf(0x05, 0x01, 0x00))
             out.flush()
             val greeting = ByteArray(2)
             readFully(input, greeting)
             if (greeting[0].toInt() != 5 || greeting[1].toInt() != 0) return -1L
 
-            val host = "www.gstatic.com".toByteArray(Charsets.US_ASCII)
+            val host = hostName.toByteArray(Charsets.US_ASCII)
             out.write(byteArrayOf(0x05, 0x01, 0x00, 0x03, host.size.toByte()) + host +
                 byteArrayOf(0x01, 0xbb.toByte()))
             out.flush()
@@ -280,23 +303,23 @@ class GilrTanoVpnService : VpnService() {
                 else -> return -1L
             }
             if (addressLength <= 0) return -1L
-            val skip = ByteArray(addressLength + 2)
-            readFully(input, skip)
+            readFully(input, ByteArray(addressLength + 2))
 
-            val sslFactory = SSLSocketFactory.getDefault() as SSLSocketFactory
-            val tls = sslFactory.createSocket(
-                socket, "www.gstatic.com", 443, true
-            ) as javax.net.ssl.SSLSocket
+            val tls = (SSLSocketFactory.getDefault() as SSLSocketFactory)
+                .createSocket(socket, hostName, 443, true) as javax.net.ssl.SSLSocket
             tls.soTimeout = PROBE_TIMEOUT_MS
             tls.startHandshake()
             tls.getOutputStream().write(
-                "GET /generate_204 HTTP/1.1\r\nHost: www.gstatic.com\r\nConnection: close\r\n\r\n"
+                "GET $path HTTP/1.1\r\nHost: $hostName\r\nUser-Agent: Mozilla/5.0 GilrTanoVPN\r\nConnection: close\r\n\r\n"
                     .toByteArray(Charsets.US_ASCII)
             )
             tls.getOutputStream().flush()
             val line = tls.getInputStream().bufferedReader().readLine() ?: return -1L
             tls.close()
-            if (!line.contains("204")) return -1L
+            val code = Regex("HTTP/\\d(?:\\.\\d)?\\s+(\\d{3})").find(line)?.groupValues?.get(1)?.toIntOrNull()
+                ?: return -1L
+            if (expectedCode != null && code != expectedCode) return -1L
+            if (expectedCode == null && code !in 200..499) return -1L
             return (System.nanoTime() - started) / 1_000_000L
         } catch (_: Exception) {
             return -1L
