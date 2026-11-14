@@ -11,8 +11,8 @@ android {
         applicationId = "com.gilrtano.vpn"
         minSdk = 29
         targetSdk = 35
-        versionCode = 93
-        versionName = "0.9.3"
+        versionCode = 94
+        versionName = "0.9.4"
     }
 
     buildTypes {
