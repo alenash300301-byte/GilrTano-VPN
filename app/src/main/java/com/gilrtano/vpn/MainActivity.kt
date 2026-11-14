@@ -109,7 +109,7 @@ class MainActivity : Activity() {
                 resetConnectButtonGlow()
             } else if (message.startsWith("Подключаю") || message.startsWith("Запускаю") || message.startsWith("Запуск Xray") || message.startsWith("Переключаю")) {
                 status.setTextColor(Color.rgb(255, 166, 55))
-                updatePowerOrb(false)
+                // Keep the ignition animation visible while the tunnel is starting.
             }
             val busy = message.startsWith("Подключаю") || message.startsWith("Запускаю") || message.startsWith("Запуск Xray") || message.startsWith("Переключаю")
             // The single power button remains usable while connecting so it can cancel,
