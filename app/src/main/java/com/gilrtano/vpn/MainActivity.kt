@@ -178,48 +178,134 @@ class MainActivity : Activity() {
             setOnClickListener { measureSelectedPing() }
         }
 
-        setContentView(LinearLayout(this).apply {
+        val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(20, 24, 20, 20)
+            setBackgroundColor(Color.rgb(5, 5, 7))
+        }
+        val scroll = android.widget.ScrollView(this).apply {
+            isFillViewport = true
             addView(LinearLayout(this@MainActivity).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = android.view.Gravity.CENTER_VERTICAL
-                addView(TigerMarkView(this@MainActivity), LinearLayout.LayoutParams(56, 56))
+                orientation = LinearLayout.VERTICAL
+                gravity = android.view.Gravity.CENTER_HORIZONTAL
+                setPadding(dp(18), dp(12), dp(18), dp(18))
+                addView(LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = android.view.Gravity.CENTER_VERTICAL
+                    addView(TextView(this@MainActivity).apply {
+                        text = "☰"; textSize = 27f; setTextColor(Color.rgb(255, 112, 18))
+                        setPadding(dp(4), 0, dp(12), 0)
+                    })
+                    addView(TigerMarkView(this@MainActivity), LinearLayout.LayoutParams(dp(48), dp(48)))
+                    addView(LinearLayout(this@MainActivity).apply {
+                        orientation = LinearLayout.VERTICAL
+                        setPadding(dp(10), 0, 0, 0)
+                        addView(TextView(this@MainActivity).apply {
+                            text = "GilrTano VPN"; textSize = 25f
+                            typeface = android.graphics.Typeface.DEFAULT_BOLD
+                            setTextColor(Color.WHITE)
+                        })
+                        addView(TextView(this@MainActivity).apply {
+                            text = "БЕЗОПАСНОЕ VPN-СОЕДИНЕНИЕ"; textSize = 10f
+                            setTextColor(Color.LTGRAY)
+                        })
+                    }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                    addView(TextView(this@MainActivity).apply {
+                        text = "ⓘ"; textSize = 26f; setTextColor(Color.rgb(255, 112, 18))
+                    })
+                })
+                addView(View(this@MainActivity).apply {
+                    setBackgroundColor(Color.rgb(190, 61, 10))
+                }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)).apply {
+                    topMargin = dp(8); bottomMargin = dp(8)
+                })
+                addView(TigerMarkView(this@MainActivity), LinearLayout.LayoutParams(dp(270), dp(270)).apply {
+                    topMargin = dp(4); bottomMargin = dp(2)
+                })
+                addView(status.apply {
+                    text = "● Отключено"; textSize = 18f
+                    gravity = android.view.Gravity.CENTER
+                    setTextColor(Color.rgb(255, 92, 45))
+                    background = GradientDrawable().apply {
+                        setColor(Color.rgb(25, 10, 9)); cornerRadius = dp(28).toFloat()
+                        setStroke(dp(1), Color.rgb(205, 43, 24))
+                    }
+                    setPadding(dp(22), dp(9), dp(22), dp(9))
+                })
                 addView(TextView(this@MainActivity).apply {
-                    text = "GilrTano VPN"; textSize = 25f
+                    text = "Готово к подключению  🇪🇺"; textSize = 16f
+                    setTextColor(Color.LTGRAY); gravity = android.view.Gravity.CENTER
+                    setPadding(0, dp(8), 0, dp(4))
+                })
+                addView(connectButton, LinearLayout.LayoutParams(dp(280), dp(280)).apply {
+                    gravity = android.view.Gravity.CENTER
+                    topMargin = dp(8); bottomMargin = dp(12)
+                })
+                addView(LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    addView(quattroTab, LinearLayout.LayoutParams(0, dp(54), 1f).apply { rightMargin = dp(4) })
+                    addView(freeTab, LinearLayout.LayoutParams(0, dp(54), 1f).apply { leftMargin = dp(4) })
+                })
+                addView(TextView(this@MainActivity).apply {
+                    text = "Выбор сервера  ›"; textSize = 20f
                     typeface = android.graphics.Typeface.DEFAULT_BOLD
-                    setTextColor(Color.rgb(255, 125, 24))
+                    setTextColor(Color.WHITE); setPadding(dp(16), dp(14), dp(12), dp(2))
+                    background = GradientDrawable().apply {
+                        setColor(Color.rgb(24, 13, 10)); cornerRadius = dp(18).toFloat()
+                        setStroke(dp(1), Color.rgb(230, 83, 12))
+                    }
+                    setOnClickListener { servers.performClick() }
+                })
+                addView(TextView(this@MainActivity).apply {
+                    text = "Выбери сервер ниже или включи автоматический подбор"; textSize = 12f
+                    setTextColor(Color.LTGRAY); setPadding(dp(16), dp(3), dp(12), 0)
+                })
+                addView(servers, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)))
+                addView(pingStatus.apply { gravity = android.view.Gravity.CENTER_VERTICAL }, LinearLayout.LayoutParams.MATCH_PARENT, dp(34))
+                addView(bestFreeButton, LinearLayout.LayoutParams.MATCH_PARENT, dp(48))
+                addView(checkPing, LinearLayout.LayoutParams.MATCH_PARENT, dp(44))
+                addView(TextView(this@MainActivity).apply {
+                    text = "Настройки и импорт  ›"; textSize = 20f
+                    typeface = android.graphics.Typeface.DEFAULT_BOLD
+                    setTextColor(Color.WHITE); setPadding(dp(16), dp(14), dp(12), dp(12))
+                    background = GradientDrawable().apply {
+                        setColor(Color.rgb(24, 13, 10)); cornerRadius = dp(18).toFloat()
+                        setStroke(dp(1), Color.rgb(230, 83, 12))
+                    }
+                    setOnClickListener {
+                        val show = primarySource.visibility != View.VISIBLE
+                        primarySource.visibility = if (show && !activeFree) View.VISIBLE else View.GONE
+                        freeSource.visibility = if (show && activeFree) View.VISIBLE else View.GONE
+                        findImportButtonsVisibility()
+                    }
+                })
+                addView(primarySource, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                addView(importPrimary)
+                addView(importDocx)
+                addView(freeSource, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                addView(importFree)
+                addView(cancelConnectButton)
+                addView(disconnect)
+                addView(status.apply { textSize = 13f; setPadding(dp(8), dp(8), dp(8), dp(8)) })
+                addView(TextView(this@MainActivity).apply {
+                    text = "Бесплатные серверы предоставляются сторонними операторами."
+                    textSize = 10f; setTextColor(Color.GRAY); gravity = android.view.Gravity.CENTER
+                    setPadding(0, dp(12), 0, dp(8))
+                })
+                addView(LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = android.view.Gravity.CENTER
+                    setPadding(0, dp(14), 0, dp(8))
+                    listOf("⌂  Главная", "▤  Серверы", "⚙  Настройки").forEach { label ->
+                        addView(TextView(this@MainActivity).apply {
+                            text = label; textSize = 13f; gravity = android.view.Gravity.CENTER
+                            setTextColor(Color.rgb(255, 132, 24)); setPadding(dp(8), dp(10), dp(8), dp(10))
+                        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                    }
                 })
             })
-            addView(TextView(this@MainActivity).apply {
-                text = "🔥 ОГОНЬ ВНУТРИ. СВОБОДА В СЕТИ."
-                textSize = 11f; setTextColor(Color.rgb(190, 125, 90))
-            })
-            addView(LinearLayout(this@MainActivity).apply {
-                orientation = LinearLayout.HORIZONTAL
-                addView(quattroTab, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-                addView(freeTab, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-            })
-            addView(primarySource, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-            addView(importPrimary)
-            addView(importDocx)
-            addView(freeSource, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-            addView(importFree)
-            addView(TextView(this@MainActivity).apply { text = "СЕРВЕР"; textSize = 11f; setTextColor(Color.LTGRAY) })
-            addView(servers)
-            addView(pingStatus)
-            addView(bestFreeButton)
-            addView(checkPing)
-            addView(connectButton)
-            addView(cancelConnectButton)
-            addView(disconnect)
-            addView(status)
-            addView(TextView(this@MainActivity).apply {
-                text = "Бесплатные серверы принадлежат сторонним операторам."
-                textSize = 10f; setTextColor(Color.GRAY)
-            })
-        })
-
+        }
+        root.addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        setContentView(root)
         styleDarkInterface()
         installButtonFeedback()
         connectButton.apply {
