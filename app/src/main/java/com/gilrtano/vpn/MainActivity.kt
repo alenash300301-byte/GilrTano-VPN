@@ -161,7 +161,7 @@ class MainActivity : Activity() {
             }
         }
         bestFreeButton = Button(this).apply {
-            text = "Автоматически найти лучший бесплатный сервер"
+            text = "Найти лучший бесплатный сервер (проверка интернета)"
             setOnClickListener { findBestFreeServers() }
         }
         val checkPing = Button(this).apply {
@@ -342,25 +342,29 @@ class MainActivity : Activity() {
         }
         scanningFree = true
         bestFreeButton.isEnabled = false
-        status.text = "Проверяю бесплатные серверы и выбираю самый быстрый…"
+        status.text = "Проверяю VLESS, шифрование и доступ в интернет через серверы…"
         val candidates = freeNodes.toList()
         Thread {
             val pool = Executors.newFixedThreadPool(12)
             try {
                 val tasks = candidates.map { node ->
                     Callable<Pair<ImportedNode, Long>?> {
-                        runCatching { GilrTanoVpnService.xrayConfigFromVless(node.uri) }.getOrNull() ?: return@Callable null
-                        val uri = Uri.parse(node.uri)
-                        val host = uri.host ?: return@Callable null
-                        val port = if (uri.port > 0) uri.port else 443
-                        val started = System.nanoTime()
+                        // A TCP port-open check is not proof that VLESS authentication,
+                        // TLS/REALITY and the proxy data path work. Probe through a
+                        // temporary Xray instance and an actual HTTPS request instead.
+                        val config = runCatching { GilrTanoVpnService.xrayConfigFromVless(node.uri) }
+                            .getOrNull() ?: return@Callable null
                         runCatching {
-                            Socket().use { socket -> socket.connect(InetSocketAddress(host, port), 2500) }
-                            node to ((System.nanoTime() - started) / 1_000_000L)
+                            val delayMs = teapodcore.Teapodcore.measureOutboundDelay(
+                                config, "https://www.gstatic.com/generate_204"
+                            )
+                            if (delayMs <= 0L) null else node to delayMs
                         }.getOrNull()
                     }
                 }
-                val checked = pool.invokeAll(tasks, 12, TimeUnit.SECONDS)
+                // Keep native Xray probes bounded: many simultaneous cores can exhaust
+                // memory on a phone, even though this scan runs off the UI thread.
+                val checked = pool.invokeAll(tasks, 18, TimeUnit.SECONDS)
                     .mapNotNull { future -> if (future.isCancelled) null else runCatching { future.get() }.getOrNull() }
                     .sortedBy { it.second }
                 runOnUiThread {
@@ -373,8 +377,8 @@ class MainActivity : Activity() {
                         val labels = checked.map { pair -> "${pair.first.name} · ${pair.second} мс" }
                         servers.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, labels)
                         servers.setSelection(0)
-                        pingStatus.text = "Лучший TCP-отклик: ${checked.first().second} мс"
-                        status.text = "Отобрано доступных серверов: ${checked.size} из ${candidates.size}. Выбран самый быстрый."
+                        pingStatus.text = "Проверка через Xray: ${checked.first().second} мс"
+                        status.text = "Реальный интернет-тест пройден: ${checked.size} из ${candidates.size}. Выбран лучший сервер."
                     }
                     scanningFree = false
                     bestFreeButton.isEnabled = true
