@@ -59,6 +59,8 @@ class MainActivity : Activity() {
         override fun onReceive(context: Context?, intent: Intent?) {
             val message = intent?.getStringExtra(GilrTanoVpnService.EXTRA_STATUS) ?: "—"
             status.text = message
+            if (message.startsWith("Подключено")) igniteConnectButton()
+            else if (message == "Отключено" || message.startsWith("Ошибка")) resetConnectButtonGlow()
             val busy = message.startsWith("Подключаю") || message.startsWith("Запускаю") || message.startsWith("Запуск Xray")
             cancelConnectButton.isEnabled = busy
             connectButton.isEnabled = !busy
@@ -132,7 +134,6 @@ class MainActivity : Activity() {
                     Toast.makeText(this@MainActivity, "В этом режиме пока нет серверов", Toast.LENGTH_LONG).show()
                 } else {
                     try {
-                        igniteConnectButton()
                         val config = GilrTanoVpnService.xrayConfigFromVless(node.uri)
                         pendingConfig = config
                         connectButton.isEnabled = false
@@ -231,7 +232,7 @@ class MainActivity : Activity() {
             background = GradientDrawable(GradientDrawable.Orientation.TL_BR,
                 intArrayOf(Color.rgb(42, 15, 7), Color.rgb(8, 7, 7))).apply {
                 shape = GradientDrawable.OVAL
-                setStroke((4 * resources.displayMetrics.density).toInt(), Color.rgb(255, 105, 12))
+                setStroke((3 * resources.displayMetrics.density).toInt(), Color.rgb(48, 48, 52))
             }
             elevation = 12f
             // Subtle fire pulse only while the user presses the power button.
@@ -265,35 +266,40 @@ class MainActivity : Activity() {
         refreshMode()
     }
 
-    // A short ember-to-flame ignition when the user starts connecting.
+    // Keep the power button unlit at rest; gently ignite it only after VPN is connected.
     private fun igniteConnectButton() {
         val bg = connectButton.background as? GradientDrawable ?: return
-        val dim = Color.rgb(42, 15, 7)
-        val hot = Color.rgb(112, 27, 5)
+        val dark = Color.rgb(8, 8, 10)
         val ember = Color.rgb(255, 105, 12)
-        val bright = Color.rgb(255, 190, 65)
-        val animator = ValueAnimator.ofFloat(0f, 1f, 0.72f, 1f, 0.88f)
-        animator.duration = 1050L
+        val softGlow = Color.rgb(255, 145, 38)
+        val animator = ValueAnimator.ofFloat(0f, 1f, 0.62f, 1f)
+        animator.duration = 900L
         animator.interpolator = DecelerateInterpolator()
         animator.addUpdateListener { animation ->
             val t = animation.animatedValue as Float
-            val color = ArgbEvaluator().evaluate(t, dim, hot) as Int
-            val edge = ArgbEvaluator().evaluate(t, ember, bright) as Int
-            bg.setColor(color)
-            bg.setStroke(dp(4 + (4 * t).toInt()), edge)
-            connectButton.elevation = dp(12 + (10 * t).toInt()).toFloat()
-            connectButton.scaleX = 1f + 0.025f * t
-            connectButton.scaleY = 1f + 0.025f * t
+            val edge = ArgbEvaluator().evaluate(t, Color.rgb(48, 48, 52), softGlow) as Int
+            bg.setColor(ArgbEvaluator().evaluate(t * 0.22f, dark, Color.rgb(55, 20, 7)) as Int)
+            bg.setStroke(dp(3 + (2 * t).toInt()), edge)
+            connectButton.elevation = dp(10 + (3 * t).toInt()).toFloat()
         }
         animator.addListener(object : android.animation.AnimatorListenerAdapter() {
             override fun onAnimationEnd(animation: android.animation.Animator) {
-                connectButton.animate().scaleX(1f).scaleY(1f).setDuration(220L).start()
-                bg.setColor(dim)
+                bg.setColor(Color.rgb(18, 10, 8))
                 bg.setStroke(dp(4), ember)
                 connectButton.elevation = dp(12).toFloat()
             }
         })
         animator.start()
+    }
+
+    private fun resetConnectButtonGlow() {
+        val bg = connectButton.background as? GradientDrawable ?: return
+        connectButton.animate().cancel()
+        connectButton.scaleX = 1f
+        connectButton.scaleY = 1f
+        bg.setColor(Color.rgb(8, 7, 7))
+        bg.setStroke(dp(3), Color.rgb(48, 48, 52))
+        connectButton.elevation = dp(10).toFloat()
     }
 
     private fun styleDarkInterface() {
