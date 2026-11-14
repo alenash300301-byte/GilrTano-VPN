@@ -322,8 +322,8 @@ class MainActivity : Activity() {
                 val tigerScene = FrameLayout(this@MainActivity).apply {
                     setBackgroundColor(Color.BLACK)
                     addView(ImageView(this@MainActivity).apply {
-                        setImageResource(R.drawable.tiger_hero_art)
-                        scaleType = ImageView.ScaleType.CENTER_CROP
+                        setImageResource(R.drawable.tiger_hero)
+                        scaleType = ImageView.ScaleType.FIT_CENTER
                         adjustViewBounds = false
                         setBackgroundColor(Color.TRANSPARENT)
                         contentDescription = "Тигр с зелёными глазами"
@@ -341,7 +341,7 @@ class MainActivity : Activity() {
                     ))
                 }
                 addView(tigerScene, LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, dp(390)
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(410)
                 ).apply { topMargin = dp(0); bottomMargin = dp(0) })
                 powerOrb = PowerOrbButtonView(this@MainActivity).apply {
                     text = ""
