@@ -1001,7 +1001,7 @@ class MainActivity : Activity() {
      * Always refresh public nodes before measuring them. Saved free nodes are only
      * a fallback cache; public endpoints expire and must not be trusted as current.
      */
-    private fun refreshFreeServersAndFindBest(autoConnectWhenReady: Boolean = false) {
+    private fun refreshFreeServersAndFindBest(autoConnectWhenReady: Boolean = false, retryRound: Int = 0) {
         if (scanningFree) return
         scanningFree = true
         bestFreeButton.isEnabled = false
@@ -1052,10 +1052,17 @@ class MainActivity : Activity() {
                 if (imported.isEmpty()) {
                     val cached = freeNodes
                     if (cached.isEmpty()) {
-                        status.text = "Не удалось обновить серверы. Проверь интернет и повтори попытку."
+                        if (autoConnectWhenReady && retryRound < 5) {
+                            status.text = "Источники временно недоступны. Повторяю поиск…"
+                            Handler(Looper.getMainLooper()).postDelayed({
+                                if (!isFinishing && !isDestroyed) refreshFreeServersAndFindBest(true, retryRound + 1)
+                            }, 2500L)
+                        } else {
+                            status.text = "Не удалось обновить серверы. Попробуй позже."
+                        }
                     } else {
-                        status.text = "Источники недоступны. Проверю сохранённые серверы…"
-                        findBestFreeServers()
+                        status.text = "Источники недоступны. Проверяю сохранённые серверы…"
+                        findBestFreeServers(autoConnectWhenReady, retryRound)
                     }
                     return@runOnUiThread
                 }
@@ -1070,12 +1077,12 @@ class MainActivity : Activity() {
                 freeSource.setText(successfulSource)
                 refreshMode()
                 status.text = "Обновлено ${imported.size} серверов. Быстро проверяю доступ…"
-                findBestFreeServers(autoConnectWhenReady)
+                findBestFreeServers(autoConnectWhenReady, retryRound)
             }
         }.start()
     }
 
-    private fun findBestFreeServers(autoConnectWhenReady: Boolean = false) {
+    private fun findBestFreeServers(autoConnectWhenReady: Boolean = false, retryRound: Int = 0) {
         if (scanningFree) return
         if (freeNodes.isEmpty()) {
             status.text = "Сначала обнови бесплатный список серверов"
@@ -1118,14 +1125,21 @@ class MainActivity : Activity() {
                             if (scanningFree) status.text = "Автопоиск: проверено $done из ${candidates.size}…"
                         }
                     }
-                    if (checked.size >= (if (autoConnectWhenReady) 1 else 2)) break
+                    if (checked.size >= 2) break
                 }
                 val fastest = checked.sortedBy { it.second }
                 runOnUiThread {
                     if (fastest.isEmpty()) {
                         // A failed scan is never a connected state: restore every
                         // visual control so the screen cannot remain falsely green.
-                        status.text = "Проверено серверов: $completed из ${candidates.size}. Рабочие пока не ответили — попробуй повторить поиск позже."
+                        if (autoConnectWhenReady && retryRound < 5) {
+                            status.text = "Рабочий сервер пока не найден. Повторяю поиск…"
+                            Handler(Looper.getMainLooper()).postDelayed({
+                                if (!isFinishing && !isDestroyed) refreshFreeServersAndFindBest(true, retryRound + 1)
+                            }, 2500L)
+                        } else {
+                            status.text = "Проверено серверов: $completed из ${candidates.size}. Рабочие пока не ответили."
+                        }
                         status.setTextColor(Color.LTGRAY)
                         updatePowerOrb(false)
                         if (::tigerFlames.isInitialized) tigerFlames.setActive(false)
