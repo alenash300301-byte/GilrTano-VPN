@@ -28,8 +28,8 @@ object SubscriptionImporter {
 
     private fun download(source: String): String {
         val connection = (URL(source).openConnection() as HttpURLConnection).apply {
-            connectTimeout = 15000
-            readTimeout = 25000
+            connectTimeout = 8000
+            readTimeout = 12000
             requestMethod = "GET"
             setRequestProperty("User-Agent", "GilrTanoVPN/0.7.7")
             setRequestProperty("Accept", "text/plain, application/yaml, */*")
