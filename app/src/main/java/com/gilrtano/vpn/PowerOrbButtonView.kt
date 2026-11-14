@@ -20,8 +20,7 @@ class PowerOrbButtonView @JvmOverloads constructor(
     }
 
     override fun onDraw(canvas: Canvas) {
-        // Keep the circular background drawable, but draw the power mark ourselves.
-        background?.draw(canvas)
+        // View draws its background before onDraw; draw only the glyph here.
         val d = resources.displayMetrics.density
         val cx = width / 2f
         val cy = height / 2f
