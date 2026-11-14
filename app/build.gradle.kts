@@ -27,6 +27,7 @@ android {
     kotlinOptions { jvmTarget = "17" }
 }
 
-dependencies {\n    implementation("org.yaml:snakeyaml:2.4")
+dependencies {
+    implementation("org.yaml:snakeyaml:2.4")
     implementation(files("libs/teapod-core-1.7.7.aar"))
 }
