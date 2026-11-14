@@ -495,6 +495,7 @@ class MainActivity : Activity() {
                     event.actionMasked == MotionEvent.ACTION_CANCEL
                 if (pressed || released) {
                     if (pressed && !status.text.toString().contains("Подключено")) {
+                        if (::tigerFlames.isInitialized) tigerFlames.setActive(true)
                         fireDrawable.setPressed(true)
                         if (fireAnimator?.isRunning != true) {
                             fireAnimator = ValueAnimator.ofFloat(0f, (Math.PI * 2).toFloat()).apply {
@@ -504,6 +505,7 @@ class MainActivity : Activity() {
                 val phase = it.animatedValue as Float
                 fireDrawable.setPhase(phase)
                 powerOrbDrawable.setPhase(phase)
+                if (::tigerFlames.isInitialized) tigerFlames.setPhase(phase)
             }
                                 start()
                             }
