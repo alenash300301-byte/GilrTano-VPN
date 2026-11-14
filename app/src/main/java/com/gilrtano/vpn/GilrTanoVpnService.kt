@@ -73,12 +73,27 @@ class GilrTanoVpnService : VpnService() {
                 .addDnsServer("1.1.1.1")
                 .establish() ?: throw IllegalStateException("Android не создал VPN-интерфейс")
             tun = pfd
+            // Match the native integration contract: allowICMP=false and
+            // blockQuic=false. QUIC must not be silently black-holed for apps
+            // that prefer HTTP/3, and ICMP is not needed for tunnel setup.
             val error = Teapodcore.startTun2Socks(
                 pfd.fd.toLong(), 1500L, SOCKS_PORT.toLong(),
-                "", "", true, true, null
+                "", "", false, false, null
             )
-            if (error.isNotEmpty()) throw IllegalStateException(error)
-            broadcastStatus("Подключено · Xray работает")
+            if (error.isNotEmpty()) throw IllegalStateException("tun2socks: $error")
+
+            // StartTun2Socks returns after scheduling its engine. Do not tell the
+            // user VPN is connected until the native bridge reports it running.
+            var running = false
+            repeat(20) {
+                if (Teapodcore.isTunRunning()) {
+                    running = true
+                    return@repeat
+                }
+                Thread.sleep(100)
+            }
+            if (!running) throw IllegalStateException("TUN-мост не запустился")
+            broadcastStatus("Подключено · Xray и TUN работают")
             updateNotification("Подключено")
         } catch (e: Exception) {
             broadcastStatus("Ошибка TUN: ${e.message}")
