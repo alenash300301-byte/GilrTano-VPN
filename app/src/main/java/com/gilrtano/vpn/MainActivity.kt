@@ -558,12 +558,13 @@ class MainActivity : Activity() {
         }
         scanningFree = true
         bestFreeButton.isEnabled = false
-        status.text = "Быстрый поиск: проверяю первые серверы параллельно…"
-        // A short first-pass scan is preferable to making the user wait minutes.
-        // Keep a small warm set; the fastest working profiles are saved for next launch.
-        val candidates = freeNodes.take(80)
+        status.text = "Автопоиск: проверяю до 300 серверов…"
+        // Public free nodes expire frequently. Check a much larger portion of the
+        // imported catalogue and allow slow handshakes, rather than rejecting all
+        // candidates after one short 25-second window.
+        val candidates = freeNodes.take(300)
         Thread {
-            val pool = Executors.newFixedThreadPool(6)
+            val pool = Executors.newFixedThreadPool(8)
             val completion = java.util.concurrent.ExecutorCompletionService<Pair<ImportedNode, Long>?>(pool)
             try {
                 candidates.forEach { node ->
@@ -579,23 +580,25 @@ class MainActivity : Activity() {
                     })
                 }
                 val checked = mutableListOf<Pair<ImportedNode, Long>>()
-                val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(25)
+                val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(90)
                 var completed = 0
                 while (completed < candidates.size && System.nanoTime() < deadline && checked.size < 8) {
                     val remaining = deadline - System.nanoTime()
                     val future = completion.poll(remaining, TimeUnit.NANOSECONDS) ?: break
                     completed++
                     runCatching { future.get() }.getOrNull()?.let { checked.add(it) }
-                    if (checked.size >= 3) {
-                        // Three real working routes are enough for a useful quick shortlist.
-                        // Do not keep the connect button waiting for a full catalogue scan.
-                        break
+                    if (completed % 20 == 0) {
+                        val done = completed
+                        runOnUiThread {
+                            if (scanningFree) status.text = "Автопоиск: проверено $done из ${candidates.size}…"
+                        }
                     }
+                    if (checked.size >= 5) break
                 }
                 val fastest = checked.sortedBy { it.second }
                 runOnUiThread {
                     if (fastest.isEmpty()) {
-                        status.text = "За 25 секунд рабочий сервер не найден. Список можно обновить и попробовать снова."
+                        status.text = "Не найдено рабочих серверов: проверено $completed из ${candidates.size}. Попробуй обновить список позже."
                     } else {
                         freeNodes = fastest.map { it.first }
                         saveNodes("free_nodes", freeNodes)
@@ -604,7 +607,7 @@ class MainActivity : Activity() {
                         servers.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, labels)
                         servers.setSelection(0)
                         pingStatus.text = "Проверка через Xray: ${fastest.first().second} мс"
-                        status.text = "Быстрый подбор готов: ${fastest.size} рабочих сервер(а). Лучший выбран."
+                        status.text = "Найдено рабочих серверов: ${fastest.size}. Лучший выбран."
                     }
                     scanningFree = false
                     bestFreeButton.isEnabled = true
