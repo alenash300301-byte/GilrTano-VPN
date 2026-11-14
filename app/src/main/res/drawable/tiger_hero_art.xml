@@ -22,4 +22,14 @@
     <path android:fillColor="#2A1710" android:pathData="M163,14 L180,5 L197,14 L189,58 L180,70 L171,58 Z"/>
     <path android:fillColor="#E87520" android:pathData="M145,292 Q180,320 215,292 L238,360 L122,360 Z"/>
     <path android:fillColor="#17100D" android:pathData="M154,310 L180,329 L206,310 L196,360 L164,360 Z"/>
+
+    <!-- Layered facial markings, eye glow and whiskers for a richer mascot silhouette. -->
+    <path android:fillColor="#55FF7A" android:fillAlpha="0.22" android:pathData="M91,186 Q121,159 151,184 Q124,218 91,186 Z M269,186 Q239,159 209,184 Q236,218 269,186 Z"/>
+    <path android:fillColor="#F5A34A" android:pathData="M143,164 L160,179 L151,196 L133,179 Z M217,164 L200,179 L209,196 L227,179 Z M168,159 L180,177 L192,159 L187,190 L173,190 Z"/>
+    <path android:fillColor="#21120C" android:pathData="M52,118 L95,136 L76,147 Z M308,118 L265,136 L284,147 Z M105,84 L139,111 L123,119 Z M255,84 L221,111 L237,119 Z M153,80 L176,118 L166,128 Z M207,80 L184,118 L194,128 Z"/>
+    <path android:fillColor="#F4E6D1" android:fillAlpha="0.75" android:pathData="M87,236 Q111,244 135,238 L127,249 Q104,254 91,247 Z M273,236 Q249,244 225,238 L233,249 Q256,254 269,247 Z"/>
+    <path android:fillColor="#2B1A13" android:pathData="M139,265 Q159,276 180,274 Q201,276 221,265 L211,282 Q180,294 149,282 Z"/>
+    <path android:strokeColor="#F0D7B8" android:strokeAlpha="0.8" android:strokeWidth="2.2" android:strokeLineCap="round" android:fillColor="#00000000" android:pathData="M119,258 Q85,262 60,252 M118,267 Q82,276 65,273 M241,258 Q275,262 300,252 M242,267 Q278,276 295,273"/>
+    <path android:strokeColor="#FFB05A" android:strokeAlpha="0.75" android:strokeWidth="2.5" android:strokeLineCap="round" android:fillColor="#00000000" android:pathData="M74,183 Q91,164 112,161 M286,183 Q269,164 248,161 M110,302 Q143,326 180,333 Q217,326 250,302"/>
+    <path android:fillColor="#20FF62" android:fillAlpha="0.18" android:pathData="M91,187 Q121,164 149,186 Q121,213 91,187 Z M269,187 Q239,164 211,186 Q239,213 269,187 Z"/>
 </vector>
