@@ -55,6 +55,9 @@ class MainActivity : Activity() {
     private lateinit var servers: Spinner
     private lateinit var quattroTab: Button
     private lateinit var freeTab: Button
+    private lateinit var autoTab: Button
+    private var autoMode = true
+    private var activeMode: String = "auto"
     private lateinit var bestFreeButton: Button
     private lateinit var connectButton: Button
     private val fireDrawable = FireButtonDrawable()
@@ -158,8 +161,12 @@ class MainActivity : Activity() {
             setOnClickListener { switchMode(false) }
         }
         freeTab = Button(this).apply {
-            text = "БЕСПЛАТНЫЙ РЕЗЕРВ"
+            text = "БЕСПЛАТНЫЙ"
             setOnClickListener { switchMode(true) }
+        }
+        autoTab = Button(this).apply {
+            text = "АВТО"
+            setOnClickListener { switchToAuto() }
         }
 
         val importPrimary = Button(this).apply {
@@ -193,6 +200,16 @@ class MainActivity : Activity() {
                     startService(Intent(this@MainActivity, GilrTanoVpnService::class.java)
                         .setAction(GilrTanoVpnService.ACTION_STOP))
                     return@setOnClickListener
+                }
+                if (autoMode) {
+                    activeFree = quattroNodes.isEmpty() && freeNodes.isNotEmpty()
+                    prefs.edit().putBoolean("active_free_mode", activeFree).apply()
+                    refreshMode()
+                    if (quattroNodes.isEmpty() && freeNodes.isEmpty()) {
+                        status.text = "Ищу бесплатный резерв…"
+                        refreshFreeServersAndFindBest(autoConnectWhenReady = true)
+                        return@setOnClickListener
+                    }
                 }
                 val node = activeNodes.getOrNull(servers.selectedItemPosition)
                 if (node == null) {
@@ -491,6 +508,8 @@ class MainActivity : Activity() {
                 false
             }
         }
+        activeMode = prefs.getString("connection_mode", "auto") ?: "auto"
+        autoMode = activeMode == "auto"
         activeFree = prefs.getBoolean("active_free_mode", false)
         refreshMode()
         updatePowerOrb(false)
@@ -651,8 +670,20 @@ class MainActivity : Activity() {
         style(root)
     }
 
+    private fun switchToAuto() {
+        autoMode = true
+        activeMode = "auto"
+        prefs.edit().putString("connection_mode", "auto").apply()
+        activeFree = quattroNodes.isEmpty() && freeNodes.isNotEmpty()
+        refreshMode()
+        Toast.makeText(this, "Автовыбор включён: Quattro в приоритете, бесплатный резерв", Toast.LENGTH_SHORT).show()
+    }
+
     private fun switchMode(free: Boolean) {
-        if (activeFree == free) return
+        autoMode = false
+        activeMode = if (free) "free" else "quattro"
+        prefs.edit().putString("connection_mode", activeMode).apply()
+        if (activeFree == free) { refreshMode(); return }
         val targetNodes = if (free) freeNodes else quattroNodes
         if (targetNodes.isEmpty()) {
             Toast.makeText(
@@ -688,8 +719,12 @@ class MainActivity : Activity() {
     }
 
     private fun refreshMode() {
-        quattroTab.isEnabled = activeFree
-        freeTab.isEnabled = !activeFree
+        autoTab.isEnabled = !autoMode
+        quattroTab.isEnabled = autoMode || activeFree
+        freeTab.isEnabled = autoMode || !activeFree
+        autoTab.alpha = if (autoMode) 1f else 0.72f
+        quattroTab.alpha = if (!autoMode && !activeFree) 1f else 0.72f
+        freeTab.alpha = if (!autoMode && activeFree) 1f else 0.72f
         primarySource.visibility = if (activeFree) ViewGroup.GONE else ViewGroup.VISIBLE
         freeSource.visibility = if (activeFree) ViewGroup.VISIBLE else ViewGroup.GONE
         bestFreeButton.visibility = if (activeFree) ViewGroup.VISIBLE else ViewGroup.GONE
@@ -788,7 +823,7 @@ class MainActivity : Activity() {
      * Always refresh public nodes before measuring them. Saved free nodes are only
      * a fallback cache; public endpoints expire and must not be trusted as current.
      */
-    private fun refreshFreeServersAndFindBest() {
+    private fun refreshFreeServersAndFindBest(autoConnectWhenReady: Boolean = false) {
         if (scanningFree) return
         scanningFree = true
         bestFreeButton.isEnabled = false
@@ -857,12 +892,12 @@ class MainActivity : Activity() {
                 freeSource.setText(successfulSource)
                 refreshMode()
                 status.text = "Обновлено ${imported.size} серверов. Быстро проверяю доступ…"
-                findBestFreeServers()
+                findBestFreeServers(autoConnectWhenReady)
             }
         }.start()
     }
 
-    private fun findBestFreeServers() {
+    private fun findBestFreeServers(autoConnectWhenReady: Boolean = false) {
         if (scanningFree) return
         if (freeNodes.isEmpty()) {
             status.text = "Сначала обнови бесплатный список серверов"
@@ -920,6 +955,14 @@ class MainActivity : Activity() {
                         servers.setSelection(0)
                         pingStatus.text = "Проверка через Xray: ${fastest.first().second} мс"
                         status.text = "Найдено рабочих серверов: ${fastest.size}. Лучший выбран."
+                        if (autoConnectWhenReady) {
+                            activeFree = true
+                            autoMode = true
+                            activeMode = "auto"
+                            prefs.edit().putString("connection_mode", "auto").putBoolean("active_free_mode", true).apply()
+                            refreshMode()
+                            connectAutomaticallySelected()
+                        }
                     }
                     scanningFree = false
                     bestFreeButton.isEnabled = true
@@ -935,6 +978,19 @@ class MainActivity : Activity() {
             }
         }.start()
     }
+    private fun connectAutomaticallySelected() {
+        val node = activeNodes.getOrNull(servers.selectedItemPosition) ?: return
+        try {
+            val config = GilrTanoVpnService.xrayConfigFromVless(node.uri)
+            pendingConfig = config
+            status.text = "Подключаю лучший доступный сервер…"
+            val permission = VpnService.prepare(this)
+            if (permission != null) startActivityForResult(permission, requestCode) else startVpn(config)
+        } catch (e: Exception) {
+            status.text = "Не удалось подготовить сервер: ${e.message}"
+        }
+    }
+
     private fun measureSelectedPing() {
         val node = activeNodes.getOrNull(servers.selectedItemPosition)
         if (node == null) {
