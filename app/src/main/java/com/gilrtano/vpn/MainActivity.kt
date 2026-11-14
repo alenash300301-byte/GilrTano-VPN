@@ -1074,10 +1074,16 @@ class MainActivity : Activity() {
         val node = activeNodes.getOrNull(servers.selectedItemPosition) ?: return
         try {
             val config = GilrTanoVpnService.xrayConfigFromVless(node.uri)
+            val fallback = quattroNodes.firstOrNull()
+                ?.let { runCatching { GilrTanoVpnService.xrayConfigFromVless(it.uri) }.getOrNull() }
             pendingConfig = config
+            pendingFallbackConfig = fallback
+            pendingPreferredConfig = fallback
+            pendingAutomatic = true
             status.text = "Подключаю лучший доступный сервер…"
             val permission = VpnService.prepare(this)
-            if (permission != null) startActivityForResult(permission, requestCode) else startVpn(config)
+            if (permission != null) startActivityForResult(permission, requestCode)
+            else startVpn(config, fallback, fallback, true)
         } catch (e: Exception) {
             status.text = "Не удалось подготовить сервер: ${e.message}"
         }
