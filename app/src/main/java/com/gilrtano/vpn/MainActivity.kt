@@ -138,7 +138,7 @@ class MainActivity : Activity() {
             hint = "Ссылка бесплатного резерва"
             minLines = 2
             maxLines = 3
-            setText(prefs.getString("free_subscription_url", "https://raw.githubusercontent.com/morpheusadam/v2ray-config/main/subs/bundles/best.txt"))
+            setText(prefs.getString("free_subscription_url", "https://raw.githubusercontent.com/morpheusadam/v2ray-config/main/subs/bundles/vless.txt"))
             inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
         }
         servers = Spinner(this).apply {
@@ -215,7 +215,7 @@ class MainActivity : Activity() {
         }
         bestFreeButton = Button(this).apply {
             text = "Найти лучший бесплатный сервер (проверка интернета)"
-            setOnClickListener { findBestFreeServers() }
+            setOnClickListener { refreshFreeServersAndFindBest() }
         }
         val checkPing = Button(this).apply {
             text = "Проверить пинг"
@@ -745,10 +745,74 @@ class MainActivity : Activity() {
         }.getOrDefault(emptyList())
     }
 
+    /**
+     * Always refresh public nodes before measuring them. Saved free nodes are only
+     * a fallback cache; public endpoints expire and must not be trusted as current.
+     */
+    private fun refreshFreeServersAndFindBest() {
+        if (scanningFree) return
+        scanningFree = true
+        bestFreeButton.isEnabled = false
+        status.text = "Обновляю бесплатные серверы…"
+        val configured = freeSource.text.toString().trim().ifBlank {
+            "https://raw.githubusercontent.com/morpheusadam/v2ray-config/main/subs/bundles/vless.txt"
+        }
+        val sources = listOf(
+            configured,
+            "https://radarhub.top/v2ray.txt",
+            "https://cdn.jsdelivr.net/gh/morpheusadam/v2ray-config@main/subs/bundles/vless.txt"
+        ).distinct()
+        Thread {
+            var imported: List<ImportedNode> = emptyList()
+            var successfulSource: String? = null
+            val errors = mutableListOf<String>()
+            for (source in sources) {
+                try {
+                    val nodes = SubscriptionImporter.load(source)
+                    if (nodes.isNotEmpty()) {
+                        imported = nodes
+                        successfulSource = source
+                        break
+                    } else {
+                        errors.add("Источник не содержит поддерживаемых VLESS")
+                    }
+                } catch (e: Exception) {
+                    errors.add(e.message ?: "ошибка загрузки")
+                }
+            }
+            runOnUiThread {
+                scanningFree = false
+                bestFreeButton.isEnabled = true
+                if (imported.isEmpty()) {
+                    val cached = freeNodes
+                    if (cached.isEmpty()) {
+                        status.text = "Не удалось обновить серверы. Проверь интернет и повтори попытку."
+                    } else {
+                        status.text = "Источники недоступны. Проверю сохранённые серверы…"
+                        findBestFreeServers()
+                    }
+                    return@runOnUiThread
+                }
+                freeNodes = imported
+                activeFree = true
+                prefs.edit()
+                    .putBoolean("active_free_mode", true)
+                    .putString("free_subscription_url", successfulSource)
+                    .putInt("free_selected", 0)
+                    .apply()
+                saveNodes("free_nodes", freeNodes)
+                freeSource.setText(successfulSource)
+                refreshMode()
+                status.text = "Обновлено серверов: ${imported.size}. Проверяю реальный доступ…"
+                findBestFreeServers()
+            }
+        }.start()
+    }
+
     private fun findBestFreeServers() {
         if (scanningFree) return
         if (freeNodes.isEmpty()) {
-            status.text = "Сначала импортируй бесплатный список серверов"
+            status.text = "Сначала обнови бесплатный список серверов"
             return
         }
         scanningFree = true
@@ -777,7 +841,7 @@ class MainActivity : Activity() {
                 val checked = mutableListOf<Pair<ImportedNode, Long>>()
                 val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(90)
                 var completed = 0
-                while (completed < candidates.size && System.nanoTime() < deadline && checked.size < 8) {
+                while (completed < candidates.size && System.nanoTime() < deadline && checked.size < 20) {
                     val remaining = deadline - System.nanoTime()
                     val future = completion.poll(remaining, TimeUnit.NANOSECONDS) ?: break
                     completed++
@@ -788,7 +852,7 @@ class MainActivity : Activity() {
                             if (scanningFree) status.text = "Автопоиск: проверено $done из ${candidates.size}…"
                         }
                     }
-                    if (checked.size >= 5) break
+                    if (checked.size >= 20) break
                 }
                 val fastest = checked.sortedBy { it.second }
                 runOnUiThread {
