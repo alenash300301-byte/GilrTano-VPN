@@ -5,20 +5,26 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.RadialGradient
+import android.graphics.Shader
 import android.view.View
 import android.view.animation.DecelerateInterpolator
 import kotlin.math.cos
 import kotlin.math.sin
 
 /**
- * Flame frame around the hero artwork. Hidden when disconnected; the fire
- * grows from the power core, wraps the tiger and fades smoothly on disconnect.
+ * Animated fire surrounding the tiger artwork.
+ *
+ * The animation is driven by MainActivity's shared phase clock so the tiger
+ * flames and the power-orb fire stay visually synchronized. The reveal value
+ * is eased independently, giving ignition and shutdown a deliberate fade.
  */
 class TigerFlameOverlayView(context: Context) : View(context) {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private var phase = 0f
     private var active = false
     private var reveal = 0f
+    private var revealAnimator: android.animation.ValueAnimator? = null
 
     fun setPhase(value: Float) {
         phase = value
@@ -28,105 +34,161 @@ class TigerFlameOverlayView(context: Context) : View(context) {
     fun setActive(value: Boolean) {
         if (active == value) return
         active = value
-        animate().cancel()
+        revealAnimator?.cancel()
         if (value) {
             visibility = VISIBLE
-            reveal = 0f
-            animate().setDuration(1050L).setInterpolator(DecelerateInterpolator())
-                .alpha(1f).setUpdateListener { reveal = it.animatedFraction; invalidate() }.start()
+            alpha = 1f
+            revealAnimator = android.animation.ValueAnimator.ofFloat(reveal, 1f).apply {
+                duration = 1150L
+                interpolator = DecelerateInterpolator(1.7f)
+                addUpdateListener {
+                    reveal = it.animatedValue as Float
+                    invalidate()
+                }
+                start()
+            }
         } else {
-            animate().setDuration(700L).setInterpolator(DecelerateInterpolator())
-                .alpha(0f).withEndAction {
-                    if (!active) {
-                        visibility = GONE
-                        reveal = 0f
+            // Let the fire collapse and fade instead of abruptly disappearing.
+            revealAnimator = android.animation.ValueAnimator.ofFloat(reveal, 0f).apply {
+                duration = 850L
+                interpolator = DecelerateInterpolator()
+                addUpdateListener {
+                    reveal = it.animatedValue as Float
+                    invalidate()
+                }
+                addListener(object : android.animation.AnimatorListenerAdapter() {
+                    override fun onAnimationEnd(animation: android.animation.Animator) {
+                        if (!active && reveal <= 0.01f) visibility = GONE
                     }
-                }.start()
+                })
+                start()
+            }
         }
     }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        if (!active || width <= 0 || height <= 0) return
+        if (reveal <= 0.001f || width <= 0 || height <= 0) return
+
         val w = width.toFloat()
         val h = height.toFloat()
-        val unit = (w / 360f).coerceAtLeast(.65f)
+        val d = resources.displayMetrics.density
         val cx = w * .5f
         val cy = h * .51f
         val rx = w * .455f
-        val ry = h * .43f
-        val save = canvas.save()
-        canvas.clipRect(0f, 0f, w, h)
+        val ry = h * .425f
+        val intensity = reveal.coerceIn(0f, 1f)
+        val flicker = .90f + .10f * sin(phase * 2.3f)
 
-        // A narrow ignition trail climbs from the orb before the ring of fire opens.
-        val ignitionHeight = h * (.12f + .42f * reveal)
-        for (i in 0 until 9) {
-            val spread = (i - 4) * 4.5f * unit
-            val sway = sin((phase * 1.4f + i * .8f).toDouble()).toFloat() * 7f * unit
-            val baseY = h - 2f * unit
-            val tipY = baseY - ignitionHeight * (.72f + .05f * (i % 4))
-            val widthBase = (4f + (i % 3) * 2f) * unit
-            val path = Path().apply {
-                moveTo(cx + spread - widthBase, baseY)
-                cubicTo(cx + spread - widthBase * 1.7f, baseY - ignitionHeight * .25f,
-                    cx + sway + spread, tipY + ignitionHeight * .2f,
-                    cx + sway + spread * .45f, tipY)
-                cubicTo(cx + spread + widthBase * 1.5f, tipY + ignitionHeight * .32f,
-                    cx + spread + widthBase, baseY - ignitionHeight * .16f,
-                    cx + spread + widthBase, baseY)
-                close()
-            }
-            paint.style = Paint.Style.FILL
-            paint.color = if (i % 3 == 0) Color.rgb(255, 205, 74) else Color.rgb(255, 75, 8)
-            paint.alpha = (210 * reveal).toInt().coerceIn(0, 210)
-            paint.setShadowLayer(12f * unit, 0f, 0f, Color.rgb(255, 74, 0))
-            canvas.drawPath(path, paint)
-            paint.clearShadowLayer()
+        // Soft ambient firelight behind the tongues of flame.
+        paint.style = Paint.Style.FILL
+        paint.shader = RadialGradient(
+            cx, cy, maxOf(w, h) * .62f,
+            intArrayOf(
+                Color.argb((20 * intensity).toInt(), 255, 54, 0),
+                Color.argb((48 * intensity).toInt(), 255, 83, 0),
+                Color.TRANSPARENT
+            ),
+            floatArrayOf(0f, .66f, 1f),
+            Shader.TileMode.CLAMP
+        )
+        canvas.drawRect(0f, 0f, w, h, paint)
+        paint.shader = null
+
+        // Two flowing elliptical arcs make the fire read as a continuous ring.
+        for (layer in 0..1) {
+            paint.style = Paint.Style.STROKE
+            paint.strokeCap = Paint.Cap.ROUND
+            paint.strokeWidth = (if (layer == 0) 3.5f else 1.4f) * d
+            paint.color = if (layer == 0)
+                Color.argb((105 * intensity * flicker).toInt(), 255, 88, 8)
+            else Color.argb((185 * intensity).toInt(), 255, 191, 66)
+            val inset = layer * 5f * d
+            val oval = android.graphics.RectF(
+                cx - rx + inset, cy - ry + inset,
+                cx + rx - inset, cy + ry - inset
+            )
+            canvas.drawArc(oval, -205f + phase * 5f, 285f, false, paint)
         }
 
-        // Flame tongues follow an oval around the tiger, leaving the eyes and muzzle clear.
-        val count = 42
-        val visibleCount = (count * reveal).toInt()
-        for (i in 0 until visibleCount) {
-            val angle = (Math.PI * 2.0 * i / count).toFloat() - (Math.PI / 2f)
-            val wave = (sin((phase * 1.65f + i * 1.27f).toDouble()).toFloat() + 1f) * .5f
-            val x = cx + cos(angle.toDouble()).toFloat() * rx
-            val y = cy + sin(angle.toDouble()).toFloat() * ry
-            val nx = cos(angle.toDouble()).toFloat()
-            val ny = sin(angle.toDouble()).toFloat()
-            val length = (18f + 28f * wave) * unit
-            val half = (4f + 4f * wave) * unit
-            val drift = sin((phase + i * .63f).toDouble()).toFloat() * 5f * unit
+        // Flame tongues: alternating hot cores and orange outer bodies.
+        val count = 38
+        val visible = (count * intensity).toInt()
+        for (i in 0 until visible) {
+            val angle = (Math.PI * 2.0 * i / count).toFloat() - Math.PI.toFloat() / 2f
+            val wave = (sin(phase * 1.8f + i * 1.37f) + 1f) * .5f
+            val flutter = sin(phase * 2.7f + i * .73f) * 4.5f * d
+            val nx = cos(angle)
+            val ny = sin(angle)
+            val x = cx + nx * rx
+            val y = cy + ny * ry
+            val length = (17f + 31f * wave) * d * flicker
+            val half = (3.2f + 3.7f * wave) * d
+            val drift = flutter + sin(phase + i * .41f) * 3f * d
+
             val path = Path().apply {
                 moveTo(x - ny * half, y + nx * half)
                 cubicTo(
-                    x + nx * length * .18f - ny * half * 1.4f,
-                    y + ny * length * .18f + nx * half * 1.4f,
-                    x + nx * length * .72f + drift,
-                    y + ny * length * .72f,
-                    x + nx * length + drift,
-                    y + ny * length
+                    x + nx * length * .20f - ny * half * 1.35f,
+                    y + ny * length * .20f + nx * half * 1.35f,
+                    x + nx * length * .68f + drift - ny * half * .55f,
+                    y + ny * length * .68f + nx * half * .55f,
+                    x + nx * length + drift, y + ny * length
                 )
                 cubicTo(
-                    x + nx * length * .54f + ny * half,
-                    y + ny * length * .54f - nx * half,
-                    x + ny * half,
-                    y - nx * half,
-                    x - ny * half,
-                    y + nx * half
+                    x + nx * length * .70f + drift + ny * half * .45f,
+                    y + ny * length * .70f - nx * half * .45f,
+                    x + nx * length * .20f + ny * half,
+                    y + ny * length * .20f - nx * half,
+                    x - ny * half, y + nx * half
                 )
                 close()
             }
-            paint.color = when (i % 4) {
-                0 -> Color.rgb(255, 211, 94)
-                1 -> Color.rgb(255, 143, 28)
-                else -> Color.rgb(255, 67, 5)
+
+            paint.style = Paint.Style.FILL
+            paint.color = when (i % 5) {
+                0 -> Color.rgb(255, 226, 126)
+                1 -> Color.rgb(255, 173, 45)
+                2, 3 -> Color.rgb(255, 91, 8)
+                else -> Color.rgb(230, 39, 3)
             }
-            paint.alpha = (190 + wave * 55).toInt()
-            paint.setShadowLayer(10f * unit, 0f, 0f, Color.rgb(255, 72, 0))
+            paint.alpha = (intensity * (190 + wave * 65)).toInt().coerceIn(0, 255)
             canvas.drawPath(path, paint)
-            paint.clearShadowLayer()
+
+            // Thin luminous center gives each flame a hotter, more realistic core.
+            val core = Path().apply {
+                moveTo(x - ny * half * .22f, y + nx * half * .22f)
+                quadTo(
+                    x + nx * length * .42f + drift * .35f,
+                    y + ny * length * .42f,
+                    x + nx * length * .82f + drift,
+                    y + ny * length * .82f
+                )
+                quadTo(
+                    x + nx * length * .40f,
+                    y + ny * length * .40f,
+                    x - ny * half * .22f,
+                    y + nx * half * .22f
+                )
+                close()
+            }
+            paint.color = Color.argb((intensity * (145 + wave * 75)).toInt(), 255, 220, 126)
+            canvas.drawPath(core, paint)
         }
-        canvas.restoreToCount(save)
+
+        // Small embers drift upward around the perimeter; deterministic paths
+        // keep the animation smooth without allocating random particles per frame.
+        for (i in 0 until 22) {
+            val seed = i * 2.399f
+            val travel = (phase * (13f + (i % 4) * 2f) + seed * 17f) % (h * .48f)
+            val baseX = cx + cos(seed.toDouble()).toFloat() * rx * (0.78f + (i % 3) * .08f)
+            val baseY = cy + sin(seed.toDouble()).toFloat() * ry * .82f
+            val x = baseX + sin(phase * 1.4f + seed) * 9f * d
+            val y = baseY - travel
+            val radius = (1.1f + (i % 3) * .55f) * d
+            paint.color = if (i % 3 == 0) Color.rgb(255, 220, 128) else Color.rgb(255, 104, 18)
+            paint.alpha = (intensity * (110 + 100 * (0.5f + 0.5f * sin(phase * 2f + seed)))).toInt()
+            canvas.drawCircle(x, y, radius, paint)
+        }
     }
 }
