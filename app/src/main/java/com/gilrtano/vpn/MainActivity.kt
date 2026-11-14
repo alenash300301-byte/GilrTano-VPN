@@ -84,6 +84,9 @@ class MainActivity : Activity() {
                 else -> message
             }
             if (message.startsWith("Подключено")) {
+                if (message.contains("бесплатный резерв")) activeFree = true
+                else if (message.contains("Quattro")) activeFree = false
+                refreshMode()
                 status.setTextColor(Color.rgb(36, 255, 72))
                 updatePowerOrb(true)
                 if (::connectionTimer.isInitialized) {
