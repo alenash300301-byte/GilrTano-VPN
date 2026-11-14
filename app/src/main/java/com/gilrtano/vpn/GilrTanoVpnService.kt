@@ -131,18 +131,19 @@ class GilrTanoVpnService : VpnService() {
         try {
             val pfd = Builder()
                 .setSession("GilrTano VPN")
-                .setMtu(1500)
+                .setMtu(1280)
                 .addAddress("10.77.0.2", 32)
                 .addRoute("0.0.0.0", 0)
                 .addDnsServer("1.1.1.1")
+                .addDnsServer("8.8.8.8")
                 .establish() ?: throw IllegalStateException("Android не создал VPN-интерфейс")
             tun = pfd
-            // Match the native integration contract: allowICMP=false and
-            // blockQuic=false. QUIC must not be silently black-holed for apps
-            // that prefer HTTP/3, and ICMP is not needed for tunnel setup.
+            // Force HTTP/3 apps to fall back to HTTPS/TCP because many public
+            // free SOCKS nodes do not relay UDP reliably. This avoids apps
+            // hanging on a broken QUIC path; ICMP is not needed here.
             val error = Teapodcore.startTun2Socks(
-                pfd.fd.toLong(), 1500L, SOCKS_PORT.toLong(),
-                "", "", false, false, null
+                pfd.fd.toLong(), 1280L, SOCKS_PORT.toLong(),
+                "", "", false, true, null
             )
             if (error.isNotEmpty()) throw IllegalStateException("tun2socks: $error")
 
