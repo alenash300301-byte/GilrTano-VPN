@@ -221,7 +221,7 @@ class MainActivity : Activity() {
                             (if (activeFree) quattroNodes.firstOrNull() else freeNodes.firstOrNull())
                                 ?.let { runCatching { GilrTanoVpnService.xrayConfigFromVless(it.uri) }.getOrNull() }
                         } else null
-                        val preferredConfig = if (autoMode && activeFree) {
+                        val preferredConfig = if (autoMode) {
                             quattroNodes.firstOrNull()?.let { runCatching { GilrTanoVpnService.xrayConfigFromVless(it.uri) }.getOrNull() }
                         } else null
                         pendingConfig = config
