@@ -564,7 +564,6 @@ class MainActivity : Activity() {
             }
             navItem("⌂", "Главная", { scroll.smoothScrollTo(0, 0) }, true)
             navItem("◎", "Серверы", { showServerPicker() })
-            navItem("▥", "Статистика", { showTrafficStats() })
             navItem("⚙", "Настройки", {
                 settingsExpanded = true
                 settingsHeader.visibility = View.VISIBLE
@@ -860,25 +859,6 @@ class MainActivity : Activity() {
         } else {
             Toast.makeText(this, if (free) "Выбран бесплатный резерв" else "Выбран Quattro", Toast.LENGTH_SHORT).show()
         }
-    }
-
-    private fun showTrafficStats() {
-        val uid = applicationInfo.uid
-        val rx = android.net.TrafficStats.getUidRxBytes(uid)
-        val tx = android.net.TrafficStats.getUidTxBytes(uid)
-        fun format(bytes: Long): String = if (bytes < 0) "нет данных" else {
-            val mb = bytes / (1024.0 * 1024.0)
-            String.format(java.util.Locale.getDefault(), "%.1f МБ", mb)
-        }
-        AlertDialog.Builder(this)
-            .setTitle("Статистика GilrTano VPN")
-            .setMessage(
-                "Получено приложением: ${format(rx)}\n" +
-                "Отправлено приложением: ${format(tx)}\n\n" +
-                "Это общий сетевой трафик приложения Android, а не подтверждённая скорость VPN-туннеля."
-            )
-            .setPositiveButton("ОК", null)
-            .show()
     }
 
     private fun refreshMode() {
