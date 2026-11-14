@@ -298,7 +298,7 @@ class MainActivity : Activity() {
                     setBackgroundColor(Color.BLACK)
                     addView(ImageView(this@MainActivity).apply {
                         setImageResource(R.drawable.tiger_hero)
-                        scaleType = ImageView.ScaleType.CENTER_CROP
+                        scaleType = ImageView.ScaleType.FIT_CENTER
                         contentDescription = "Тигр с зелёными глазами"
                     }, FrameLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
@@ -325,9 +325,11 @@ class MainActivity : Activity() {
                     elevation = dp(14).toFloat()
                     setLayerType(View.LAYER_TYPE_SOFTWARE, null)
                 }
-                addView(powerOrb, LinearLayout.LayoutParams(dp(104), dp(104)).apply {
+                powerOrb.setOnClickListener { connectButton.performClick() }
+                powerOrb.contentDescription = "Кнопка питания VPN"
+                addView(powerOrb, LinearLayout.LayoutParams(dp(132), dp(132)).apply {
                     gravity = android.view.Gravity.CENTER
-                    topMargin = dp(-36); bottomMargin = dp(0)
+                    topMargin = dp(-42); bottomMargin = dp(0)
                 })
                 addView(status.apply {
                     text = "●  Отключено"; textSize = 17f
@@ -345,12 +347,11 @@ class MainActivity : Activity() {
                 addView(connectionTimer, LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, dp(22)
                 ))
-                addView(connectButton, LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, dp(56)
-                ).apply {
-                    gravity = android.view.Gravity.CENTER
-                    topMargin = dp(10); bottomMargin = dp(18)
-                })
+                // The central glowing orb is the primary connect/disconnect control.
+                // Keep the accessible action button as the click target, but remove its
+                // duplicate pill from the visual layout to match the approved reference.
+                connectButton.visibility = View.GONE
+                addView(connectButton, LinearLayout.LayoutParams(1, 1))
                 addView(LinearLayout(this@MainActivity).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = android.view.Gravity.CENTER_VERTICAL
