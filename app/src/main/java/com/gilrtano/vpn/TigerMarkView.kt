@@ -17,7 +17,7 @@ class TigerMarkView(context: Context) : View(context) {
         val h = height.toFloat()
         val cx = w / 2f
         paint.setShadowLayer(10f, 0f, 0f, 0xFFFF5A12.toInt())
-        fill(0xFFFF6418.toInt())
+        fill(0xFF170809.toInt())
         canvas.drawCircle(cx, h / 2f, w * .47f, paint)
         paint.clearShadowLayer()
         fill(0xFF120A08.toInt())
@@ -26,8 +26,8 @@ class TigerMarkView(context: Context) : View(context) {
             moveTo(w*.18f,h*.34f); lineTo(w*.12f,h*.08f); lineTo(w*.40f,h*.23f); close()
             moveTo(w*.82f,h*.34f); lineTo(w*.88f,h*.08f); lineTo(w*.60f,h*.23f); close()
         }
-        fill(0xFFFF7A1B.toInt()); canvas.drawPath(ears, paint)
-        fill(0xFFFF7A1B.toInt())
+        fill(0xFF8D1715.toInt()); canvas.drawPath(ears, paint)
+        fill(0xFF8D1715.toInt())
         canvas.drawOval(RectF(w*.24f,h*.20f,w*.76f,h*.86f), paint)
         fill(0xFF21100B.toInt())
         canvas.drawOval(RectF(w*.30f,h*.28f,w*.70f,h*.80f), paint)
@@ -44,10 +44,10 @@ class TigerMarkView(context: Context) : View(context) {
         fill(0xFF06120A.toInt())
         canvas.drawOval(RectF(w*.375f,h*.435f,w*.395f,h*.505f), paint)
         canvas.drawOval(RectF(w*.605f,h*.435f,w*.625f,h*.505f), paint)
-        fill(0xFFFFD6A7.toInt())
+        fill(0xFF4B4140.toInt())
         canvas.drawOval(RectF(w*.36f,h*.56f,w*.50f,h*.68f), paint)
         canvas.drawOval(RectF(w*.50f,h*.56f,w*.64f,h*.68f), paint)
-        fill(0xFF30100B.toInt())
+        fill(0xFF130809.toInt())
         val nose = Path().apply { moveTo(cx,h*.59f); lineTo(w*.45f,h*.65f); lineTo(w*.55f,h*.65f); close() }
         canvas.drawPath(nose, paint)
     }
