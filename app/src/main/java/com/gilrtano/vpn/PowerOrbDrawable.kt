@@ -45,16 +45,16 @@ class PowerOrbDrawable : Drawable() {
             val outer = radius * (1.18f + .26f * wave)
             val spread = .075f + .045f * wave
             val path = Path()
-            path.moveTo(cx + cos(angle - spread) * inner, cy + sin(angle - spread) * inner)
+            path.moveTo(cx + (cos(angle - spread) * inner).toFloat(), cy + (sin(angle - spread) * inner).toFloat())
             path.quadTo(
-                cx + cos(angle) * (outer + radius * .10f),
-                cy + sin(angle) * (outer + radius * .10f),
-                cx + cos(angle) * outer, cy + sin(angle) * outer
+                cx + (cos(angle) * (outer + radius * .10f)).toFloat(),
+                cy + (sin(angle) * (outer + radius * .10f)).toFloat(),
+                cx + (cos(angle) * outer).toFloat(), cy + (sin(angle) * outer).toFloat()
             )
             path.quadTo(
-                cx + cos(angle + spread) * inner,
-                cy + sin(angle + spread) * inner,
-                cx + cos(angle - spread) * inner, cy + sin(angle - spread) * inner
+                cx + (cos(angle + spread) * inner).toFloat(),
+                cy + (sin(angle + spread) * inner).toFloat(),
+                cx + (cos(angle - spread) * inner).toFloat(), cy + (sin(angle - spread) * inner).toFloat()
             )
             paint.color = if (i % 3 == 0) Color.rgb(255, 198, 55) else flameColor
             canvas.drawPath(path, paint)
