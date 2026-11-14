@@ -20,6 +20,9 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.net.InetSocketAddress
 import java.net.Socket
+import java.util.concurrent.Callable
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 class MainActivity : Activity() {
     private lateinit var status: TextView
@@ -29,6 +32,8 @@ class MainActivity : Activity() {
     private lateinit var servers: Spinner
     private lateinit var quattroTab: Button
     private lateinit var freeTab: Button
+    private lateinit var bestFreeButton: Button
+    @Volatile private var scanningFree = false
     private var activeFree = false
     private var quattroNodes: List<ImportedNode> = emptyList()
     private var freeNodes: List<ImportedNode> = emptyList()
@@ -131,6 +136,10 @@ class MainActivity : Activity() {
                 startService(Intent(this@MainActivity, GilrTanoVpnService::class.java).setAction(GilrTanoVpnService.ACTION_STOP))
             }
         }
+        bestFreeButton = Button(this).apply {
+            text = "Автоматически найти лучший бесплатный сервер"
+            setOnClickListener { findBestFreeServers() }
+        }
         val checkPing = Button(this).apply {
             text = "Проверить пинг"
             setOnClickListener { measureSelectedPing() }
@@ -157,6 +166,7 @@ class MainActivity : Activity() {
             addView(TextView(this@MainActivity).apply { text = "Сервер выбранного режима:"; textSize = 15f })
             addView(servers)
             addView(pingStatus)
+            addView(bestFreeButton)
             addView(checkPing)
             addView(connect)
             addView(disconnect)
@@ -182,6 +192,7 @@ class MainActivity : Activity() {
         freeTab.isEnabled = !activeFree
         primarySource.visibility = if (activeFree) ViewGroup.GONE else ViewGroup.VISIBLE
         freeSource.visibility = if (activeFree) ViewGroup.VISIBLE else ViewGroup.GONE
+        bestFreeButton.visibility = if (activeFree) ViewGroup.VISIBLE else ViewGroup.GONE
         findImportButtonsVisibility()
         val list = activeNodes
         servers.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, list.map { it.name })
@@ -233,7 +244,7 @@ class MainActivity : Activity() {
                     prefs.edit().putBoolean("active_free_mode", activeFree).apply()
                     refreshMode()
                     status.text = "Сохранено серверов: ${imported.size}. Повторный импорт не нужен."
-                    measureSelectedPing()
+                    if (isFree) findBestFreeServers() else measureSelectedPing()
                 }
             } catch (e: Exception) {
                 runOnUiThread { status.text = "Ошибка импорта: ${e.message}" }
@@ -258,6 +269,547 @@ class MainActivity : Activity() {
         }.getOrDefault(emptyList())
     }
 
+    private fun findBestFreeServers() {
+        if ((scanningFree) return
+        if (freeNodes.isEmpty()) {
+            status.text = "Сначала импортируй бесплатный список серверов"
+            return
+        }
+        scanningFree = true
+        bestFreeButton.isEnabled = false
+        status.text = "Проверяю бесплатные серверы и выбираю самый быстрый…"
+        val candidates = freeNodes.toList()
+        Thread {
+            val pool = Executors.newFixedThreadPool(12)
+            try {
+                val tasks = candidates.map { node -> Callable<Pair<ImportedNode, Long>?> {
+                    runCatching { GilrTanoVpnService.xrayConfigFromVless(node.uri) }.getOrNull() ?: return@Callable null
+                    val uri = Uri.parse(node.uri)
+                    val host = uri.host ?: return@Callable null
+                    val port = if (uri.port > 0) uri.port else 443
+                    val started = System.nanoTime()
+                    runCatching {
+                        Socket().use { socket -> socket.connect(InetSocketAddress(host, port), 2500) }
+                        node to ((System.nanoTime() - started) / 1_000_000L)
+                    }.getOrNull()
+                } }
+                val checked = pool.invokeAll(tasks, 12, TimeUnit.SECONDS)
+                    .mapNotNull { future -> if (future.isCancelled) null else runCatching { future.get() }.getOrNull() }
+                    .sortedBy { it.second }
+                runOnUiThread {
+                    if (checked.isEmpty()) {
+                        status.text = "Не найдено доступных поддерживаемых VLESS-серверов. Попробуй обновить список позже."
+                    } else {
+                        freeNodes = checked.map { it.first }
+                        saveNodes("free_nodes", freeNodes)
+                        prefs.edit().putInt("free_selected", 0).apply()
+                        servers.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, freeNodes.mapIndexed { index, node ->
+                            "${'        val node = activeNodes.getOrNull(servers.selectedItemPosition)
+        if (node == null) {
+            pingStatus.text = "Пинг: нет сервера"
+            return
+        }
+        val parsed = Uri.parse(node.uri)
+        val host = parsed.host
+        val port = if (parsed.port > 0) parsed.port else 443
+        if (host.isNullOrBlank()) {
+            pingStatus.text = "Пинг: адрес не распознан"
+            return
+        }
+        pingStatus.text = "Пинг: проверяю…"
+        Thread {
+            val started = System.nanoTime()
+            val result = runCatching {
+                Socket().use { socket ->
+                    socket.connect(InetSocketAddress(host, port), 5000)
+                }
+                ((System.nanoTime() - started) / 1_000_000L)
+            }
+            runOnUiThread {
+                pingStatus.text = if (result.isSuccess) "Пинг до сервера: ${result.getOrThrow()} мс (TCP)" else "Сервер не отвечает на проверку"
+            }
+        }.start()
+    }
+
+    private fun startVpn(config: String) {
+        startForegroundService(
+            Intent(this, GilrTanoVpnService::class.java)
+                .setAction(GilrTanoVpnService.ACTION_START)
+                .putExtra(GilrTanoVpnService.EXTRA_CONFIG, config)
+        )
+        status.text = "Запускаю VPN…"
+    }
+
+    @Deprecated("Deprecated by Android API")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == this.requestCode && resultCode == RESULT_OK) {
+            pendingConfig?.let { startVpn(it) }
+        } else if (requestCode == this.requestCode) {
+            status.text = "Разрешение VPN не предоставлено"
+        } else if (requestCode == docxRequestCode && resultCode == RESULT_OK) {
+            val uri = data?.data ?: return
+            status.text = "Читаю DOCX локально…"
+            Thread {
+                try {
+                    val yaml = DocxTextExtractor.read(this, uri)
+                    val imported = SubscriptionImporter.parse(yaml)
+                    runOnUiThread {
+                        if (imported.isEmpty()) {
+                            status.text = "В DOCX не найдены поддерживаемые VLESS-профили"
+                        } else {
+                            quattroNodes = imported
+                            saveNodes("quattro_nodes", quattroNodes)
+                            activeFree = false
+                            prefs.edit().putBoolean("active_free_mode", false).apply()
+                            refreshMode()
+                            status.text = "Quattro сохранён: ${imported.size} серверов. Импортировать снова не нужно."
+                            measureSelectedPing()
+                        }
+                    }
+                } catch (e: Exception) {
+                    runOnUiThread { status.text = "Ошибка чтения DOCX: ${e.message}" }
+                }
+            }.start()
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        val filter = IntentFilter(GilrTanoVpnService.ACTION_STATUS)
+        if (android.os.Build.VERSION.SDK_INT >= 33) registerReceiver(receiver, filter, RECEIVER_NOT_EXPORTED)
+        else @Suppress("DEPRECATION") registerReceiver(receiver, filter)
+    }
+
+    override fun onStop() {
+        runCatching { unregisterReceiver(receiver) }
+        super.onStop()
+    }
+}}{node.name} · ${'        val node = activeNodes.getOrNull(servers.selectedItemPosition)
+        if (node == null) {
+            pingStatus.text = "Пинг: нет сервера"
+            return
+        }
+        val parsed = Uri.parse(node.uri)
+        val host = parsed.host
+        val port = if (parsed.port > 0) parsed.port else 443
+        if (host.isNullOrBlank()) {
+            pingStatus.text = "Пинг: адрес не распознан"
+            return
+        }
+        pingStatus.text = "Пинг: проверяю…"
+        Thread {
+            val started = System.nanoTime()
+            val result = runCatching {
+                Socket().use { socket ->
+                    socket.connect(InetSocketAddress(host, port), 5000)
+                }
+                ((System.nanoTime() - started) / 1_000_000L)
+            }
+            runOnUiThread {
+                pingStatus.text = if (result.isSuccess) "Пинг до сервера: ${result.getOrThrow()} мс (TCP)" else "Сервер не отвечает на проверку"
+            }
+        }.start()
+    }
+
+    private fun startVpn(config: String) {
+        startForegroundService(
+            Intent(this, GilrTanoVpnService::class.java)
+                .setAction(GilrTanoVpnService.ACTION_START)
+                .putExtra(GilrTanoVpnService.EXTRA_CONFIG, config)
+        )
+        status.text = "Запускаю VPN…"
+    }
+
+    @Deprecated("Deprecated by Android API")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == this.requestCode && resultCode == RESULT_OK) {
+            pendingConfig?.let { startVpn(it) }
+        } else if (requestCode == this.requestCode) {
+            status.text = "Разрешение VPN не предоставлено"
+        } else if (requestCode == docxRequestCode && resultCode == RESULT_OK) {
+            val uri = data?.data ?: return
+            status.text = "Читаю DOCX локально…"
+            Thread {
+                try {
+                    val yaml = DocxTextExtractor.read(this, uri)
+                    val imported = SubscriptionImporter.parse(yaml)
+                    runOnUiThread {
+                        if (imported.isEmpty()) {
+                            status.text = "В DOCX не найдены поддерживаемые VLESS-профили"
+                        } else {
+                            quattroNodes = imported
+                            saveNodes("quattro_nodes", quattroNodes)
+                            activeFree = false
+                            prefs.edit().putBoolean("active_free_mode", false).apply()
+                            refreshMode()
+                            status.text = "Quattro сохранён: ${imported.size} серверов. Импортировать снова не нужно."
+                            measureSelectedPing()
+                        }
+                    }
+                } catch (e: Exception) {
+                    runOnUiThread { status.text = "Ошибка чтения DOCX: ${e.message}" }
+                }
+            }.start()
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        val filter = IntentFilter(GilrTanoVpnService.ACTION_STATUS)
+        if (android.os.Build.VERSION.SDK_INT >= 33) registerReceiver(receiver, filter, RECEIVER_NOT_EXPORTED)
+        else @Suppress("DEPRECATION") registerReceiver(receiver, filter)
+    }
+
+    override fun onStop() {
+        runCatching { unregisterReceiver(receiver) }
+        super.onStop()
+    }
+}}{checked[index].second} мс"
+                        })
+                        servers.setSelection(0)
+                        pingStatus.text = "Лучший TCP-отклик: ${'        val node = activeNodes.getOrNull(servers.selectedItemPosition)
+        if (node == null) {
+            pingStatus.text = "Пинг: нет сервера"
+            return
+        }
+        val parsed = Uri.parse(node.uri)
+        val host = parsed.host
+        val port = if (parsed.port > 0) parsed.port else 443
+        if (host.isNullOrBlank()) {
+            pingStatus.text = "Пинг: адрес не распознан"
+            return
+        }
+        pingStatus.text = "Пинг: проверяю…"
+        Thread {
+            val started = System.nanoTime()
+            val result = runCatching {
+                Socket().use { socket ->
+                    socket.connect(InetSocketAddress(host, port), 5000)
+                }
+                ((System.nanoTime() - started) / 1_000_000L)
+            }
+            runOnUiThread {
+                pingStatus.text = if (result.isSuccess) "Пинг до сервера: ${result.getOrThrow()} мс (TCP)" else "Сервер не отвечает на проверку"
+            }
+        }.start()
+    }
+
+    private fun startVpn(config: String) {
+        startForegroundService(
+            Intent(this, GilrTanoVpnService::class.java)
+                .setAction(GilrTanoVpnService.ACTION_START)
+                .putExtra(GilrTanoVpnService.EXTRA_CONFIG, config)
+        )
+        status.text = "Запускаю VPN…"
+    }
+
+    @Deprecated("Deprecated by Android API")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == this.requestCode && resultCode == RESULT_OK) {
+            pendingConfig?.let { startVpn(it) }
+        } else if (requestCode == this.requestCode) {
+            status.text = "Разрешение VPN не предоставлено"
+        } else if (requestCode == docxRequestCode && resultCode == RESULT_OK) {
+            val uri = data?.data ?: return
+            status.text = "Читаю DOCX локально…"
+            Thread {
+                try {
+                    val yaml = DocxTextExtractor.read(this, uri)
+                    val imported = SubscriptionImporter.parse(yaml)
+                    runOnUiThread {
+                        if (imported.isEmpty()) {
+                            status.text = "В DOCX не найдены поддерживаемые VLESS-профили"
+                        } else {
+                            quattroNodes = imported
+                            saveNodes("quattro_nodes", quattroNodes)
+                            activeFree = false
+                            prefs.edit().putBoolean("active_free_mode", false).apply()
+                            refreshMode()
+                            status.text = "Quattro сохранён: ${imported.size} серверов. Импортировать снова не нужно."
+                            measureSelectedPing()
+                        }
+                    }
+                } catch (e: Exception) {
+                    runOnUiThread { status.text = "Ошибка чтения DOCX: ${e.message}" }
+                }
+            }.start()
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        val filter = IntentFilter(GilrTanoVpnService.ACTION_STATUS)
+        if (android.os.Build.VERSION.SDK_INT >= 33) registerReceiver(receiver, filter, RECEIVER_NOT_EXPORTED)
+        else @Suppress("DEPRECATION") registerReceiver(receiver, filter)
+    }
+
+    override fun onStop() {
+        runCatching { unregisterReceiver(receiver) }
+        super.onStop()
+    }
+}}{checked.first().second} мс"
+                        status.text = "Отобрано доступных серверов: ${'        val node = activeNodes.getOrNull(servers.selectedItemPosition)
+        if (node == null) {
+            pingStatus.text = "Пинг: нет сервера"
+            return
+        }
+        val parsed = Uri.parse(node.uri)
+        val host = parsed.host
+        val port = if (parsed.port > 0) parsed.port else 443
+        if (host.isNullOrBlank()) {
+            pingStatus.text = "Пинг: адрес не распознан"
+            return
+        }
+        pingStatus.text = "Пинг: проверяю…"
+        Thread {
+            val started = System.nanoTime()
+            val result = runCatching {
+                Socket().use { socket ->
+                    socket.connect(InetSocketAddress(host, port), 5000)
+                }
+                ((System.nanoTime() - started) / 1_000_000L)
+            }
+            runOnUiThread {
+                pingStatus.text = if (result.isSuccess) "Пинг до сервера: ${result.getOrThrow()} мс (TCP)" else "Сервер не отвечает на проверку"
+            }
+        }.start()
+    }
+
+    private fun startVpn(config: String) {
+        startForegroundService(
+            Intent(this, GilrTanoVpnService::class.java)
+                .setAction(GilrTanoVpnService.ACTION_START)
+                .putExtra(GilrTanoVpnService.EXTRA_CONFIG, config)
+        )
+        status.text = "Запускаю VPN…"
+    }
+
+    @Deprecated("Deprecated by Android API")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == this.requestCode && resultCode == RESULT_OK) {
+            pendingConfig?.let { startVpn(it) }
+        } else if (requestCode == this.requestCode) {
+            status.text = "Разрешение VPN не предоставлено"
+        } else if (requestCode == docxRequestCode && resultCode == RESULT_OK) {
+            val uri = data?.data ?: return
+            status.text = "Читаю DOCX локально…"
+            Thread {
+                try {
+                    val yaml = DocxTextExtractor.read(this, uri)
+                    val imported = SubscriptionImporter.parse(yaml)
+                    runOnUiThread {
+                        if (imported.isEmpty()) {
+                            status.text = "В DOCX не найдены поддерживаемые VLESS-профили"
+                        } else {
+                            quattroNodes = imported
+                            saveNodes("quattro_nodes", quattroNodes)
+                            activeFree = false
+                            prefs.edit().putBoolean("active_free_mode", false).apply()
+                            refreshMode()
+                            status.text = "Quattro сохранён: ${imported.size} серверов. Импортировать снова не нужно."
+                            measureSelectedPing()
+                        }
+                    }
+                } catch (e: Exception) {
+                    runOnUiThread { status.text = "Ошибка чтения DOCX: ${e.message}" }
+                }
+            }.start()
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        val filter = IntentFilter(GilrTanoVpnService.ACTION_STATUS)
+        if (android.os.Build.VERSION.SDK_INT >= 33) registerReceiver(receiver, filter, RECEIVER_NOT_EXPORTED)
+        else @Suppress("DEPRECATION") registerReceiver(receiver, filter)
+    }
+
+    override fun onStop() {
+        runCatching { unregisterReceiver(receiver) }
+        super.onStop()
+    }
+}}{checked.size} из ${'        val node = activeNodes.getOrNull(servers.selectedItemPosition)
+        if (node == null) {
+            pingStatus.text = "Пинг: нет сервера"
+            return
+        }
+        val parsed = Uri.parse(node.uri)
+        val host = parsed.host
+        val port = if (parsed.port > 0) parsed.port else 443
+        if (host.isNullOrBlank()) {
+            pingStatus.text = "Пинг: адрес не распознан"
+            return
+        }
+        pingStatus.text = "Пинг: проверяю…"
+        Thread {
+            val started = System.nanoTime()
+            val result = runCatching {
+                Socket().use { socket ->
+                    socket.connect(InetSocketAddress(host, port), 5000)
+                }
+                ((System.nanoTime() - started) / 1_000_000L)
+            }
+            runOnUiThread {
+                pingStatus.text = if (result.isSuccess) "Пинг до сервера: ${result.getOrThrow()} мс (TCP)" else "Сервер не отвечает на проверку"
+            }
+        }.start()
+    }
+
+    private fun startVpn(config: String) {
+        startForegroundService(
+            Intent(this, GilrTanoVpnService::class.java)
+                .setAction(GilrTanoVpnService.ACTION_START)
+                .putExtra(GilrTanoVpnService.EXTRA_CONFIG, config)
+        )
+        status.text = "Запускаю VPN…"
+    }
+
+    @Deprecated("Deprecated by Android API")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == this.requestCode && resultCode == RESULT_OK) {
+            pendingConfig?.let { startVpn(it) }
+        } else if (requestCode == this.requestCode) {
+            status.text = "Разрешение VPN не предоставлено"
+        } else if (requestCode == docxRequestCode && resultCode == RESULT_OK) {
+            val uri = data?.data ?: return
+            status.text = "Читаю DOCX локально…"
+            Thread {
+                try {
+                    val yaml = DocxTextExtractor.read(this, uri)
+                    val imported = SubscriptionImporter.parse(yaml)
+                    runOnUiThread {
+                        if (imported.isEmpty()) {
+                            status.text = "В DOCX не найдены поддерживаемые VLESS-профили"
+                        } else {
+                            quattroNodes = imported
+                            saveNodes("quattro_nodes", quattroNodes)
+                            activeFree = false
+                            prefs.edit().putBoolean("active_free_mode", false).apply()
+                            refreshMode()
+                            status.text = "Quattro сохранён: ${imported.size} серверов. Импортировать снова не нужно."
+                            measureSelectedPing()
+                        }
+                    }
+                } catch (e: Exception) {
+                    runOnUiThread { status.text = "Ошибка чтения DOCX: ${e.message}" }
+                }
+            }.start()
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        val filter = IntentFilter(GilrTanoVpnService.ACTION_STATUS)
+        if (android.os.Build.VERSION.SDK_INT >= 33) registerReceiver(receiver, filter, RECEIVER_NOT_EXPORTED)
+        else @Suppress("DEPRECATION") registerReceiver(receiver, filter)
+    }
+
+    override fun onStop() {
+        runCatching { unregisterReceiver(receiver) }
+        super.onStop()
+    }
+}}{candidates.size}. Выбран самый быстрый; стабильность проверяется уже при подключении."
+                    }
+                    scanningFree = false
+                    bestFreeButton.isEnabled = true
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    scanningFree = false
+                    bestFreeButton.isEnabled = true
+                    status.text = "Не удалось проверить серверы: ${'        val node = activeNodes.getOrNull(servers.selectedItemPosition)
+        if (node == null) {
+            pingStatus.text = "Пинг: нет сервера"
+            return
+        }
+        val parsed = Uri.parse(node.uri)
+        val host = parsed.host
+        val port = if (parsed.port > 0) parsed.port else 443
+        if (host.isNullOrBlank()) {
+            pingStatus.text = "Пинг: адрес не распознан"
+            return
+        }
+        pingStatus.text = "Пинг: проверяю…"
+        Thread {
+            val started = System.nanoTime()
+            val result = runCatching {
+                Socket().use { socket ->
+                    socket.connect(InetSocketAddress(host, port), 5000)
+                }
+                ((System.nanoTime() - started) / 1_000_000L)
+            }
+            runOnUiThread {
+                pingStatus.text = if (result.isSuccess) "Пинг до сервера: ${result.getOrThrow()} мс (TCP)" else "Сервер не отвечает на проверку"
+            }
+        }.start()
+    }
+
+    private fun startVpn(config: String) {
+        startForegroundService(
+            Intent(this, GilrTanoVpnService::class.java)
+                .setAction(GilrTanoVpnService.ACTION_START)
+                .putExtra(GilrTanoVpnService.EXTRA_CONFIG, config)
+        )
+        status.text = "Запускаю VPN…"
+    }
+
+    @Deprecated("Deprecated by Android API")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == this.requestCode && resultCode == RESULT_OK) {
+            pendingConfig?.let { startVpn(it) }
+        } else if (requestCode == this.requestCode) {
+            status.text = "Разрешение VPN не предоставлено"
+        } else if (requestCode == docxRequestCode && resultCode == RESULT_OK) {
+            val uri = data?.data ?: return
+            status.text = "Читаю DOCX локально…"
+            Thread {
+                try {
+                    val yaml = DocxTextExtractor.read(this, uri)
+                    val imported = SubscriptionImporter.parse(yaml)
+                    runOnUiThread {
+                        if (imported.isEmpty()) {
+                            status.text = "В DOCX не найдены поддерживаемые VLESS-профили"
+                        } else {
+                            quattroNodes = imported
+                            saveNodes("quattro_nodes", quattroNodes)
+                            activeFree = false
+                            prefs.edit().putBoolean("active_free_mode", false).apply()
+                            refreshMode()
+                            status.text = "Quattro сохранён: ${imported.size} серверов. Импортировать снова не нужно."
+                            measureSelectedPing()
+                        }
+                    }
+                } catch (e: Exception) {
+                    runOnUiThread { status.text = "Ошибка чтения DOCX: ${e.message}" }
+                }
+            }.start()
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        val filter = IntentFilter(GilrTanoVpnService.ACTION_STATUS)
+        if (android.os.Build.VERSION.SDK_INT >= 33) registerReceiver(receiver, filter, RECEIVER_NOT_EXPORTED)
+        else @Suppress("DEPRECATION") registerReceiver(receiver, filter)
+    }
+
+    override fun onStop() {
+        runCatching { unregisterReceiver(receiver) }
+        super.onStop()
+    }
+}}{e.message ?: "ошибка проверки"}"
+                }
+            } finally {
+                pool.shutdownNow()
+            }
+        }.start()
+    }
     private fun measureSelectedPing() {
         val node = activeNodes.getOrNull(servers.selectedItemPosition)
         if (node == null) {
