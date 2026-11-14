@@ -1,6 +1,7 @@
 package com.gilrtano.vpn
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -42,6 +43,7 @@ import java.util.concurrent.TimeUnit
 class MainActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var powerOrb: TextView
+    private val powerOrbDrawable = PowerOrbDrawable()
     private lateinit var connectionTimer: Chronometer
     private lateinit var serverCardTitle: TextView
     private lateinit var serverCardSubtitle: TextView
@@ -181,7 +183,7 @@ class MainActivity : Activity() {
             text = "⏻\nПОДКЛЮЧИТЬ"
             setOnClickListener {
                 val currentStatus = status.text.toString()
-                val isConnected = currentStatus.startsWith("Подключено")
+                val isConnected = currentStatus.contains("Подключено")
                 val isConnecting = currentStatus.startsWith("Подключаю") ||
                     currentStatus.startsWith("Запускаю") || currentStatus.startsWith("Запуск Xray")
                 if (isConnected || isConnecting) {
@@ -264,7 +266,7 @@ class MainActivity : Activity() {
                 // Approved home composition: large tiger artwork, then one wide action button.
                 addView(ImageView(this@MainActivity).apply {
                     setImageResource(R.drawable.tiger_hero)
-                    scaleType = ImageView.ScaleType.FIT_CENTER
+                    scaleType = ImageView.ScaleType.CENTER_CROP
                     setBackgroundColor(Color.BLACK)
                     contentDescription = "Реалистичный тигр с зелёными глазами и огнём"
                 }, LinearLayout.LayoutParams(
@@ -318,9 +320,7 @@ class MainActivity : Activity() {
                         setStroke(dp(1), Color.rgb(45, 45, 48))
                     }
                     setPadding(dp(16), dp(10), dp(14), dp(10))
-                    setOnClickListener {
-                        if (activeFree) findBestFreeServers() else servers.performClick()
-                    }
+                    setOnClickListener { showServerPicker() }
                     addView(TextView(this@MainActivity).apply {
                         text = "◎"; textSize = 31f; setTextColor(Color.WHITE)
                         setPadding(0, 0, dp(14), 0)
@@ -418,7 +418,7 @@ class MainActivity : Activity() {
                 }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             }
             navItem("⌂", "Главная", { scroll.smoothScrollTo(0, 0) }, true)
-            navItem("▤", "Серверы", { scroll.post { scroll.smoothScrollTo(0, servers.top) }; servers.performClick() })
+            navItem("▤", "Серверы", { showServerPicker() })
             navItem("⚙", "Настройки", {
                 settingsExpanded = true
                 settingsHeader.visibility = View.VISIBLE
@@ -444,13 +444,17 @@ class MainActivity : Activity() {
                 val released = event.actionMasked == MotionEvent.ACTION_UP ||
                     event.actionMasked == MotionEvent.ACTION_CANCEL
                 if (pressed || released) {
-                    if (pressed && !status.text.toString().startsWith("Подключено")) {
+                    if (pressed && !status.text.toString().contains("Подключено")) {
                         fireDrawable.setPressed(true)
                         if (fireAnimator?.isRunning != true) {
                             fireAnimator = ValueAnimator.ofFloat(0f, (Math.PI * 2).toFloat()).apply {
                                 duration = 900L
                                 repeatCount = ValueAnimator.INFINITE
-                                addUpdateListener { fireDrawable.setPhase(it.animatedValue as Float) }
+                                addUpdateListener {
+                val phase = it.animatedValue as Float
+                fireDrawable.setPhase(phase)
+                powerOrbDrawable.setPhase(phase)
+            }
                                 start()
                             }
                         }
@@ -484,6 +488,29 @@ class MainActivity : Activity() {
         updateServerCard(false)
     }
 
+    private fun showServerPicker() {
+        val nodes = activeNodes
+        if (nodes.isEmpty()) {
+            Toast.makeText(this, if (activeFree) "Сначала найди бесплатные серверы" else "Сначала импортируй Quattro", Toast.LENGTH_LONG).show()
+            return
+        }
+        val names = nodes.map { it.name }.toTypedArray()
+        AlertDialog.Builder(this)
+            .setTitle("Выбор сервера")
+            .setSingleChoiceItems(names, servers.selectedItemPosition) { dialog, which ->
+                servers.setSelection(which)
+                val key = if (activeFree) "free_selected" else "quattro_selected"
+                prefs.edit().putInt(key, which).apply()
+                serverCardTitle.text = nodes[which].name
+                serverCardSubtitle.text = if (activeFree) "Бесплатный резерв" else "Quattro"
+                serverCardPing.text = ""
+                pingStatus.text = "Пинг: —"
+                dialog.dismiss()
+            }
+            .setNegativeButton("Закрыть", null)
+            .show()
+    }
+
     private fun updateServerCard(connected: Boolean) {
         if (!::serverCardTitle.isInitialized) return
         val node = activeNodes.getOrNull(servers.selectedItemPosition)
@@ -501,13 +528,7 @@ class MainActivity : Activity() {
 
     private fun updatePowerOrb(connected: Boolean) {
         if (!::powerOrb.isInitialized) return
-        val accent = if (connected) Color.rgb(0, 255, 48) else Color.rgb(255, 112, 18)
-        powerOrb.background = GradientDrawable().apply {
-            shape = GradientDrawable.OVAL
-            setColor(if (connected) Color.rgb(0, 34, 10) else Color.rgb(8, 8, 9))
-            setStroke(dp(3), accent)
-        }
-        powerOrb.paint.setShadowLayer(dp(if (connected) 20 else 10).toFloat(), 0f, 0f, accent)
+        powerOrbDrawable.setConnected(connected)
         powerOrb.elevation = dp(if (connected) 20 else 12).toFloat()
         powerOrb.invalidate()
     }
@@ -543,6 +564,7 @@ class MainActivity : Activity() {
         fireDrawable.setPressed(false)
         fireDrawable.setConnected(false)
         fireDrawable.setPhase(0f)
+        powerOrbDrawable.setPhase(0f)
         connectButton.animate().cancel()
         connectButton.scaleX = 1f
         connectButton.scaleY = 1f
