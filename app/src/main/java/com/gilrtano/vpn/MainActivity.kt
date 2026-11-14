@@ -70,6 +70,9 @@ class MainActivity : Activity() {
     private var quattroNodes: List<ImportedNode> = emptyList()
     private var freeNodes: List<ImportedNode> = emptyList()
     private var pendingConfig: String? = null
+    private var pendingFallbackConfig: String? = null
+    private var pendingPreferredConfig: String? = null
+    private var pendingAutomatic = false
     private val requestCode = 4101
     private val docxRequestCode = 4102
 
@@ -230,6 +233,9 @@ class MainActivity : Activity() {
                             quattroNodes.firstOrNull()?.let { runCatching { GilrTanoVpnService.xrayConfigFromVless(it.uri) }.getOrNull() }
                         } else null
                         pendingConfig = config
+                        pendingFallbackConfig = fallbackConfig
+                        pendingPreferredConfig = preferredConfig
+                        pendingAutomatic = autoMode
                         connectButton.isEnabled = true
                         status.text = "Подключаю: ${node.name}…"
                         val permission = VpnService.prepare(this@MainActivity)
@@ -1126,7 +1132,13 @@ class MainActivity : Activity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == this.requestCode && resultCode == RESULT_OK) {
-            pendingConfig?.let { startVpn(it) } ?: run { status.text = "Подключение отменено" }
+            pendingConfig?.let {
+                startVpn(it, pendingFallbackConfig, pendingPreferredConfig, pendingAutomatic)
+                pendingConfig = null
+                pendingFallbackConfig = null
+                pendingPreferredConfig = null
+                pendingAutomatic = false
+            } ?: run { status.text = "Подключение отменено" }
         } else if (requestCode == this.requestCode) {
             pendingConfig = null
             connectButton.isEnabled = true
