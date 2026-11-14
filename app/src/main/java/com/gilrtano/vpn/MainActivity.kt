@@ -62,8 +62,15 @@ class MainActivity : Activity() {
         override fun onReceive(context: Context?, intent: Intent?) {
             val message = intent?.getStringExtra(GilrTanoVpnService.EXTRA_STATUS) ?: "—"
             status.text = message
-            if (message.startsWith("Подключено")) igniteConnectButton()
-            else if (message == "Отключено" || message.startsWith("Ошибка")) resetConnectButtonGlow()
+            if (message.startsWith("Подключено")) {
+                status.setTextColor(Color.rgb(36, 255, 72))
+                igniteConnectButton()
+            } else if (message == "Отключено" || message.startsWith("Ошибка")) {
+                status.setTextColor(Color.LTGRAY)
+                resetConnectButtonGlow()
+            } else if (message.startsWith("Подключаю") || message.startsWith("Запускаю") || message.startsWith("Запуск Xray")) {
+                status.setTextColor(Color.rgb(255, 166, 55))
+            }
             val busy = message.startsWith("Подключаю") || message.startsWith("Запускаю") || message.startsWith("Запуск Xray")
             cancelConnectButton.isEnabled = busy
             connectButton.isEnabled = !busy
@@ -226,10 +233,10 @@ class MainActivity : Activity() {
                 addView(status.apply {
                     text = "● Отключено"; textSize = 18f
                     gravity = android.view.Gravity.CENTER
-                    setTextColor(Color.rgb(255, 92, 45))
+                    setTextColor(Color.LTGRAY)
                     background = GradientDrawable().apply {
-                        setColor(Color.rgb(25, 10, 9)); cornerRadius = dp(28).toFloat()
-                        setStroke(dp(1), Color.rgb(205, 43, 24))
+                        setColor(Color.rgb(10, 10, 12)); cornerRadius = dp(28).toFloat()
+                        setStroke(dp(1), Color.rgb(48, 48, 52))
                     }
                     setPadding(dp(22), dp(9), dp(22), dp(9))
                 })
@@ -326,6 +333,22 @@ class MainActivity : Activity() {
                 val released = event.actionMasked == MotionEvent.ACTION_UP ||
                     event.actionMasked == MotionEvent.ACTION_CANCEL
                 if (pressed || released) {
+                    if (pressed && !status.text.toString().startsWith("Подключено")) {
+                        fireDrawable.setPressed(true)
+                        if (fireAnimator?.isRunning != true) {
+                            fireAnimator = ValueAnimator.ofFloat(0f, (Math.PI * 2).toFloat()).apply {
+                                duration = 900L
+                                repeatCount = ValueAnimator.INFINITE
+                                addUpdateListener { fireDrawable.setPhase(it.animatedValue as Float) }
+                                start()
+                            }
+                        }
+                    } else if (released && !status.text.toString().startsWith("Подключено")) {
+                        fireAnimator?.cancel()
+                        fireAnimator = null
+                        fireDrawable.setPressed(false)
+                        fireDrawable.setPhase(0f)
+                    }
                     val targetScale = if (pressed) 0.975f else 1f
                     val targetElevation = if (pressed) dp(18).toFloat() else dp(12).toFloat()
                     AnimatorSet().apply {
@@ -338,10 +361,7 @@ class MainActivity : Activity() {
                         interpolator = DecelerateInterpolator()
                         start()
                     }
-                    (view.background as? GradientDrawable)?.setStroke(
-                        dp(if (pressed) 6 else 4),
-                        if (pressed) Color.rgb(255, 174, 55) else Color.rgb(255, 105, 12)
-                    )
+                    fireDrawable.invalidateSelf()
                     view.elevation = targetElevation
                 }
                 false
@@ -353,7 +373,8 @@ class MainActivity : Activity() {
 
     // Flame tongues move continuously only while VPN is genuinely connected.
     private fun igniteConnectButton() {
-        fireDrawable.setIgnited(true)
+        fireDrawable.setPressed(false)
+        fireDrawable.setConnected(true)
         if (fireAnimator?.isRunning == true) return
         fireAnimator = ValueAnimator.ofFloat(0f, (Math.PI * 2).toFloat()).apply {
             duration = 1250L
@@ -368,7 +389,8 @@ class MainActivity : Activity() {
     private fun resetConnectButtonGlow() {
         fireAnimator?.cancel()
         fireAnimator = null
-        fireDrawable.setIgnited(false)
+        fireDrawable.setPressed(false)
+        fireDrawable.setConnected(false)
         fireDrawable.setPhase(0f)
         connectButton.animate().cancel()
         connectButton.scaleX = 1f
