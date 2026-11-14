@@ -12,6 +12,8 @@ import teapodcore.Teapodcore
 import teapodcore.VpnProtector
 import teapodcore.XrayCallback
 import org.json.JSONObject
+import java.net.Socket
+import javax.net.ssl.SSLSocketFactory
 
 class GilrTanoVpnService : VpnService() {
     private var tun: ParcelFileDescriptor? = null
@@ -20,6 +22,14 @@ class GilrTanoVpnService : VpnService() {
     // Core environment and socket protection are process-wide setup; keep them
     // ready across reconnects instead of repeating native initialization.
     @Volatile private var coreInitialized = false
+    @Volatile private var activeConfig: String? = null
+    @Volatile private var fallbackConfig: String? = null
+    @Volatile private var preferredConfig: String? = null
+    @Volatile private var automaticMode = false
+    @Volatile private var monitorRunning = false
+    @Volatile private var consecutiveProbeFailures = 0
+    @Volatile private var lastAutomaticSwitchAt = 0L
+    @Volatile private var usingFallback = false
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
@@ -30,8 +40,16 @@ class GilrTanoVpnService : VpnService() {
                     broadcastStatus("Добавьте VLESS-ссылку")
                     stopSelf()
                 } else if (intent.action == ACTION_SWITCH) {
+                    automaticMode = false
                     switchTunnel(config)
-                } else startTunnel(config)
+                } else {
+                    automaticMode = intent.getBooleanExtra(EXTRA_AUTO, false)
+                    fallbackConfig = intent.getStringExtra(EXTRA_FALLBACK_CONFIG)
+                    preferredConfig = intent.getStringExtra(EXTRA_PREFERRED_CONFIG)
+                    usingFallback = false
+                    consecutiveProbeFailures = 0
+                    startTunnel(config)
+                }
             }
         }
         return START_NOT_STICKY
@@ -54,6 +72,7 @@ class GilrTanoVpnService : VpnService() {
 
     private fun startTunnel(config: String) {
         stopping = false
+        activeConfig = config
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, notification("Запуск Xray…"))
         // Native core initialization/start can block; never run it on Android's service main thread.
@@ -125,14 +144,137 @@ class GilrTanoVpnService : VpnService() {
             if (!running) throw IllegalStateException("TUN-мост не запустился")
             broadcastStatus("Подключено · Xray и TUN работают")
             updateNotification("Подключено")
+            startConnectionMonitor()
         } catch (e: Exception) {
             broadcastStatus("Ошибка TUN: ${e.message}")
             stopTunnel()
         }
     }
 
+
+    /**
+     * End-to-end health check through the running local SOCKS inbound. This does
+     * not start a second Xray core and therefore cannot contend with the active tunnel.
+     */
+    private fun startConnectionMonitor() {
+        if (!automaticMode || monitorRunning) return
+        monitorRunning = true
+        Thread({
+            while (monitorRunning && automaticMode && !stopping) {
+                try {
+                    Thread.sleep(MONITOR_INTERVAL_MS)
+                    if (!monitorRunning || !automaticMode || stopping) break
+                    val latency = probeTunnel()
+                    if (latency < 0L || latency > POOR_LATENCY_MS) consecutiveProbeFailures++
+                    else consecutiveProbeFailures = 0
+
+                    if (consecutiveProbeFailures >= FAILURE_LIMIT &&
+                        System.currentTimeMillis() - lastAutomaticSwitchAt > SWITCH_COOLDOWN_MS) {
+                        if (!usingFallback && !fallbackConfig.isNullOrBlank()) {
+                            val target = fallbackConfig!!
+                            usingFallback = true
+                            lastAutomaticSwitchAt = System.currentTimeMillis()
+                            consecutiveProbeFailures = 0
+                            broadcastStatus("Связь ухудшилась. Переключаю на бесплатный резерв…")
+                            switchTunnel(target)
+                        } else if (usingFallback && !preferredConfig.isNullOrBlank() &&
+                            System.currentTimeMillis() - lastAutomaticSwitchAt >= RECOVERY_INTERVAL_MS) {
+                            val target = preferredConfig!!
+                            usingFallback = false
+                            lastAutomaticSwitchAt = System.currentTimeMillis()
+                            consecutiveProbeFailures = 0
+                            broadcastStatus("Проверяю восстановление Quattro…")
+                            switchTunnel(target)
+                        }
+                    }
+
+                    // When using the backup, periodically give the preferred Quattro
+                    // profile another chance. A failed trial is automatically rolled back.
+                    if (usingFallback && !preferredConfig.isNullOrBlank() &&
+                        System.currentTimeMillis() - lastAutomaticSwitchAt >= RECOVERY_INTERVAL_MS &&
+                        consecutiveProbeFailures == 0) {
+                        lastAutomaticSwitchAt = System.currentTimeMillis()
+                        usingFallback = false
+                        broadcastStatus("Проверяю, восстановился ли Quattro…")
+                        switchTunnel(preferredConfig!!)
+                    }
+                } catch (e: InterruptedException) {
+                    break
+                } catch (e: Exception) {
+                    Log.w(TAG, "Connection monitor error", e)
+                }
+            }
+            monitorRunning = false
+        }, "GilrTano-connection-monitor").apply { isDaemon = true }.start()
+    }
+
+    private fun probeTunnel(): Long {
+        val started = System.nanoTime()
+        val socket = Socket()
+        try {
+            socket.connect(java.net.InetSocketAddress("127.0.0.1", SOCKS_PORT), PROBE_TIMEOUT_MS)
+            socket.soTimeout = PROBE_TIMEOUT_MS
+            val out = socket.getOutputStream()
+            val input = socket.getInputStream()
+
+            // SOCKS5 no-auth greeting, then CONNECT to the Google 204 endpoint.
+            out.write(byteArrayOf(0x05, 0x01, 0x00))
+            out.flush()
+            val greeting = ByteArray(2)
+            readFully(input, greeting)
+            if (greeting[0].toInt() != 5 || greeting[1].toInt() != 0) return -1L
+
+            val host = "www.gstatic.com".toByteArray(Charsets.US_ASCII)
+            out.write(byteArrayOf(0x05, 0x01, 0x00, 0x03, host.size.toByte()) + host +
+                byteArrayOf(0x01, 0xbb.toByte()))
+            out.flush()
+            val reply = ByteArray(4)
+            readFully(input, reply)
+            if (reply[1].toInt() != 0) return -1L
+            val addressLength = when (reply[3].toInt() and 0xff) {
+                1 -> 4
+                3 -> input.read()
+                4 -> 16
+                else -> return -1L
+            }
+            if (addressLength <= 0) return -1L
+            val skip = ByteArray(addressLength + 2)
+            readFully(input, skip)
+
+            val tls = SSLSocketFactory.getDefault().createSocket(
+                socket, "www.gstatic.com", 443, true
+            ) as javax.net.ssl.SSLSocket
+            tls.soTimeout = PROBE_TIMEOUT_MS
+            tls.startHandshake()
+            tls.getOutputStream().write(
+                "GET /generate_204 HTTP/1.1\r\nHost: www.gstatic.com\r\nConnection: close\r\n\r\n"
+                    .toByteArray(Charsets.US_ASCII)
+            )
+            tls.getOutputStream().flush()
+            val line = tls.getInputStream().bufferedReader().readLine() ?: return -1L
+            tls.close()
+            if (!line.contains("204")) return -1L
+            return (System.nanoTime() - started) / 1_000_000L
+        } catch (_: Exception) {
+            return -1L
+        } finally {
+            runCatching { socket.close() }
+        }
+    }
+
+    private fun readFully(input: java.io.InputStream, buffer: ByteArray) {
+        var offset = 0
+        while (offset < buffer.size) {
+            val count = input.read(buffer, offset, buffer.size - offset)
+            if (count < 0) throw java.io.EOFException("SOCKS probe ended early")
+            offset += count
+        }
+    }
+
     private fun stopTunnel() {
         stopping = true
+        monitorRunning = false
+        automaticMode = false
         broadcastStatus("Отменяю подключение…")
         // Native shutdown may block; run it away from Android's main thread.
         Thread({
@@ -183,6 +325,9 @@ class GilrTanoVpnService : VpnService() {
         const val ACTION_STATUS = "com.gilrtano.vpn.STATUS"
         const val EXTRA_CONFIG = "xray_config"
         const val EXTRA_STATUS = "status"
+        const val EXTRA_AUTO = "automatic_mode"
+        const val EXTRA_FALLBACK_CONFIG = "fallback_config"
+        const val EXTRA_PREFERRED_CONFIG = "preferred_config"
         private const val TAG = "GilrTanoVPN"
         private const val CHANNEL_ID = "gilrtano_vpn"
         private const val NOTIFICATION_ID = 76
