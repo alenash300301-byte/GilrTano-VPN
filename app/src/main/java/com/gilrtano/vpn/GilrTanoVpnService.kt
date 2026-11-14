@@ -157,6 +157,20 @@ class GilrTanoVpnService : VpnService() {
                 Thread.sleep(100)
             }
             if (!running) throw IllegalStateException("TUN-мост не запустился")
+
+            // Verify actual HTTPS traffic through this profile before showing
+            // a successful connection; a running TUN bridge alone is insufficient.
+            var internetReady = false
+            repeat(3) { attempt ->
+                if (!internetReady && !stopping) {
+                    internetReady = probeTunnel() >= 0L
+                    if (!internetReady && attempt < 2) Thread.sleep(650)
+                }
+            }
+            if (!internetReady) {
+                throw IllegalStateException("Сервер ответил, но интернет через VPN не проходит")
+            }
+
             broadcastStatus(
                 if (automaticMode) {
                     if (usingFallback) "Подключено · бесплатный резерв" else "Подключено · Quattro"
@@ -165,8 +179,16 @@ class GilrTanoVpnService : VpnService() {
             updateNotification("Подключено · защищённый трафик")
             startConnectionMonitor()
         } catch (e: Exception) {
-            broadcastStatus("Ошибка TUN: ${e.message}")
-            stopTunnel()
+            Log.w(TAG, "VPN tunnel did not pass internet verification", e)
+            if (automaticMode && !usingFallback && !fallbackConfig.isNullOrBlank() && !stopping) {
+                usingFallback = true
+                lastAutomaticSwitchAt = System.currentTimeMillis()
+                broadcastStatus("У выбранного сервера нет интернета. Пробую бесплатный резерв…")
+                switchTunnel(fallbackConfig!!)
+            } else {
+                broadcastStatus("Не удалось подключиться: ${e.message}")
+                stopTunnel()
+            }
         }
     }
 
@@ -374,7 +396,7 @@ class GilrTanoVpnService : VpnService() {
         private const val NOTIFICATION_ID = 76
         private const val SOCKS_PORT = 10808
         private const val MONITOR_INTERVAL_MS = 15_000L
-        private const val PROBE_TIMEOUT_MS = 5_000
+        private const val PROBE_TIMEOUT_MS = 3_500
         private const val POOR_LATENCY_MS = 500L
         private const val FAILURE_LIMIT = 2
         private const val SWITCH_COOLDOWN_MS = 60_000L
