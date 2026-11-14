@@ -11,27 +11,22 @@ android {
         applicationId = "com.gilrtano.vpn"
         minSdk = 29
         targetSdk = 35
-        versionCode = 75
-        versionName = "0.7.5"
+        versionCode = 76
+        versionName = "0.7.6"
     }
 
     buildTypes {
-        release {
-            isMinifyEnabled = false
-        }
+        release { isMinifyEnabled = false }
     }
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "1.8"
-    }
+    kotlinOptions { jvmTarget = "17" }
 }
 
 dependencies {
-    // Native AAR intentionally not declared until the upstream source is fetched,
-    // its exact API is inspected, and socket protection is confirmed/implemented.
+    implementation(files("libs/teapod-core-1.7.7.aar"))
 }
