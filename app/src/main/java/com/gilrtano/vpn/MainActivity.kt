@@ -326,6 +326,25 @@ class MainActivity : Activity() {
                     setLayerType(View.LAYER_TYPE_SOFTWARE, null)
                 }
                 powerOrb.setOnClickListener { connectButton.performClick() }
+                powerOrb.setOnTouchListener { _, event ->
+                    if (event.actionMasked == MotionEvent.ACTION_DOWN &&
+                        !status.text.toString().contains("Подключено")) {
+                        tigerFlames.setActive(true)
+                        if (fireAnimator?.isRunning != true) {
+                            fireAnimator = ValueAnimator.ofFloat(0f, (Math.PI * 2).toFloat()).apply {
+                                duration = 900L
+                                repeatCount = ValueAnimator.INFINITE
+                                addUpdateListener {
+                                    val phase = it.animatedValue as Float
+                                    powerOrbDrawable.setPhase(phase)
+                                    tigerFlames.setPhase(phase)
+                                }
+                                start()
+                            }
+                        }
+                    }
+                    false
+                }
                 powerOrb.contentDescription = "Кнопка питания VPN"
                 addView(powerOrb, LinearLayout.LayoutParams(dp(132), dp(132)).apply {
                     gravity = android.view.Gravity.CENTER
