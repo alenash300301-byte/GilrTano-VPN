@@ -360,10 +360,18 @@ class MainActivity : Activity() {
                 bestFreeButton.visibility = View.GONE
                 addView(checkPing, LinearLayout.LayoutParams.MATCH_PARENT, dp(1))
                 checkPing.visibility = View.GONE
-                addView(quattroTab, LinearLayout.LayoutParams.MATCH_PARENT, dp(1))
-                quattroTab.visibility = View.GONE
-                addView(freeTab, LinearLayout.LayoutParams.MATCH_PARENT, dp(1))
-                freeTab.visibility = View.GONE
+                addView(LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = android.view.Gravity.CENTER
+                    addView(quattroTab, LinearLayout.LayoutParams(0, dp(44), 1f).apply {
+                        rightMargin = dp(6)
+                    })
+                    addView(freeTab, LinearLayout.LayoutParams(0, dp(44), 1f).apply {
+                        leftMargin = dp(6)
+                    })
+                }, LinearLayout.LayoutParams.MATCH_PARENT, dp(48))
+                quattroTab.visibility = View.VISIBLE
+                freeTab.visibility = View.VISIBLE
                 settingsHeader = TextView(this@MainActivity).apply {
                     text = "Настройки и импорт  ›"; textSize = 20f
                     typeface = android.graphics.Typeface.DEFAULT_BOLD
@@ -643,9 +651,39 @@ class MainActivity : Activity() {
     }
 
     private fun switchMode(free: Boolean) {
+        if (activeFree == free) return
+        val targetNodes = if (free) freeNodes else quattroNodes
+        if (targetNodes.isEmpty()) {
+            Toast.makeText(
+                this,
+                if (free) "Сначала найди бесплатные серверы" else "Сначала импортируй Quattro",
+                Toast.LENGTH_LONG
+            ).show()
+            return
+        }
+
+        val wasConnected = status.text.toString().contains("Подключено")
         activeFree = free
         prefs.edit().putBoolean("active_free_mode", free).apply()
         refreshMode()
+        updateServerCard(wasConnected)
+
+        if (wasConnected) {
+            val selectedKey = if (free) "free_selected" else "quattro_selected"
+            val index = prefs.getInt(selectedKey, 0).coerceIn(0, targetNodes.lastIndex)
+            servers.setSelection(index)
+            val node = targetNodes[index]
+            val config = runCatching { GilrTanoVpnService.xrayConfigFromVless(node.uri) }.getOrElse {
+                Toast.makeText(this, "Не удалось подготовить сервер: ${it.message}", Toast.LENGTH_LONG).show()
+                return
+            }
+            status.text = "Переключаю на ${if (free) "бесплатный сервер" else "Quattro"}…"
+            startService(Intent(this, GilrTanoVpnService::class.java)
+                .setAction(GilrTanoVpnService.ACTION_SWITCH)
+                .putExtra(GilrTanoVpnService.EXTRA_CONFIG, config))
+        } else {
+            Toast.makeText(this, if (free) "Выбран бесплатный резерв" else "Выбран Quattro", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun refreshMode() {
