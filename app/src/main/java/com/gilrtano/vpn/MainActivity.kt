@@ -119,7 +119,7 @@ class MainActivity : Activity() {
             setOnClickListener { importFrom(freeSource.text.toString().trim(), true) }
         }
         connectButton = Button(this).apply {
-            text = "Подключить выбранный сервер"
+            text = "⏻\nПОДКЛЮЧИТЬ"
             setOnClickListener {
                 val node = activeNodes.getOrNull(servers.selectedItemPosition)
                 if (node == null) {
@@ -172,9 +172,19 @@ class MainActivity : Activity() {
         setContentView(LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(20, 24, 20, 20)
-            addView(TextView(this@MainActivity).apply { text = "GilrTano"; textSize = 25f; setTextColor(Color.WHITE) })
+            addView(LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                addView(TigerMarkView(this@MainActivity), LinearLayout.LayoutParams(56, 56))
+                addView(TextView(this@MainActivity).apply {
+                    text = "GilrTano VPN"; textSize = 25f
+                    typeface = android.graphics.Typeface.DEFAULT_BOLD
+                    setTextColor(Color.rgb(255, 125, 24))
+                })
+            })
             addView(TextView(this@MainActivity).apply {
-                text = "VPN"; textSize = 12f; setTextColor(Color.LTGRAY)
+                text = "🔥 ОГОНЬ ВНУТРИ. СВОБОДА В СЕТИ."
+                textSize = 11f; setTextColor(Color.rgb(190, 125, 90))
             })
             addView(LinearLayout(this@MainActivity).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -202,6 +212,19 @@ class MainActivity : Activity() {
         })
 
         styleDarkInterface()
+        connectButton.apply {
+            textSize = 23f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            gravity = android.view.Gravity.CENTER
+            setTextColor(Color.WHITE)
+            minHeight = (176 * resources.displayMetrics.density).toInt()
+            background = GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                intArrayOf(Color.rgb(42, 15, 7), Color.rgb(8, 7, 7))).apply {
+                shape = GradientDrawable.OVAL
+                setStroke((4 * resources.displayMetrics.density).toInt(), Color.rgb(255, 105, 12))
+            }
+            elevation = 12f
+        }
         activeFree = prefs.getBoolean("active_free_mode", false)
         refreshMode()
     }
@@ -216,8 +239,9 @@ class MainActivity : Activity() {
                     view.textSize = 13f
                     view.isAllCaps = false
                     view.background = GradientDrawable().apply {
-                        setColor(Color.rgb(34, 35, 39))
+                        setColor(Color.rgb(24, 13, 10))
                         cornerRadius = 18f
+                        setStroke(2, Color.rgb(220, 78, 12))
                     }
                     view.setPadding(16, 10, 16, 10)
                     val lp = view.layoutParams
@@ -229,9 +253,9 @@ class MainActivity : Activity() {
                     view.textSize = 14f
                     view.setPadding(14, 10, 14, 10)
                     view.background = GradientDrawable().apply {
-                        setColor(Color.rgb(24, 25, 28))
+                        setColor(Color.rgb(18, 12, 10))
                         cornerRadius = 14f
-                        setStroke(1, Color.rgb(55, 56, 62))
+                        setStroke(1, Color.rgb(120, 48, 18))
                     }
                 }
                 is TextView -> {
@@ -342,8 +366,8 @@ class MainActivity : Activity() {
         }
         scanningFree = true
         bestFreeButton.isEnabled = false
-        status.text = "Проверяю до 12 серверов: VLESS, шифрование и реальный доступ в интернет…"
-        val candidates = freeNodes.take(12)
+        status.text = "Проверяю до 30 серверов через Xray и реальный HTTPS-запрос…"
+        val candidates = freeNodes.take(30)
         Thread {
             val pool = Executors.newFixedThreadPool(3)
             try {
@@ -364,7 +388,7 @@ class MainActivity : Activity() {
                 }
                 // Keep native Xray probes bounded: many simultaneous cores can exhaust
                 // memory on a phone, even though this scan runs off the UI thread.
-                val checked = pool.invokeAll(tasks, 50, TimeUnit.SECONDS)
+                val checked = pool.invokeAll(tasks, 120, TimeUnit.SECONDS)
                     .mapNotNull { future -> if (future.isCancelled) null else runCatching { future.get() }.getOrNull() }
                     .sortedBy { it.second }
                 runOnUiThread {
