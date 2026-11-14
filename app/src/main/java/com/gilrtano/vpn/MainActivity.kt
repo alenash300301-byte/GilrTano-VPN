@@ -217,7 +217,10 @@ class MainActivity : Activity() {
             typeface = android.graphics.Typeface.DEFAULT_BOLD
             gravity = android.view.Gravity.CENTER
             setTextColor(Color.WHITE)
-            minHeight = (176 * resources.displayMetrics.density).toInt()
+            layoutParams = LinearLayout.LayoutParams(
+                (184 * resources.displayMetrics.density).toInt(),
+                (184 * resources.displayMetrics.density).toInt()
+            ).apply { gravity = android.view.Gravity.CENTER; topMargin = (12 * resources.displayMetrics.density).toInt(); bottomMargin = (12 * resources.displayMetrics.density).toInt() }
             background = GradientDrawable(GradientDrawable.Orientation.TL_BR,
                 intArrayOf(Color.rgb(42, 15, 7), Color.rgb(8, 7, 7))).apply {
                 shape = GradientDrawable.OVAL
