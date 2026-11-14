@@ -1079,12 +1079,12 @@ class MainActivity : Activity() {
                 ?.let { runCatching { GilrTanoVpnService.xrayConfigFromVless(it.uri) }.getOrNull() }
             pendingConfig = config
             pendingFallbackConfig = fallback
-            pendingPreferredConfig = fallback
+            pendingPreferredConfig = config
             pendingAutomatic = true
             status.text = "Подключаю лучший доступный сервер…"
             val permission = VpnService.prepare(this)
             if (permission != null) startActivityForResult(permission, requestCode)
-            else startVpn(config, fallback, fallback, true)
+            else startVpn(config, fallback, config, true)
         } catch (e: Exception) {
             status.text = "Не удалось подготовить сервер: ${e.message}"
         }
