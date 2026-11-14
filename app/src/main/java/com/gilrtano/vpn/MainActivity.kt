@@ -1156,6 +1156,21 @@ class MainActivity : Activity() {
         }.start()
     }
 
+    private fun freeRegion(name: String): String? {
+        val value = name.lowercase()
+        val europe = listOf("🇳🇱", "🇩🇪", "🇬🇧", "🇫🇷", "🇮🇹", "🇪🇸", "🇵🇱", "🇫🇮", "🇸🇪", "🇳🇴", "🇨🇭", "🇦🇹", "🇧🇪", "🇨🇿", "🇷🇴", "🇧🇬", "🇬🇷", "🇵🇹", "🇮🇪", "🇩🇰", "🇭🇺", "🇺🇦", "🇷🇺",
+            "netherlands", "germany", "united kingdom", "uk ", "france", "italy", "spain", "poland", "finland", "sweden", "norway", "switzerland", "austria", "belgium", "czech", "romania", "bulgaria", "greece", "portugal", "ireland", "denmark", "hungary", "ukraine", "russia", "de-", "nl-", "gb-", "fr-", "it-", "es-", "pl-")
+        val asia = listOf("🇯🇵", "🇸🇬", "🇭🇰", "🇰🇷", "🇹🇼", "🇮🇳", "🇮🇩", "🇹🇭", "🇲🇾", "🇻🇳", "🇵🇭", "🇨🇳",
+            "japan", "singapore", "hong kong", "south korea", "korea", "taiwan", "india", "indonesia", "thailand", "malaysia", "vietnam", "philippines", "china", "jp-", "sg-", "hk-", "kr-", "tw-", "in-", "id-", "th-")
+        val usa = listOf("🇺🇸", "united states", "usa", "us-", "us ")
+        return when {
+            usa.any { value.contains(it) } -> "🇺🇸 США"
+            asia.any { value.contains(it) } -> "🌏 Азия"
+            europe.any { value.contains(it) } -> "🇪🇺 Европа"
+            else -> null
+        }
+    }
+
     private fun findBestFreeServers(autoConnectWhenReady: Boolean = false, retryRound: Int = 0) {
         if (scanningFree) return
         if (freeNodes.isEmpty()) {
@@ -1168,7 +1183,7 @@ class MainActivity : Activity() {
         // Public free nodes expire frequently. Check a much larger portion of the
         // imported catalogue and allow slow handshakes, rather than rejecting all
         // candidates after one short 25-second window.
-        val candidates = freeNodes.take(80)
+        val candidates = freeNodes.take(180)
         Thread {
             val pool = Executors.newFixedThreadPool(8)
             val completion = java.util.concurrent.ExecutorCompletionService<Pair<ImportedNode, Long>?>(pool)
@@ -1185,23 +1200,32 @@ class MainActivity : Activity() {
                         }.getOrNull()
                     })
                 }
-                val checked = mutableListOf<Pair<ImportedNode, Long>>()
-                val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(18)
+                val checked = mutableListOf<Pair<ImportedNode, Long>>()\n                val bestByRegion = linkedMapOf<String, Pair<ImportedNode, Long>>()
+                val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(35)
                 var completed = 0
-                while (completed < candidates.size && System.nanoTime() < deadline && checked.size < 2) {
+                while (completed < candidates.size && System.nanoTime() < deadline && bestByRegion.size < 3) {
                     val remaining = deadline - System.nanoTime()
                     val future = completion.poll(remaining, TimeUnit.NANOSECONDS) ?: break
                     completed++
-                    runCatching { future.get() }.getOrNull()?.let { checked.add(it) }
+                    runCatching { future.get() }.getOrNull()?.let { result ->
+                        checked.add(result)
+                        val region = freeRegion(result.first.name)
+                        if (region != null) {
+                            val previous = bestByRegion[region]
+                            if (previous == null || result.second < previous.second) bestByRegion[region] = result
+                        }
+                    }
                     if (completed % 20 == 0) {
                         val done = completed
                         runOnUiThread {
                             if (scanningFree) status.text = "Автопоиск: проверено $done из ${candidates.size}…"
                         }
                     }
-                    if (checked.size >= 2) break
+                    if (bestByRegion.size >= 3) break
                 }
-                val fastest = checked.sortedBy { it.second }
+                val fastest = listOf("🇪🇺 Европа", "🇺🇸 США", "🌏 Азия")
+                    .mapNotNull { bestByRegion[it] }
+                    .ifEmpty { checked.sortedBy { it.second }.take(1) }
                 runOnUiThread {
                     if (fastest.isEmpty()) {
                         // A failed scan is never a connected state: restore every
@@ -1229,11 +1253,11 @@ class MainActivity : Activity() {
                         freeNodes = fastest.map { it.first }
                         saveNodes("free_nodes", freeNodes)
                         prefs.edit().putInt("free_selected", 0).apply()
-                        val labels = fastest.map { pair -> "${pair.first.name} · ${pair.second} мс" }
+                        val labels = fastest.map { pair -> "${freeRegion(pair.first.name) ?: "Регион не определён"} · ${pair.first.name} · ${pair.second} мс" }
                         servers.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, labels)
                         servers.setSelection(0)
                         pingStatus.text = "Проверка через Xray: ${fastest.first().second} мс"
-                        status.text = "Найдено рабочих серверов: ${fastest.size}. Лучший выбран."
+                        status.text = "Проверено: ${fastest.size} региональных серверов. Лучший выбран; остальные — резерв."
                         if (autoConnectWhenReady) {
                             activeFree = true
                             autoMode = true
