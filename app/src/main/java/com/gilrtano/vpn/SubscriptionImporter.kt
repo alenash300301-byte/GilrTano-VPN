@@ -12,7 +12,7 @@ import java.net.URLEncoder
 data class ImportedNode(val name: String, val uri: String)
 
 object SubscriptionImporter {
-    private const val MAX_NODES = 150
+    private const val MAX_NODES = 600
     private const val MAX_BYTES = 5 * 1024 * 1024
 
     fun load(source: String): List<ImportedNode> {
