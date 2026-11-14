@@ -670,7 +670,8 @@ class MainActivity : Activity() {
 
     private fun updatePowerOrb(connected: Boolean) {
         if (!::powerOrb.isInitialized) return
-        powerOrbDrawable.setConnected(connected)\n        (powerOrb as? PowerOrbButtonView)?.setConnected(connected)
+        powerOrbDrawable.setConnected(connected)
+        (powerOrb as? PowerOrbButtonView)?.setConnected(connected)
         if (::tigerFlames.isInitialized) tigerFlames.setActive(connected)
         powerOrb.setTextColor(if (connected) Color.rgb(0, 255, 48) else Color.WHITE)
         powerOrb.elevation = dp(if (connected) 20 else 12).toFloat()
