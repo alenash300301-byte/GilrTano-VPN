@@ -298,17 +298,6 @@ class MainActivity : Activity() {
                     textSize = 10f; setTextColor(Color.GRAY); gravity = android.view.Gravity.CENTER
                     setPadding(0, dp(12), 0, dp(8))
                 })
-                addView(LinearLayout(this@MainActivity).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = android.view.Gravity.CENTER
-                    setPadding(0, dp(14), 0, dp(8))
-                    listOf("⌂  Главная", "▤  Серверы", "⚙  Настройки").forEach { label ->
-                        addView(TextView(this@MainActivity).apply {
-                            text = label; textSize = 13f; gravity = android.view.Gravity.CENTER
-                            setTextColor(Color.rgb(255, 132, 24)); setPadding(dp(8), dp(10), dp(8), dp(10))
-                        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-                    }
-                })
             })
         }
         root.addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
