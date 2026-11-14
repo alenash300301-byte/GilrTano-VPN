@@ -541,16 +541,16 @@ class MainActivity : Activity() {
         }
         scanningFree = true
         bestFreeButton.isEnabled = false
-        status.text = "Проверяю до 150 серверов через Xray и реальный HTTPS-запрос…"
-        val candidates = freeNodes.take(150)
+        status.text = "Быстрый поиск: проверяю первые серверы параллельно…"
+        // A short first-pass scan is preferable to making the user wait minutes.
+        // Keep a small warm set; the fastest working profiles are saved for next launch.
+        val candidates = freeNodes.take(80)
         Thread {
-            val pool = Executors.newFixedThreadPool(4)
+            val pool = Executors.newFixedThreadPool(6)
+            val completion = java.util.concurrent.ExecutorCompletionService<Pair<ImportedNode, Long>?>(pool)
             try {
-                val tasks = candidates.map { node ->
-                    Callable<Pair<ImportedNode, Long>?> {
-                        // A TCP port-open check is not proof that VLESS authentication,
-                        // TLS/REALITY and the proxy data path work. Probe through a
-                        // temporary Xray instance and an actual HTTPS request instead.
+                candidates.forEach { node ->
+                    completion.submit(Callable<Pair<ImportedNode, Long>?> {
                         val config = runCatching { GilrTanoVpnService.xrayConfigFromVless(node.uri) }
                             .getOrNull() ?: return@Callable null
                         runCatching {
@@ -559,25 +559,35 @@ class MainActivity : Activity() {
                             )
                             if (delayMs <= 0L) null else node to delayMs
                         }.getOrNull()
+                    })
+                }
+                val checked = mutableListOf<Pair<ImportedNode, Long>>()
+                val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(25)
+                var completed = 0
+                while (completed < candidates.size && System.nanoTime() < deadline && checked.size < 8) {
+                    val remaining = deadline - System.nanoTime()
+                    val future = completion.poll(remaining, TimeUnit.NANOSECONDS) ?: break
+                    completed++
+                    runCatching { future.get() }.getOrNull()?.let { checked.add(it) }
+                    if (checked.size >= 3) {
+                        // Three real working routes are enough for a useful quick shortlist.
+                        // Do not keep the connect button waiting for a full catalogue scan.
+                        break
                     }
                 }
-                // Keep native Xray probes bounded: many simultaneous cores can exhaust
-                // memory on a phone, even though this scan runs off the UI thread.
-                val checked = pool.invokeAll(tasks, 180, TimeUnit.SECONDS)
-                    .mapNotNull { future -> if (future.isCancelled) null else runCatching { future.get() }.getOrNull() }
-                    .sortedBy { it.second }
+                val fastest = checked.sortedBy { it.second }
                 runOnUiThread {
-                    if (checked.isEmpty()) {
-                        status.text = "Не найдено доступных поддерживаемых VLESS-серверов. Попробуй обновить список позже."
+                    if (fastest.isEmpty()) {
+                        status.text = "За 25 секунд рабочий сервер не найден. Список можно обновить и попробовать снова."
                     } else {
-                        freeNodes = checked.map { it.first }
+                        freeNodes = fastest.map { it.first }
                         saveNodes("free_nodes", freeNodes)
                         prefs.edit().putInt("free_selected", 0).apply()
-                        val labels = checked.map { pair -> "${pair.first.name} · ${pair.second} мс" }
+                        val labels = fastest.map { pair -> "${pair.first.name} · ${pair.second} мс" }
                         servers.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, labels)
                         servers.setSelection(0)
-                        pingStatus.text = "Проверка через Xray: ${checked.first().second} мс"
-                        status.text = "Реальный интернет-тест пройден: ${checked.size} из ${candidates.size}. Выбран лучший сервер."
+                        pingStatus.text = "Проверка через Xray: ${fastest.first().second} мс"
+                        status.text = "Быстрый подбор готов: ${fastest.size} рабочих сервер(а). Лучший выбран."
                     }
                     scanningFree = false
                     bestFreeButton.isEnabled = true
