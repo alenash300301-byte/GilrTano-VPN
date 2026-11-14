@@ -44,10 +44,10 @@ object DocxTextExtractor {
         while (event != XmlPullParser.END_DOCUMENT) {
             when (event) {
                 XmlPullParser.START_TAG -> when (parser.name) {
-                    "p" -> if (result.isNotEmpty() && result.last() != '\\n') result.append('\\n')
+                    "p" -> if (result.isNotEmpty() && result.last() != '\n') result.append('\n')
                     "t" -> inText = true
-                    "tab" -> result.append('\\t')
-                    "br" -> result.append('\\n')
+                    "tab" -> result.append('\t')
+                    "br" -> result.append('\n')
                 }
                 XmlPullParser.TEXT -> if (inText) result.append(parser.text)
                 XmlPullParser.END_TAG -> if (parser.name == "t") inText = false
