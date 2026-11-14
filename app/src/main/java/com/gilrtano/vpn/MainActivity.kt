@@ -461,9 +461,16 @@ class MainActivity : Activity() {
                         }
                     }
                     addView(metric("Пинг", "—", " мс"), LinearLayout.LayoutParams(0, dp(62), 1f).apply { rightMargin = dp(6) })
-                    addView(metric("Скачать", "—", " Мбит/с"), LinearLayout.LayoutParams(0, dp(62), 1f).apply { leftMargin = dp(3); rightMargin = dp(3) })
-                    addView(metric("Отдать", "—", " Мбит/с"), LinearLayout.LayoutParams(0, dp(62), 1f).apply { leftMargin = dp(6) })
+                    addView(metric("Входящий", "—", " Мбит/с"), LinearLayout.LayoutParams(0, dp(62), 1f).apply { leftMargin = dp(3); rightMargin = dp(3) })
+                    addView(metric("Исходящий", "—", " Мбит/с"), LinearLayout.LayoutParams(0, dp(62), 1f).apply { leftMargin = dp(6) })
                 }, LinearLayout.LayoutParams.MATCH_PARENT, dp(62))
+                addView(TextView(this@MainActivity).apply {
+                    text = "Скорость сети всего устройства · пинг до выбранного сервера"
+                    textSize = 10f
+                    setTextColor(Color.GRAY)
+                    gravity = android.view.Gravity.CENTER
+                    setPadding(0, dp(3), 0, 0)
+                }, LinearLayout.LayoutParams.MATCH_PARENT, dp(20))
                 addView(TrafficWaveView(this@MainActivity), LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, dp(58)
                 ).apply { topMargin = dp(8); bottomMargin = dp(8) })
@@ -636,7 +643,13 @@ class MainActivity : Activity() {
     private fun showServerPicker() {
         val nodes = activeNodes
         if (nodes.isEmpty()) {
-            Toast.makeText(this, if (activeFree) "Сначала найди бесплатные серверы" else "Сначала импортируй Quattro", Toast.LENGTH_LONG).show()
+            settingsExpanded = true
+            findImportButtonsVisibility()
+            val content = findViewById<ViewGroup>(android.R.id.content)
+            val root = content.getChildAt(0) as? ViewGroup
+            val scroll = root?.getChildAt(0) as? android.widget.ScrollView
+            scroll?.post { scroll.smoothScrollTo(0, settingsHeader.top) }
+            Toast.makeText(this, "Сначала добавь сервер: открой импорт подписки в настройках", Toast.LENGTH_LONG).show()
             return
         }
         val names = nodes.map { it.name }.toTypedArray()
@@ -665,8 +678,8 @@ class MainActivity : Activity() {
             val ping = Regex("(\\d+)\\s*мс").find(pingStatus.text.toString())?.groupValues?.get(1)
             serverCardPing.text = ping?.let { "$it мс" } ?: ""
         } else {
-            serverCardTitle.text = "Автоматический сервер"
-            serverCardSubtitle.text = "Лучший и самый быстрый"
+            serverCardTitle.text = if (quattroNodes.isEmpty() && freeNodes.isEmpty()) "Сервер не добавлен" else "Автоматический сервер"
+            serverCardSubtitle.text = if (quattroNodes.isEmpty() && freeNodes.isEmpty()) "Добавьте подписку в настройках" else "Автовыбор · Quattro в приоритете"
             serverCardPing.text = ""
         }
     }
