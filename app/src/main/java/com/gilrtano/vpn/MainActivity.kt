@@ -25,6 +25,7 @@ import android.os.SystemClock
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ImageView
+import android.widget.FrameLayout
 import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
@@ -43,6 +44,7 @@ import java.util.concurrent.TimeUnit
 class MainActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var powerOrb: TextView
+    private lateinit var tigerFlames: TigerFlameOverlayView
     private val powerOrbDrawable = PowerOrbDrawable()
     private lateinit var connectionTimer: Chronometer
     private lateinit var serverCardTitle: TextView
@@ -291,13 +293,27 @@ class MainActivity : Activity() {
                         text = "♛"; textSize = 29f; setTextColor(Color.rgb(255, 170, 20))
                     })
                 })
-                // Approved home composition: large tiger artwork, then one wide action button.
-                addView(ImageView(this@MainActivity).apply {
-                    setImageResource(R.drawable.tiger_hero)
-                    scaleType = ImageView.ScaleType.CENTER_CROP
+                // Tiger artwork stays clean while disconnected; flames are a separate animated overlay.
+                val tigerScene = FrameLayout(this@MainActivity).apply {
                     setBackgroundColor(Color.BLACK)
-                    contentDescription = "Реалистичный тигр с зелёными глазами и огнём"
-                }, LinearLayout.LayoutParams(
+                    addView(ImageView(this@MainActivity).apply {
+                        setImageResource(R.drawable.tiger_hero)
+                        scaleType = ImageView.ScaleType.CENTER_CROP
+                        contentDescription = "Тигр с зелёными глазами"
+                    }, FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
+                    ))
+                    tigerFlames = TigerFlameOverlayView(this@MainActivity).apply {
+                        alpha = 0f
+                        visibility = View.GONE
+                        isClickable = false
+                        isFocusable = false
+                    }
+                    addView(tigerFlames, FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
+                    ))
+                }
+                addView(tigerScene, LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, dp(286)
                 ).apply { topMargin = dp(0); bottomMargin = dp(0) })
                 powerOrb = TextView(this@MainActivity).apply {
@@ -305,14 +321,9 @@ class MainActivity : Activity() {
                     gravity = android.view.Gravity.CENTER
                     setTextColor(Color.WHITE)
                     typeface = android.graphics.Typeface.create("sans-serif-light", android.graphics.Typeface.NORMAL)
-                    background = GradientDrawable().apply {
-                        shape = GradientDrawable.OVAL
-                        setColor(Color.rgb(8, 8, 9))
-                        setStroke(dp(3), Color.rgb(255, 112, 18))
-                    }
+                    background = powerOrbDrawable
                     elevation = dp(14).toFloat()
                     setLayerType(View.LAYER_TYPE_SOFTWARE, null)
-                    paint.setShadowLayer(dp(12).toFloat(), 0f, 0f, Color.rgb(255, 112, 18))
                 }
                 addView(powerOrb, LinearLayout.LayoutParams(dp(104), dp(104)).apply {
                     gravity = android.view.Gravity.CENTER
@@ -570,6 +581,7 @@ class MainActivity : Activity() {
     private fun updatePowerOrb(connected: Boolean) {
         if (!::powerOrb.isInitialized) return
         powerOrbDrawable.setConnected(connected)
+        if (::tigerFlames.isInitialized) tigerFlames.setActive(connected)
         powerOrb.setTextColor(if (connected) Color.rgb(0, 255, 48) else Color.WHITE)
         powerOrb.elevation = dp(if (connected) 20 else 12).toFloat()
         powerOrb.invalidate()
@@ -594,7 +606,12 @@ class MainActivity : Activity() {
             duration = 1250L
             repeatCount = ValueAnimator.INFINITE
             interpolator = android.view.animation.LinearInterpolator()
-            addUpdateListener { fireDrawable.setPhase(it.animatedValue as Float) }
+            addUpdateListener {
+                val phase = it.animatedValue as Float
+                fireDrawable.setPhase(phase)
+                powerOrbDrawable.setPhase(phase)
+                if (::tigerFlames.isInitialized) tigerFlames.setPhase(phase)
+            }
             start()
         }
         connectButton.elevation = dp(16).toFloat()
@@ -607,6 +624,7 @@ class MainActivity : Activity() {
         fireDrawable.setConnected(false)
         fireDrawable.setPhase(0f)
         powerOrbDrawable.setPhase(0f)
+        if (::tigerFlames.isInitialized) tigerFlames.setPhase(0f)
         connectButton.animate().cancel()
         connectButton.scaleX = 1f
         connectButton.scaleY = 1f
