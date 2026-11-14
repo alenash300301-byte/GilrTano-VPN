@@ -47,6 +47,7 @@ class MainActivity : Activity() {
     private var fireAnimator: ValueAnimator? = null
     @Volatile private var scanningFree = false
     private var activeFree = false
+    private var settingsExpanded = false
     private var quattroNodes: List<ImportedNode> = emptyList()
     private var freeNodes: List<ImportedNode> = emptyList()
     private var pendingConfig: String? = null
@@ -74,6 +75,11 @@ class MainActivity : Activity() {
             // The single power button remains usable while connecting so it can cancel,
             // and while connected so it can disconnect.
             connectButton.isEnabled = true
+            connectButton.text = when {
+                message.startsWith("Подключено") || message.startsWith("Отключаю") -> "⏻\\nОТКЛЮЧИТЬ"
+                busy -> "⏻\\nПОДКЛЮЧЕНИЕ…"
+                else -> "⏻\\nПОДКЛЮЧИТЬ"
+            }
             connectButton.contentDescription = when {
                 message.startsWith("Подключено") -> "Отключить VPN"
                 busy -> "Отменить подключение"
@@ -142,7 +148,7 @@ class MainActivity : Activity() {
             setOnClickListener { importFrom(freeSource.text.toString().trim(), true) }
         }
         connectButton = Button(this).apply {
-            text = ""
+            text = "⏻\\nПОДКЛЮЧИТЬ"
             setOnClickListener {
                 val currentStatus = status.text.toString()
                 val isConnected = currentStatus.startsWith("Подключено")
@@ -224,12 +230,12 @@ class MainActivity : Activity() {
                 }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)).apply {
                     topMargin = dp(8); bottomMargin = dp(8)
                 })
-                addView(TigerMarkView(this@MainActivity), LinearLayout.LayoutParams(dp(270), dp(270)).apply {
-                    topMargin = dp(4); bottomMargin = dp(2)
+                addView(TigerMarkView(this@MainActivity), LinearLayout.LayoutParams(dp(116), dp(116)).apply {
+                    topMargin = dp(8); bottomMargin = dp(0)
                 })
-                addView(connectButton, LinearLayout.LayoutParams(dp(280), dp(280)).apply {
+                addView(connectButton, LinearLayout.LayoutParams(dp(204), dp(204)).apply {
                     gravity = android.view.Gravity.CENTER
-                    topMargin = dp(12); bottomMargin = dp(6)
+                    topMargin = dp(6); bottomMargin = dp(4)
                 })
                 addView(status.apply {
                     text = "Отключено"; textSize = 18f
@@ -277,9 +283,8 @@ class MainActivity : Activity() {
                         setStroke(dp(1), Color.rgb(230, 83, 12))
                     }
                     setOnClickListener {
-                        val show = primarySource.visibility != View.VISIBLE
-                        primarySource.visibility = if (show && !activeFree) View.VISIBLE else View.GONE
-                        freeSource.visibility = if (show && activeFree) View.VISIBLE else View.GONE
+                        settingsExpanded = !settingsExpanded
+                        text = if (settingsExpanded) "Настройки и импорт  ⌄" else "Настройки и импорт  ›"
                         findImportButtonsVisibility()
                     }
                 })
@@ -310,15 +315,18 @@ class MainActivity : Activity() {
         setContentView(root)
         styleDarkInterface()
         installButtonFeedback()
+        connectButton.text = "⏻\\nПОДКЛЮЧИТЬ"
         connectButton.apply {
-            textSize = 23f
+            textSize = 17f
             typeface = android.graphics.Typeface.DEFAULT_BOLD
             gravity = android.view.Gravity.CENTER
             setTextColor(Color.WHITE)
-            layoutParams = LinearLayout.LayoutParams(
-                (250 * resources.displayMetrics.density).toInt(),
-                (250 * resources.displayMetrics.density).toInt()
-            ).apply { gravity = android.view.Gravity.CENTER; topMargin = (12 * resources.displayMetrics.density).toInt(); bottomMargin = (12 * resources.displayMetrics.density).toInt() }
+            isAllCaps = false
+            setLineSpacing(dp(3).toFloat(), 1f)
+            layoutParams = LinearLayout.LayoutParams(dp(204), dp(204)).apply {
+                gravity = android.view.Gravity.CENTER
+                topMargin = dp(6); bottomMargin = dp(6)
+            }
             background = fireDrawable
             elevation = 12f
             // Subtle fire pulse only while the user presses the power button.
@@ -486,16 +494,25 @@ class MainActivity : Activity() {
 
     private fun findImportButtonsVisibility() {
         val content = findViewById<android.view.ViewGroup>(android.R.id.content)
-        val root = content.getChildAt(0) as? LinearLayout ?: return
-        for (i in 0 until root.childCount) {
-            val child = root.getChildAt(i)
+        val scroll = content.getChildAt(0) as? android.widget.ScrollView ?: return
+        val page = scroll.getChildAt(0) as? ViewGroup ?: return
+        primarySource.visibility = if (settingsExpanded && !activeFree) View.VISIBLE else View.GONE
+        freeSource.visibility = if (settingsExpanded && activeFree) View.VISIBLE else View.GONE
+        for (i in 0 until page.childCount) {
+            val child = page.getChildAt(i)
             if (child is Button) {
-                when (child.text.toString()) {
-                    "Импортировать Quattro" , "Выбрать DOCX Quattro" -> child.visibility = if (activeFree) ViewGroup.GONE else ViewGroup.VISIBLE
-                    "Импортировать бесплатные серверы" -> child.visibility = if (activeFree) ViewGroup.VISIBLE else ViewGroup.GONE
+                val label = child.text.toString()
+                val show = settingsExpanded && (
+                    (!activeFree && (label == "Импортировать Quattro" || label == "Выбрать DOCX Quattro")) ||
+                    (activeFree && label == "Импортировать бесплатные серверы")
+                )
+                if (label.startsWith("Импортировать") || label == "Выбрать DOCX Quattro") {
+                    child.visibility = if (show) View.VISIBLE else View.GONE
                 }
+                if (label == "Проверить пинг") child.visibility = if (settingsExpanded) View.VISIBLE else View.GONE
             }
         }
+        pingStatus.visibility = if (settingsExpanded) View.VISIBLE else View.GONE
     }
 
     private fun importFrom(source: String, isFree: Boolean) {
