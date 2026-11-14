@@ -1008,7 +1008,7 @@ class MainActivity : Activity() {
                 val checked = mutableListOf<Pair<ImportedNode, Long>>()
                 val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(18)
                 var completed = 0
-                while (completed < candidates.size && System.nanoTime() < deadline && checked.size < (if (autoConnectWhenReady) 1 else 2)) {
+                while (completed < candidates.size && System.nanoTime() < deadline && checked.size < 2) {
                     val remaining = deadline - System.nanoTime()
                     val future = completion.poll(remaining, TimeUnit.NANOSECONDS) ?: break
                     completed++
@@ -1074,7 +1074,8 @@ class MainActivity : Activity() {
         val node = activeNodes.getOrNull(servers.selectedItemPosition) ?: return
         try {
             val config = GilrTanoVpnService.xrayConfigFromVless(node.uri)
-            val fallback = quattroNodes.firstOrNull()
+            val fallbackNode = if (activeFree) freeNodes.getOrNull(1) else freeNodes.firstOrNull()
+            val fallback = fallbackNode
                 ?.let { runCatching { GilrTanoVpnService.xrayConfigFromVless(it.uri) }.getOrNull() }
             pendingConfig = config
             pendingFallbackConfig = fallback
