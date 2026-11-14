@@ -39,6 +39,7 @@ import java.util.concurrent.TimeUnit
 
 class MainActivity : Activity() {
     private lateinit var status: TextView
+    private lateinit var settingsHeader: TextView
     private lateinit var pingStatus: TextView
     private lateinit var primarySource: EditText
     private lateinit var freeSource: EditText
@@ -210,6 +211,11 @@ class MainActivity : Activity() {
                     addView(TextView(this@MainActivity).apply {
                         text = "☰"; textSize = 27f; setTextColor(Color.WHITE)
                         setPadding(dp(4), 0, dp(10), 0)
+                        setOnClickListener {
+                            settingsExpanded = !settingsExpanded
+                            settingsHeader.visibility = if (settingsExpanded) View.VISIBLE else View.GONE
+                            findImportButtonsVisibility()
+                        }
                     })
                     addView(LinearLayout(this@MainActivity).apply {
                         orientation = LinearLayout.HORIZONTAL
@@ -313,7 +319,7 @@ class MainActivity : Activity() {
                 quattroTab.visibility = View.GONE
                 addView(freeTab, LinearLayout.LayoutParams.MATCH_PARENT, dp(1))
                 freeTab.visibility = View.GONE
-                addView(TextView(this@MainActivity).apply {
+                settingsHeader = TextView(this@MainActivity).apply {
                     text = "Настройки и импорт  ›"; textSize = 20f
                     typeface = android.graphics.Typeface.DEFAULT_BOLD
                     setTextColor(Color.WHITE); setPadding(dp(16), dp(14), dp(12), dp(12))
@@ -321,12 +327,14 @@ class MainActivity : Activity() {
                         setColor(Color.rgb(24, 13, 10)); cornerRadius = dp(18).toFloat()
                         setStroke(dp(1), Color.rgb(230, 83, 12))
                     }
+                    visibility = View.GONE
                     setOnClickListener {
                         settingsExpanded = !settingsExpanded
                         text = if (settingsExpanded) "Настройки и импорт  ⌄" else "Настройки и импорт  ›"
                         findImportButtonsVisibility()
                     }
-                })
+                }
+                addView(settingsHeader)
                 addView(primarySource, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
                 addView(importPrimary)
                 addView(importDocx)
@@ -365,6 +373,7 @@ class MainActivity : Activity() {
             navItem("▤", "Серверы", { scroll.post { scroll.smoothScrollTo(0, servers.top) }; servers.performClick() })
             navItem("⚙", "Настройки", {
                 settingsExpanded = true
+                settingsHeader.visibility = View.VISIBLE
                 findImportButtonsVisibility()
                 scroll.post { scroll.smoothScrollTo(0, root.height) }
             })
