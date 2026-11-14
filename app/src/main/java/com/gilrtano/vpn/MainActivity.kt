@@ -769,20 +769,30 @@ class MainActivity : Activity() {
         Thread {
             var imported: List<ImportedNode> = emptyList()
             var successfulSource: String? = null
-            val errors = mutableListOf<String>()
-            for (source in sources) {
-                try {
-                    val nodes = SubscriptionImporter.load(source)
-                    if (nodes.isNotEmpty()) {
-                        imported = nodes
-                        successfulSource = source
-                        break
-                    } else {
-                        errors.add("Источник не содержит поддерживаемых VLESS")
-                    }
-                } catch (e: Exception) {
-                    errors.add(e.message ?: "ошибка загрузки")
+            // Fetch mirrors simultaneously: a slow/dead feed must not block the
+            // other public lists one after another.
+            val fetchPool = Executors.newFixedThreadPool(sources.size.coerceAtMost(4))
+            val completion = java.util.concurrent.ExecutorCompletionService<Pair<String, List<ImportedNode>>>(fetchPool)
+            try {
+                sources.forEach { source ->
+                    completion.submit(Callable {
+                        source to SubscriptionImporter.load(source)
+                    })
                 }
+                val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(16)
+                var finished = 0
+                while (finished < sources.size && System.nanoTime() < deadline && imported.isEmpty()) {
+                    val remaining = deadline - System.nanoTime()
+                    val future = completion.poll(remaining, TimeUnit.NANOSECONDS) ?: break
+                    finished++
+                    val result = runCatching { future.get() }.getOrNull() ?: continue
+                    if (result.second.isNotEmpty()) {
+                        successfulSource = result.first
+                        imported = result.second
+                    }
+                }
+            } finally {
+                fetchPool.shutdownNow()
             }
             runOnUiThread {
                 scanningFree = false
@@ -807,7 +817,7 @@ class MainActivity : Activity() {
                 saveNodes("free_nodes", freeNodes)
                 freeSource.setText(successfulSource)
                 refreshMode()
-                status.text = "Обновлено серверов: ${imported.size}. Проверяю реальный доступ…"
+                status.text = "Обновлено ${imported.size} серверов. Быстро проверяю доступ…"
                 findBestFreeServers()
             }
         }.start()
@@ -821,13 +831,13 @@ class MainActivity : Activity() {
         }
         scanningFree = true
         bestFreeButton.isEnabled = false
-        status.text = "Автопоиск: проверяю до 300 серверов…"
+        status.text = "Быстрый поиск: проверяю лучшие серверы…"
         // Public free nodes expire frequently. Check a much larger portion of the
         // imported catalogue and allow slow handshakes, rather than rejecting all
         // candidates after one short 25-second window.
-        val candidates = freeNodes.take(300)
+        val candidates = freeNodes.take(80)
         Thread {
-            val pool = Executors.newFixedThreadPool(8)
+            val pool = Executors.newFixedThreadPool(12)
             val completion = java.util.concurrent.ExecutorCompletionService<Pair<ImportedNode, Long>?>(pool)
             try {
                 candidates.forEach { node ->
@@ -843,9 +853,9 @@ class MainActivity : Activity() {
                     })
                 }
                 val checked = mutableListOf<Pair<ImportedNode, Long>>()
-                val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(90)
+                val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(25)
                 var completed = 0
-                while (completed < candidates.size && System.nanoTime() < deadline && checked.size < 20) {
+                while (completed < candidates.size && System.nanoTime() < deadline && checked.size < 3) {
                     val remaining = deadline - System.nanoTime()
                     val future = completion.poll(remaining, TimeUnit.NANOSECONDS) ?: break
                     completed++
@@ -856,12 +866,12 @@ class MainActivity : Activity() {
                             if (scanningFree) status.text = "Автопоиск: проверено $done из ${candidates.size}…"
                         }
                     }
-                    if (checked.size >= 20) break
+                    if (checked.size >= 3) break
                 }
                 val fastest = checked.sortedBy { it.second }
                 runOnUiThread {
                     if (fastest.isEmpty()) {
-                        status.text = "Не найдено рабочих серверов: проверено $completed из ${candidates.size}. Попробуй обновить список позже."
+                        status.text = "За 25 секунд рабочий сервер не найден. Попробуй обновить список позже."
                     } else {
                         freeNodes = fastest.map { it.first }
                         saveNodes("free_nodes", freeNodes)
