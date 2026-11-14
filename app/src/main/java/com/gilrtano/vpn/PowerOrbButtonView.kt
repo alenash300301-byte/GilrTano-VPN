@@ -19,7 +19,7 @@ class PowerOrbButtonView @JvmOverloads constructor(
         strokeJoin = Paint.Join.ROUND
     }
 
-    override fun onDraw(canvas: Canvas) {
+    fun setConnected(connected: Boolean) {\n        symbolPaint.color = if (connected) android.graphics.Color.rgb(0, 255, 48) else android.graphics.Color.WHITE\n        invalidate()\n    }\n\n    override fun onDraw(canvas: Canvas) {
         // View draws its background before onDraw; draw only the glyph here.
         val d = resources.displayMetrics.density
         val cx = width / 2f
