@@ -44,6 +44,8 @@ class MainActivity : Activity() {
     private lateinit var bestFreeButton: Button
     private lateinit var connectButton: Button
     private lateinit var cancelConnectButton: Button
+    private val fireDrawable = FireButtonDrawable()
+    private var fireAnimator: ValueAnimator? = null
     @Volatile private var scanningFree = false
     private var activeFree = false
     private var quattroNodes: List<ImportedNode> = emptyList()
