@@ -11,8 +11,8 @@ android {
         applicationId = "com.gilrtano.vpn"
         minSdk = 29
         targetSdk = 35
-        versionCode = 76
-        versionName = "0.7.6"
+        versionCode = 77
+        versionName = "0.7.7"
     }
 
     buildTypes {
@@ -27,6 +27,6 @@ android {
     kotlinOptions { jvmTarget = "17" }
 }
 
-dependencies {
+dependencies {\n    implementation("org.yaml:snakeyaml:2.4")
     implementation(files("libs/teapod-core-1.7.7.aar"))
 }
