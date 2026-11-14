@@ -22,6 +22,9 @@ import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.Chronometer
 import android.os.SystemClock
+import android.os.Handler
+import android.os.Looper
+import android.net.TrafficStats
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ImageView
@@ -62,6 +65,13 @@ class MainActivity : Activity() {
     private var activeMode: String = "auto"
     private lateinit var bestFreeButton: Button
     private lateinit var checkPing: Button
+    private lateinit var modeSelectorRow: LinearLayout
+    private lateinit var downloadMetric: TextView
+    private lateinit var uploadMetric: TextView
+    private val trafficHandler = Handler(Looper.getMainLooper())
+    private var lastRxBytes = TrafficStats.getTotalRxBytes()
+    private var lastTxBytes = TrafficStats.getTotalTxBytes()
+    private var lastTrafficSample = SystemClock.elapsedRealtime()
     private lateinit var connectButton: Button
     private val fireDrawable = FireButtonDrawable()
     private var fireAnimator: ValueAnimator? = null
@@ -442,6 +452,8 @@ class MainActivity : Activity() {
                                 typeface = android.graphics.Typeface.DEFAULT_BOLD
                                 setTextColor(Color.rgb(30, 238, 65))
                                 setPadding(0, dp(3), 0, 0)
+                                if (title == "Скачать") downloadMetric = this
+                                if (title == "Отдать") uploadMetric = this
                             })
                         }
                     }
@@ -460,21 +472,14 @@ class MainActivity : Activity() {
                 bestFreeButton.visibility = View.GONE
                 addView(checkPing, LinearLayout.LayoutParams.MATCH_PARENT, dp(1))
                 checkPing.visibility = View.GONE
-                addView(LinearLayout(this@MainActivity).apply {
+                modeSelectorRow = LinearLayout(this@MainActivity).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = android.view.Gravity.CENTER
-                    addView(quattroTab, LinearLayout.LayoutParams(0, dp(44), 1f).apply {
-                        rightMargin = dp(6)
-                    })
-                    addView(freeTab, LinearLayout.LayoutParams(0, dp(44), 1f).apply {
-                        leftMargin = dp(4); rightMargin = dp(4)
-                    })
-                    addView(autoTab, LinearLayout.LayoutParams(0, dp(44), 1f).apply {
-                        leftMargin = dp(4)
-                    })
-                }, LinearLayout.LayoutParams.MATCH_PARENT, dp(48))
-                quattroTab.visibility = View.VISIBLE
-                freeTab.visibility = View.VISIBLE
+                    addView(quattroTab, LinearLayout.LayoutParams(0, dp(44), 1f).apply { rightMargin = dp(6) })
+                    addView(freeTab, LinearLayout.LayoutParams(0, dp(44), 1f).apply { leftMargin = dp(4); rightMargin = dp(4) })
+                    addView(autoTab, LinearLayout.LayoutParams(0, dp(44), 1f).apply { leftMargin = dp(4) })
+                    visibility = View.GONE
+                }
                 settingsHeader = TextView(this@MainActivity).apply {
                     text = "Настройки и импорт  ›"; textSize = 20f
                     typeface = android.graphics.Typeface.DEFAULT_BOLD
@@ -491,6 +496,7 @@ class MainActivity : Activity() {
                     }
                 }
                 addView(settingsHeader)
+                addView(modeSelectorRow, LinearLayout.LayoutParams.MATCH_PARENT, dp(48))
                 addView(primarySource, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
                 addView(importPrimary)
                 addView(importDocx)
@@ -557,6 +563,8 @@ class MainActivity : Activity() {
             })
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(66)))
         setContentView(root)
+        trafficHandler.removeCallbacks(trafficSample)
+        trafficHandler.post(trafficSample)
         styleDarkInterface()
         installButtonFeedback()
         setPowerButtonLabel("ПОДКЛЮЧИТЬ")
@@ -740,6 +748,12 @@ class MainActivity : Activity() {
         visit(findViewById(android.R.id.content))
     }
 
+    override fun onDestroy() {
+        trafficHandler.removeCallbacks(trafficSample)
+        fireAnimator?.cancel()
+        super.onDestroy()
+    }
+
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     private fun styleDarkInterface() {
@@ -885,11 +899,12 @@ class MainActivity : Activity() {
     }
 
     private fun findImportButtonsVisibility() {
-        val content = findViewById<android.view.ViewGroup>(android.R.id.content)
+        val content = findViewById<ViewGroup>(android.R.id.content)
         val root = content.getChildAt(0) as? LinearLayout ?: return
         val scroll = root.getChildAt(0) as? android.widget.ScrollView ?: return
         val page = scroll.getChildAt(0) as? ViewGroup ?: return
         settingsHeader.visibility = if (settingsExpanded) View.VISIBLE else View.GONE
+        modeSelectorRow.visibility = if (settingsExpanded) View.VISIBLE else View.GONE
         primarySource.visibility = if (settingsExpanded && !activeFree) View.VISIBLE else View.GONE
         freeSource.visibility = if (settingsExpanded && activeFree) View.VISIBLE else View.GONE
         bestFreeButton.visibility = if (settingsExpanded && activeFree) View.VISIBLE else View.GONE
@@ -902,16 +917,32 @@ class MainActivity : Activity() {
                     (!activeFree && (label == "Импортировать Quattro" || label == "Выбрать DOCX Quattro")) ||
                     (activeFree && label == "Импортировать бесплатные серверы")
                 )
-                if (label == "QUATTRO" || label == "БЕСПЛАТНЫЙ РЕЗЕРВ") {
-                    child.visibility = View.VISIBLE
-                }
                 if (label.startsWith("Импортировать") || label == "Выбрать DOCX Quattro") {
                     child.visibility = if (show) View.VISIBLE else View.GONE
                 }
-                if (label == "Проверить пинг") child.visibility = if (settingsExpanded) View.VISIBLE else View.GONE
             }
         }
         pingStatus.visibility = if (settingsExpanded) View.VISIBLE else View.GONE
+    }
+
+    private val trafficSample = object : Runnable {
+        override fun run() {
+            if (::downloadMetric.isInitialized && ::uploadMetric.isInitialized) {
+                val now = SystemClock.elapsedRealtime()
+                val rx = TrafficStats.getTotalRxBytes()
+                val tx = TrafficStats.getTotalTxBytes()
+                val seconds = ((now - lastTrafficSample).coerceAtLeast(1L)) / 1000.0
+                val down = if (rx >= 0 && lastRxBytes >= 0) ((rx - lastRxBytes).coerceAtLeast(0L) * 8.0 / seconds / 1_000_000.0) else 0.0
+                val up = if (tx >= 0 && lastTxBytes >= 0) ((tx - lastTxBytes).coerceAtLeast(0L) * 8.0 / seconds / 1_000_000.0) else 0.0
+                val connected = ::status.isInitialized && status.text.toString().contains("Подключено")
+                downloadMetric.text = String.format(java.util.Locale.US, "%.1f Мбит/с", if (connected) down else 0.0)
+                uploadMetric.text = String.format(java.util.Locale.US, "%.1f Мбит/с", if (connected) up else 0.0)
+                lastRxBytes = rx
+                lastTxBytes = tx
+                lastTrafficSample = now
+            }
+            trafficHandler.postDelayed(this, 1000L)
+        }
     }
 
     private fun importFrom(source: String, isFree: Boolean) {
