@@ -137,7 +137,7 @@ class MainActivity : Activity() {
         quattroNodes = restoreNodes("quattro_nodes")
         freeNodes = restoreNodes("free_nodes")
 
-        status = TextView(this).apply { text = "Отключено"; textSize = 16f }
+        status = TextView(this).apply { text = "Отключено"; textSize = 14f; maxLines = 2; gravity = android.view.Gravity.CENTER; setPadding(dp(18), dp(4), dp(18), dp(4)) }
         pingStatus = TextView(this).apply { text = "Пинг: —"; textSize = 15f }
         primarySource = EditText(this).apply {
             hint = "Ссылка Quattro или Clash YAML"
@@ -322,8 +322,8 @@ class MainActivity : Activity() {
                     ))
                 }
                 addView(tigerScene, LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, dp(320)
-                ).apply { topMargin = dp(2); bottomMargin = dp(0) })
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(334)
+                ).apply { topMargin = dp(0); bottomMargin = dp(0) })
                 powerOrb = PowerOrbButtonView(this@MainActivity).apply {
                     text = ""
                     gravity = android.view.Gravity.CENTER
@@ -354,9 +354,9 @@ class MainActivity : Activity() {
                     false
                 }
                 powerOrb.contentDescription = "Кнопка питания VPN"
-                addView(powerOrb, LinearLayout.LayoutParams(dp(132), dp(132)).apply {
+                addView(powerOrb, LinearLayout.LayoutParams(dp(118), dp(118)).apply {
                     gravity = android.view.Gravity.CENTER
-                    topMargin = dp(-48); bottomMargin = dp(0)
+                    topMargin = dp(-50); bottomMargin = dp(0)
                 })
                 addView(status.apply {
                     text = "●  Отключено"; textSize = 17f
@@ -806,6 +806,18 @@ class MainActivity : Activity() {
         autoTab.alpha = if (autoMode) 1f else 0.72f
         quattroTab.alpha = if (!autoMode && !activeFree) 1f else 0.72f
         freeTab.alpha = if (!autoMode && activeFree) 1f else 0.72f
+        fun modeBackground(selected: Boolean) = GradientDrawable().apply {
+            setColor(if (selected) Color.rgb(54, 24, 12) else Color.rgb(13, 13, 15))
+            cornerRadius = dp(14).toFloat()
+            setStroke(dp(if (selected) 2 else 1),
+                if (selected) Color.rgb(255, 112, 18) else Color.rgb(58, 58, 62))
+        }
+        quattroTab.background = modeBackground(!autoMode && !activeFree)
+        freeTab.background = modeBackground(!autoMode && activeFree)
+        autoTab.background = modeBackground(autoMode)
+        quattroTab.setTextColor(if (!autoMode && !activeFree) Color.WHITE else Color.LTGRAY)
+        freeTab.setTextColor(if (!autoMode && activeFree) Color.WHITE else Color.LTGRAY)
+        autoTab.setTextColor(if (autoMode) Color.WHITE else Color.LTGRAY)
         primarySource.visibility = if (activeFree) ViewGroup.GONE else ViewGroup.VISIBLE
         freeSource.visibility = if (activeFree) ViewGroup.VISIBLE else ViewGroup.GONE
         bestFreeButton.visibility = if (activeFree) ViewGroup.VISIBLE else ViewGroup.GONE
@@ -824,7 +836,8 @@ class MainActivity : Activity() {
 
     private fun findImportButtonsVisibility() {
         val content = findViewById<android.view.ViewGroup>(android.R.id.content)
-        val scroll = content.getChildAt(0) as? android.widget.ScrollView ?: return
+        val root = content.getChildAt(0) as? LinearLayout ?: return
+        val scroll = root.getChildAt(0) as? android.widget.ScrollView ?: return
         val page = scroll.getChildAt(0) as? ViewGroup ?: return
         primarySource.visibility = if (settingsExpanded && !activeFree) View.VISIBLE else View.GONE
         freeSource.visibility = if (settingsExpanded && activeFree) View.VISIBLE else View.GONE
