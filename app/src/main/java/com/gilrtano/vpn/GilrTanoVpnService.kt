@@ -17,6 +17,10 @@ class GilrTanoVpnService : VpnService() {
     private var tun: ParcelFileDescriptor? = null
     @Volatile private var stopping = false
 
+    // Core environment and socket protection are process-wide setup; keep them
+    // ready across reconnects instead of repeating native initialization.
+    @Volatile private var coreInitialized = false
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> stopTunnel()
@@ -38,10 +42,19 @@ class GilrTanoVpnService : VpnService() {
         // Native core initialization/start can block; never run it on Android's service main thread.
         Thread({
             try {
-                Teapodcore.initCoreEnv(filesDir.absolutePath, "")
-                Teapodcore.registerVpnProtector(object : VpnProtector {
-                    override fun protect(fd: Long): Boolean = this@GilrTanoVpnService.protect(fd.toInt())
-                })
+                if (!coreInitialized) {
+                    synchronized(this@GilrTanoVpnService) {
+                        if (!coreInitialized) {
+                            Teapodcore.initCoreEnv(filesDir.absolutePath, "")
+                            Teapodcore.registerVpnProtector(object : VpnProtector {
+                                override fun protect(fd: Long): Boolean =
+                                    this@GilrTanoVpnService.protect(fd.toInt())
+                            })
+                            coreInitialized = true
+                        }
+                    }
+                }
+                if (stopping) return@Thread
                 Teapodcore.startXray(config, object : XrayCallback {
                     override fun onStatus(status: Long, message: String) {
                         Log.i(TAG, "Xray status=$status $message")
@@ -109,7 +122,6 @@ class GilrTanoVpnService : VpnService() {
             synchronized(this) {
                 runCatching { Teapodcore.stopTun2Socks() }
                 runCatching { Teapodcore.stopXray() }
-                runCatching { Teapodcore.registerVpnProtector(null) }
                 runCatching { tun?.close() }
                 tun = null
             }
