@@ -26,6 +26,8 @@ class GilrTanoVpnService : VpnService() {
     @Volatile private var activeConfig: String? = null
     @Volatile private var activeEngine: String = "xray"
     @Volatile private var fallbackConfig: String? = null
+    @Volatile private var rotationConfigs: List<String> = emptyList()
+    @Volatile private var rotationIndex = 0\n    @Volatile private var selectedFallbackConfig: String? = null
     @Volatile private var preferredConfig: String? = null
     @Volatile private var automaticMode = false
     @Volatile private var monitorRunning = false
@@ -48,6 +50,11 @@ class GilrTanoVpnService : VpnService() {
                 } else {
                     automaticMode = intent.getBooleanExtra(EXTRA_AUTO, false)
                     fallbackConfig = intent.getStringExtra(EXTRA_FALLBACK_CONFIG)
+                    rotationConfigs = runCatching {
+                        val json = JSONArray(intent.getStringExtra(EXTRA_ROTATION_CONFIGS) ?: "[]")
+                        (0 until json.length()).map { json.getString(it) }.filter { it.isNotBlank() }
+                    }.getOrDefault(emptyList())
+                    rotationIndex = 0
                     preferredConfig = intent.getStringExtra(EXTRA_PREFERRED_CONFIG)
                     usingFallback = false
                     consecutiveProbeFailures = 0
@@ -56,6 +63,14 @@ class GilrTanoVpnService : VpnService() {
             }
         }
         return START_NOT_STICKY
+    }
+
+    private fun nextFallbackConfig(): String? {
+        if (rotationConfigs.isNotEmpty()) {
+            if (rotationIndex >= rotationConfigs.size) rotationIndex = 0
+            return rotationConfigs[rotationIndex++].also { selectedFallbackConfig = it }
+        }
+        return fallbackConfig
     }
 
     private fun switchTunnel(config: String) {
@@ -108,7 +123,7 @@ class GilrTanoVpnService : VpnService() {
                                 usingFallback = true
                                 lastAutomaticSwitchAt = System.currentTimeMillis()
                                 broadcastStatus("Quattro недоступен. Запускаю бесплатный резерв…")
-                                switchTunnel(fallbackConfig!!)
+                                switchTunnel(activeFallbackTarget())
                             } else {
                                 broadcastStatus("Ошибка Xray: $message")
                                 stopTunnel()
@@ -125,7 +140,7 @@ class GilrTanoVpnService : VpnService() {
                         usingFallback = true
                         lastAutomaticSwitchAt = System.currentTimeMillis()
                         broadcastStatus("Не удалось запустить Quattro. Пробую бесплатный резерв…")
-                        switchTunnel(fallbackConfig!!)
+                        switchTunnel(activeFallbackTarget())
                     } else {
                         broadcastStatus("Ошибка запуска: ${e.message}")
                         stopTunnel()
@@ -194,7 +209,7 @@ class GilrTanoVpnService : VpnService() {
                 usingFallback = true
                 lastAutomaticSwitchAt = System.currentTimeMillis()
                 broadcastStatus("У выбранного сервера нет интернета. Пробую бесплатный резерв…")
-                switchTunnel(fallbackConfig!!)
+                switchTunnel(activeFallbackTarget())
             } else {
                 broadcastStatus("Не удалось подключиться: ${e.message}")
                 stopTunnel()
@@ -425,7 +440,7 @@ class GilrTanoVpnService : VpnService() {
         const val EXTRA_ENGINE = "engine"
         const val EXTRA_STATUS = "status"
         const val EXTRA_AUTO = "automatic_mode"
-        const val EXTRA_FALLBACK_CONFIG = "fallback_config"
+        const val EXTRA_FALLBACK_CONFIG = "fallback_config"\n        const val EXTRA_ROTATION_CONFIGS = "rotation_configs"
         const val EXTRA_PREFERRED_CONFIG = "preferred_config"
         private const val TAG = "GilrTanoVPN"
         private const val CHANNEL_ID = "gilrtano_vpn"
