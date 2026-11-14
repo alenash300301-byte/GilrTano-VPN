@@ -62,7 +62,7 @@ class TigerFlameOverlayView(context: Context) : View(context) {
         val ignitionHeight = h * (.12f + .42f * reveal)
         for (i in 0 until 9) {
             val spread = (i - 4) * 4.5f * unit
-            val sway = sin(phase * 1.4f + i * .8f) * 7f * unit
+            val sway = sin((phase * 1.4f + i * .8f).toDouble()).toFloat() * 7f * unit
             val baseY = h - 2f * unit
             val tipY = baseY - ignitionHeight * (.72f + .05f * (i % 4))
             val widthBase = (4f + (i % 3) * 2f) * unit
@@ -89,14 +89,14 @@ class TigerFlameOverlayView(context: Context) : View(context) {
         val visibleCount = (count * reveal).toInt()
         for (i in 0 until visibleCount) {
             val angle = (Math.PI * 2.0 * i / count).toFloat() - (Math.PI / 2f)
-            val wave = (sin(phase * 1.65f + i * 1.27f) + 1f) * .5f
+            val wave = (sin((phase * 1.65f + i * 1.27f).toDouble()).toFloat() + 1f) * .5f
             val x = cx + cos(angle.toDouble()).toFloat() * rx
             val y = cy + sin(angle.toDouble()).toFloat() * ry
             val nx = cos(angle.toDouble()).toFloat()
             val ny = sin(angle.toDouble()).toFloat()
             val length = (18f + 28f * wave) * unit
             val half = (4f + 4f * wave) * unit
-            val drift = sin(phase + i * .63f) * 5f * unit
+            val drift = sin((phase + i * .63f).toDouble()).toFloat() * 5f * unit
             val path = Path().apply {
                 moveTo(x - ny * half, y + nx * half)
                 cubicTo(
