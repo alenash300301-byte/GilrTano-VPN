@@ -61,7 +61,7 @@ class FireButtonDrawable : Drawable() {
         canvas.drawCircle(0f, 0f, radius, paint)
         if (connected) {
             paint.shader = RadialGradient(0f, 0f, radius,
-                intArrayOf(Color.rgb(15, 95, 28), Color.rgb(2, 24, 8)),
+                intArrayOf(Color.rgb(15, 95, 28), Color.rgb(2, 24, 8)), floatArrayOf(0f, 1f),
                 Shader.TileMode.CLAMP)
             canvas.drawCircle(0f, 0f, radius*.96f, paint)
             paint.shader = null
