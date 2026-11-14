@@ -242,7 +242,7 @@ class MainActivity : Activity() {
                         .setAction(GilrTanoVpnService.ACTION_STOP))
                     return@setOnClickListener
                 }
-                if (autoMode) {
+                if (autoMode && !activePortal) {
                     activeFree = quattroNodes.isEmpty() && freeNodes.isNotEmpty()
                     prefs.edit().putBoolean("active_free_mode", activeFree).apply()
                     refreshMode()
@@ -257,12 +257,13 @@ class MainActivity : Activity() {
                     Toast.makeText(this@MainActivity, "В этом режиме пока нет серверов", Toast.LENGTH_LONG).show()
                 } else {
                     try {
-                        val config = GilrTanoVpnService.xrayConfigFromVless(node.uri)
-                        val fallbackConfig = if (autoMode) {
+                        val config = if (activePortal) PortalConfigBuilder.build(node.uri) else GilrTanoVpnService.xrayConfigFromVless(node.uri)
+                        pendingEngine = if (activePortal) "singbox" else "xray"
+                        val fallbackConfig = if (autoMode && !activePortal) {
                             (if (activeFree) quattroNodes.firstOrNull() else freeNodes.firstOrNull())
                                 ?.let { runCatching { GilrTanoVpnService.xrayConfigFromVless(it.uri) }.getOrNull() }
                         } else null
-                        val preferredConfig = if (autoMode) {
+                        val preferredConfig = if (autoMode && !activePortal) {
                             quattroNodes.firstOrNull()?.let { runCatching { GilrTanoVpnService.xrayConfigFromVless(it.uri) }.getOrNull() }
                         } else null
                         pendingConfig = config
@@ -837,7 +838,47 @@ class MainActivity : Activity() {
         style(root)
     }
 
+    private fun switchToPortal() {
+        activePortal = true
+        activeFree = false
+        autoMode = false
+        activeMode = "portal"
+        prefs.edit().putString("connection_mode", "portal").putBoolean("active_free_mode", false).apply()
+        refreshMode()
+        updateServerCard(status.text.toString().contains("Подключено"))
+        Toast.makeText(this, "Режим Portal · sing-box", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun importPortal(source: String) {
+        if (source.isBlank()) { Toast.makeText(this, "Укажи ссылку Portal или подписку", Toast.LENGTH_LONG).show(); return }
+        status.text = "Загружаю Portal…"
+        Thread {
+            try {
+                val imported = if (source.startsWith("http://") || source.startsWith("https://")) {
+                    val connection = (java.net.URL(source).openConnection() as java.net.HttpURLConnection).apply {
+                        connectTimeout = 15000; readTimeout = 25000
+                    }
+                    val text = connection.inputStream.bufferedReader().use { it.readText() }
+                    connection.disconnect()
+                    PortalConfigBuilder.fromLinks(text)
+                } else PortalConfigBuilder.fromLinks(source)
+                runOnUiThread {
+                    if (imported.isEmpty()) { status.text = "В Portal не найдены VLESS / Trojan / Shadowsocks"; return@runOnUiThread }
+                    portalNodes = imported
+                    saveNodes("portal_nodes", portalNodes)
+                    prefs.edit().putString("portal_subscription_url", source).apply()
+                    switchToPortal()
+                    servers.setSelection(0)
+                    settingsExpanded = false
+                    findImportButtonsVisibility()
+                    status.text = "Portal: сохранено серверов — ${imported.size}"
+                }
+            } catch (e: Exception) { runOnUiThread { status.text = "Ошибка Portal: ${e.message}" } }
+        }.start()
+    }
+
     private fun switchToAuto() {
+        activePortal = false
         autoMode = true
         activeMode = "auto"
         prefs.edit().putString("connection_mode", "auto").apply()
@@ -847,6 +888,7 @@ class MainActivity : Activity() {
     }
 
     private fun switchMode(free: Boolean) {
+        activePortal = false
         autoMode = false
         activeMode = if (free) "free" else "quattro"
         prefs.edit().putString("connection_mode", activeMode).apply()
