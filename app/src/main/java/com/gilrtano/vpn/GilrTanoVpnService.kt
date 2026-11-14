@@ -259,7 +259,8 @@ class GilrTanoVpnService : VpnService() {
             val skip = ByteArray(addressLength + 2)
             readFully(input, skip)
 
-            val tls = SSLSocketFactory.getDefault().createSocket(
+            val sslFactory = SSLSocketFactory.getDefault() as SSLSocketFactory
+            val tls = sslFactory.createSocket(
                 socket, "www.gstatic.com", 443, true
             ) as javax.net.ssl.SSLSocket
             tls.soTimeout = PROBE_TIMEOUT_MS
@@ -350,6 +351,12 @@ class GilrTanoVpnService : VpnService() {
         private const val CHANNEL_ID = "gilrtano_vpn"
         private const val NOTIFICATION_ID = 76
         private const val SOCKS_PORT = 10808
+        private const val MONITOR_INTERVAL_MS = 15_000L
+        private const val PROBE_TIMEOUT_MS = 5_000
+        private const val POOR_LATENCY_MS = 500L
+        private const val FAILURE_LIMIT = 2
+        private const val SWITCH_COOLDOWN_MS = 60_000L
+        private const val RECOVERY_INTERVAL_MS = 5 * 60_000L
 
         fun xrayConfigFromVless(uri: String): String {
             val parsed = android.net.Uri.parse(uri.trim())
