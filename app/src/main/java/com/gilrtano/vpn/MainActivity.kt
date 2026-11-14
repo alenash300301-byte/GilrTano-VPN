@@ -21,7 +21,8 @@ class MainActivity : Activity() {
     private lateinit var primarySource: EditText
     private lateinit var freeSource: EditText
     private lateinit var servers: Spinner
-    private val requestCode = 4101\n    private val docxRequestCode = 4102
+    private val requestCode = 4101
+    private val docxRequestCode = 4102
     private var nodes: List<ImportedNode> = emptyList()
     private var pendingConfig: String? = null
 
@@ -104,6 +105,7 @@ class MainActivity : Activity() {
             })
             addView(primarySource, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
             addView(importPrimary)
+            addView(importDocx)
             addView(freeSource, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
             addView(importFree)
             addView(TextView(this@MainActivity).apply { text = "Сервер:"; textSize = 15f })
