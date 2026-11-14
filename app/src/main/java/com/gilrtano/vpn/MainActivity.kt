@@ -76,9 +76,9 @@ class MainActivity : Activity() {
             // and while connected so it can disconnect.
             connectButton.isEnabled = true
             connectButton.text = when {
-                message.startsWith("Подключено") || message.startsWith("Отключаю") -> "⏻\\nОТКЛЮЧИТЬ"
-                busy -> "⏻\\nПОДКЛЮЧЕНИЕ…"
-                else -> "⏻\\nПОДКЛЮЧИТЬ"
+                message.startsWith("Подключено") || message.startsWith("Отключаю") -> "⏻\nОТКЛЮЧИТЬ"
+                busy -> "⏻\nПОДКЛЮЧЕНИЕ…"
+                else -> "⏻\nПОДКЛЮЧИТЬ"
             }
             connectButton.contentDescription = when {
                 message.startsWith("Подключено") -> "Отключить VPN"
@@ -148,7 +148,7 @@ class MainActivity : Activity() {
             setOnClickListener { importFrom(freeSource.text.toString().trim(), true) }
         }
         connectButton = Button(this).apply {
-            text = "⏻\\nПОДКЛЮЧИТЬ"
+            text = "⏻\nПОДКЛЮЧИТЬ"
             setOnClickListener {
                 val currentStatus = status.text.toString()
                 val isConnected = currentStatus.startsWith("Подключено")
@@ -315,7 +315,7 @@ class MainActivity : Activity() {
         setContentView(root)
         styleDarkInterface()
         installButtonFeedback()
-        connectButton.text = "⏻\\nПОДКЛЮЧИТЬ"
+        connectButton.text = "⏻\nПОДКЛЮЧИТЬ"
         connectButton.apply {
             textSize = 17f
             typeface = android.graphics.Typeface.DEFAULT_BOLD
