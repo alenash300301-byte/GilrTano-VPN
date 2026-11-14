@@ -968,7 +968,10 @@ class MainActivity : Activity() {
                     activeFree = isFree
                     prefs.edit().putBoolean("active_free_mode", activeFree).apply()
                     refreshMode()
-                    status.text = "Сохранено серверов: ${imported.size}. Повторный импорт не нужен."
+                    settingsExpanded = false
+                    settingsHeader.text = "Настройки"
+                    findImportButtonsVisibility()
+                    status.text = "Серверы добавлены"
                     if (isFree) findBestFreeServers() else measureSelectedPing()
                 }
             } catch (e: Exception) {
