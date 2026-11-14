@@ -8,19 +8,21 @@ import android.content.IntentFilter
 import android.net.VpnService
 import android.os.Bundle
 import android.view.ViewGroup
+import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
-import android.util.Base64
-import java.net.HttpURLConnection
-import java.net.URL
 
 class MainActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var profile: EditText
+    private lateinit var servers: Spinner
     private val requestCode = 4101
+    private var nodes: List<ImportedNode> = emptyList()
+
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             status.text = intent?.getStringExtra(GilrTanoVpnService.EXTRA_STATUS) ?: "—"
@@ -29,36 +31,39 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        status = TextView(this).apply { text = "Отключено"; textSize = 18f }
+        status = TextView(this).apply { text = "Отключено"; textSize = 17f }
         profile = EditText(this).apply {
-            hint = "Вставьте VLESS-ссылку или ссылку подписки"
-            minLines = 3
-            maxLines = 5
-            setText(getPreferences(MODE_PRIVATE).getString("vless_uri", ""))
+            hint = "Ссылка Quattro, VLESS или подписка"
+            minLines = 2
+            maxLines = 4
+            setText(getPreferences(MODE_PRIVATE).getString("subscription_url", ""))
+        }
+        servers = Spinner(this)
+        val import = Button(this).apply {
+            text = "Импортировать Quattro / подписку"
+            setOnClickListener { importFrom(profile.text.toString().trim(), false) }
+        }
+        val free = Button(this).apply {
+            text = "Загрузить бесплатный резерв"
+            setOnClickListener { importFrom(FREE_VLESS_URL, true) }
         }
         val connect = Button(this).apply {
-            text = "Подключить"
+            text = "Подключить выбранный сервер"
             setOnClickListener {
-                val uri = profile.text.toString().trim()
-                if (uri.isBlank()) {
-                    Toast.makeText(this@MainActivity, "Вставьте ссылку профиля", Toast.LENGTH_LONG).show()
+                val node = nodes.getOrNull(servers.selectedItemPosition)
+                if (node == null) {
+                    Toast.makeText(this@MainActivity, "Сначала импортируйте серверы", Toast.LENGTH_LONG).show()
                 } else {
-                    getPreferences(MODE_PRIVATE).edit().putString("vless_uri", uri).apply()
-                    status.text = "Загружаю профиль…"
-                    Thread {
-                        try {
-                            val vless = resolveVless(uri)
-                            val config = GilrTanoVpnService.xrayConfigFromVless(vless)
-                            runOnUiThread {
-                                pendingConfig = config
-                                val permission = VpnService.prepare(this@MainActivity)
-                                if (permission != null) startActivityForResult(permission, requestCode)
-                                else startVpn(config)
-                            }
-                        } catch (e: Exception) {
-                            runOnUiThread { status.text = "Профиль: " + e.message }
-                        }
-                    }.start()
+                    try {
+                        val config = GilrTanoVpnService.xrayConfigFromVless(node.uri)
+                        pendingConfig = config
+                        status.text = "Подключаю: ${node.name}…"
+                        val permission = VpnService.prepare(this@MainActivity)
+                        if (permission != null) startActivityForResult(permission, requestCode)
+                        else startVpn(config)
+                    } catch (e: Exception) {
+                        status.text = "Ошибка профиля: ${e.message}"
+                    }
                 }
             }
         }
@@ -71,40 +76,67 @@ class MainActivity : Activity() {
         setContentView(LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(32, 48, 32, 32)
-            addView(TextView(this@MainActivity).apply { text = "GilrTano VPN"; textSize = 24f })
+            addView(TextView(this@MainActivity).apply { text = "GilrTano VPN"; textSize = 25f })
+            addView(TextView(this@MainActivity).apply {
+                text = "Основной профиль Quattro и бесплатный резерв"
+                textSize = 14f
+            })
             addView(profile, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            addView(import)
+            addView(free)
+            addView(TextView(this@MainActivity).apply { text = "Сервер:"; textSize = 15f })
+            addView(servers)
             addView(connect)
             addView(disconnect)
             addView(status)
+            addView(TextView(this@MainActivity).apply {
+                text = "Бесплатные публичные узлы принадлежат неизвестным операторам. Не используйте их для банков и важных аккаунтов."
+                textSize = 12f
+            })
         })
     }
 
-    private fun resolveVless(input: String): String {
-        if (input.startsWith("vless://")) return input
-        val connection = (URL(input).openConnection() as HttpURLConnection).apply {
-            connectTimeout = 15000
-            readTimeout = 20000
-            requestMethod = "GET"
-            setRequestProperty("User-Agent", "GilrTanoVPN/0.7.6")
+    private fun importFrom(source: String, isFree: Boolean) {
+        if (source.isBlank()) {
+            Toast.makeText(this, "Вставьте ссылку Quattro или подписки", Toast.LENGTH_LONG).show()
+            return
         }
-        try {
-            val body = connection.inputStream.bufferedReader().use { it.readText() }.trim()
-            val decoded = if (body.startsWith("vless://")) body else try {
-                String(Base64.decode(body.replace("\\n", "").trim(), Base64.DEFAULT), Charsets.UTF_8)
-            } catch (_: Exception) { body }
-            return decoded.lineSequence().map { it.trim() }.firstOrNull { it.startsWith("vless://") }
-                ?: throw IllegalArgumentException("В подписке не найдена VLESS-конфигурация")
-        } finally {
-            connection.disconnect()
-        }
+        status.text = if (isFree) "Загружаю бесплатный резерв…" else "Загружаю Quattro…"
+        Thread {
+            try {
+                val imported = SubscriptionImporter.load(source)
+                runOnUiThread {
+                    if (imported.isEmpty()) {
+                        status.text = "Не найдено поддерживаемых VLESS-серверов"
+                        return@runOnUiThread
+                    }
+                    nodes = imported
+                    servers.adapter = ArrayAdapter(
+                        this,
+                        android.R.layout.simple_spinner_dropdown_item,
+                        nodes.map { it.name }
+                    )
+                    if (!isFree) {
+                        profile.setText(source)
+                        getPreferences(MODE_PRIVATE).edit().putString("subscription_url", source).apply()
+                    }
+                    status.text = "Импортировано серверов: ${nodes.size}. Hysteria2 пока пропускается."
+                }
+            } catch (e: Exception) {
+                runOnUiThread { status.text = "Ошибка импорта: ${e.message}" }
+            }
+        }.start()
     }
 
     private var pendingConfig: String? = null
+
     private fun startVpn(config: String) {
         pendingConfig = config
-        startForegroundService(Intent(this, GilrTanoVpnService::class.java)
-            .setAction(GilrTanoVpnService.ACTION_START)
-            .putExtra(GilrTanoVpnService.EXTRA_CONFIG, config))
+        startForegroundService(
+            Intent(this, GilrTanoVpnService::class.java)
+                .setAction(GilrTanoVpnService.ACTION_START)
+                .putExtra(GilrTanoVpnService.EXTRA_CONFIG, config)
+        )
         status.text = "Запускаю VPN…"
     }
 
@@ -113,6 +145,8 @@ class MainActivity : Activity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == this.requestCode && resultCode == RESULT_OK) {
             pendingConfig?.let { startVpn(it) }
+        } else if (requestCode == this.requestCode) {
+            status.text = "Разрешение VPN не предоставлено"
         }
     }
 
@@ -126,5 +160,10 @@ class MainActivity : Activity() {
     override fun onStop() {
         runCatching { unregisterReceiver(receiver) }
         super.onStop()
+    }
+
+    companion object {
+        private const val FREE_VLESS_URL =
+            "https://raw.githubusercontent.com/morpheusadam/v2ray-config/main/subs/bundles/vless.txt"
     }
 }
