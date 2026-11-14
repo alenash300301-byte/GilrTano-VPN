@@ -96,16 +96,30 @@ class GilrTanoVpnService : VpnService() {
                         Log.i(TAG, "Xray status=$status $message")
                         if (status == 0L && !stopping) establishTun()
                         else if (status < 0L && !stopping) {
-                            broadcastStatus("Ошибка Xray: $message")
-                            stopTunnel()
+                            if (automaticMode && !usingFallback && !fallbackConfig.isNullOrBlank()) {
+                                usingFallback = true
+                                lastAutomaticSwitchAt = System.currentTimeMillis()
+                                broadcastStatus("Quattro недоступен. Запускаю бесплатный резерв…")
+                                switchTunnel(fallbackConfig!!)
+                            } else {
+                                broadcastStatus("Ошибка Xray: $message")
+                                stopTunnel()
+                            }
                         }
                     }
                 })
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to start Xray", e)
                 if (!stopping) {
-                    broadcastStatus("Ошибка запуска: ${e.message}")
-                    stopTunnel()
+                    if (automaticMode && !usingFallback && !fallbackConfig.isNullOrBlank()) {
+                        usingFallback = true
+                        lastAutomaticSwitchAt = System.currentTimeMillis()
+                        broadcastStatus("Не удалось запустить Quattro. Пробую бесплатный резерв…")
+                        switchTunnel(fallbackConfig!!)
+                    } else {
+                        broadcastStatus("Ошибка запуска: ${e.message}")
+                        stopTunnel()
+                    }
                 }
             }
         }, "GilrTano-Xray-start").start()
