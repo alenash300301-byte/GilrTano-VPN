@@ -193,8 +193,8 @@ class MainActivity : Activity() {
     }
 
     private fun findImportButtonsVisibility() {
-        val root = (servers.parent as? LinearLayout)?.parent as? LinearLayout ?: return
-        // Source controls remain in the layout; only the active source is editable.
+        val content = findViewById<android.view.ViewGroup>(android.R.id.content)
+        val root = content.getChildAt(0) as? LinearLayout ?: return
         for (i in 0 until root.childCount) {
             val child = root.getChildAt(i)
             if (child is Button) {
