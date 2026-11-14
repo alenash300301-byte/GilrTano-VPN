@@ -47,7 +47,7 @@ class MainActivity : Activity() {
             hint = "Резерв: ссылка бесплатной подписки VLESS (добавьте проверенный источник)"
             minLines = 2
             maxLines = 4
-            setText(getPreferences(MODE_PRIVATE).getString("free_subscription_url", ""))
+            setText(getPreferences(MODE_PRIVATE).getString("free_subscription_url", "https://raw.githubusercontent.com/morpheusadam/v2ray-config/main/subs/bundles/best.txt"))
         }
         servers = Spinner(this)
         val importPrimary = Button(this).apply {
