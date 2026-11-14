@@ -32,15 +32,12 @@ fi
 GOMOBILE="$(command -v gomobile || printf '%s' "$HOME/go/bin/gomobile")"
 "$GOMOBILE" init
 
-# Upstream build.sh currently targets ARM64 and x86_64. It does NOT build ARMv7.
-# Its build script also reads the app version from a sibling teapodstream/pubspec.yaml.
 if [[ ! -f "$CORE/../teapodstream/pubspec.yaml" ]]; then
   echo "ОШИБКА: upstream build.sh требует соседний teapodstream/pubspec.yaml." >&2
-  echo "Нужно получить согласованную пару исходников teapod-core + teapod-stream;" >&2
-  echo "не подставляю выдуманную версию и не меняю upstream сборку автоматически." >&2
   exit 3
 fi
-(cd "$CORE" && PATH="$HOME/go/bin:$PATH" ./build.sh build)
+# Upstream file may not have the executable bit in the Git checkout.
+(cd "$CORE" && PATH="$HOME/go/bin:$PATH" bash ./build.sh build)
 
 AAR="$CORE/outputs/teapod-core-*.aar"
 compgen -G "$AAR" >/dev/null || { echo "ОШИБКА: AAR не создан" >&2; exit 4; }
