@@ -137,7 +137,7 @@ class MainActivity : Activity() {
             setOnClickListener { importFrom(freeSource.text.toString().trim(), true) }
         }
         connectButton = Button(this).apply {
-            text = "⏻\nПОДКЛЮЧИТЬ"
+            text = ""
             setOnClickListener {
                 val node = activeNodes.getOrNull(servers.selectedItemPosition)
                 if (node == null) {
@@ -230,24 +230,23 @@ class MainActivity : Activity() {
                 addView(TigerMarkView(this@MainActivity), LinearLayout.LayoutParams(dp(270), dp(270)).apply {
                     topMargin = dp(4); bottomMargin = dp(2)
                 })
+                addView(connectButton, LinearLayout.LayoutParams(dp(280), dp(280)).apply {
+                    gravity = android.view.Gravity.CENTER
+                    topMargin = dp(12); bottomMargin = dp(6)
+                })
                 addView(status.apply {
-                    text = "● Отключено"; textSize = 18f
+                    text = "Отключено"; textSize = 18f
                     gravity = android.view.Gravity.CENTER
                     setTextColor(Color.LTGRAY)
                     background = GradientDrawable().apply {
-                        setColor(Color.rgb(10, 10, 12)); cornerRadius = dp(28).toFloat()
-                        setStroke(dp(1), Color.rgb(48, 48, 52))
+                        setColor(Color.TRANSPARENT); cornerRadius = dp(28).toFloat()
                     }
-                    setPadding(dp(22), dp(9), dp(22), dp(9))
+                    setPadding(dp(22), dp(5), dp(22), dp(2))
                 })
                 addView(TextView(this@MainActivity).apply {
-                    text = "Готово к подключению  🇪🇺"; textSize = 16f
+                    text = "Выбери сервер и нажми кнопку питания"; textSize = 13f
                     setTextColor(Color.LTGRAY); gravity = android.view.Gravity.CENTER
-                    setPadding(0, dp(8), 0, dp(4))
-                })
-                addView(connectButton, LinearLayout.LayoutParams(dp(280), dp(280)).apply {
-                    gravity = android.view.Gravity.CENTER
-                    topMargin = dp(8); bottomMargin = dp(12)
+                    setPadding(0, dp(2), 0, dp(10))
                 })
                 addView(LinearLayout(this@MainActivity).apply {
                     orientation = LinearLayout.HORIZONTAL
