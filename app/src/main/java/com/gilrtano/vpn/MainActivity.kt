@@ -61,6 +61,12 @@ class MainActivity : Activity() {
     private lateinit var quattroTab: Button
     private lateinit var freeTab: Button
     private lateinit var autoTab: Button
+    private lateinit var portalTab: Button
+    private lateinit var portalSource: EditText
+    private lateinit var importPortalButton: Button
+    private var portalNodes: List<ImportedNode> = emptyList()
+    private var activePortal = false
+    private var pendingEngine = "xray"
     private var autoMode = true
     private var activeMode: String = "auto"
     private lateinit var bestFreeButton: Button
@@ -90,7 +96,7 @@ class MainActivity : Activity() {
 
     private val prefs by lazy { getPreferences(MODE_PRIVATE) }
     private val activeNodes: List<ImportedNode>
-        get() = if (activeFree) freeNodes else quattroNodes
+        get() = when { activePortal -> portalNodes; activeFree -> freeNodes; else -> quattroNodes }
 
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -148,6 +154,7 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         quattroNodes = restoreNodes("quattro_nodes")
         freeNodes = restoreNodes("free_nodes")
+        portalNodes = restoreNodes("portal_nodes")
 
         status = TextView(this).apply { text = "Отключено"; textSize = 14f; maxLines = 2; gravity = android.view.Gravity.CENTER; setPadding(dp(18), dp(4), dp(18), dp(4)) }
         pingStatus = TextView(this).apply { text = "Пинг: —"; textSize = 15f }
@@ -163,6 +170,12 @@ class MainActivity : Activity() {
             minLines = 2
             maxLines = 3
             setText(prefs.getString("free_subscription_url", "https://raw.githubusercontent.com/morpheusadam/v2ray-config/main/subs/bundles/vless.txt"))
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
+        }
+        portalSource = EditText(this).apply {
+            hint = "Ссылка Portal (HTTPS или VLESS / Trojan / SS)"
+            minLines = 2; maxLines = 4
+            setText(prefs.getString("portal_subscription_url", ""))
             inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
         }
         servers = Spinner(this).apply {
@@ -189,6 +202,14 @@ class MainActivity : Activity() {
             setOnClickListener { switchToAuto() }
         }
 
+        portalTab = Button(this).apply {
+            text = "PORTAL"
+            setOnClickListener { switchToPortal() }
+        }
+        importPortalButton = Button(this).apply {
+            text = "Импортировать Portal"
+            setOnClickListener { importPortal(portalSource.text.toString().trim()) }
+        }
         val importPrimary = Button(this).apply {
             text = "Импортировать Quattro"
             setOnClickListener { importFrom(primarySource.text.toString().trim(), false) }
@@ -488,6 +509,7 @@ class MainActivity : Activity() {
                     addView(quattroTab, LinearLayout.LayoutParams(0, dp(44), 1f).apply { rightMargin = dp(6) })
                     addView(freeTab, LinearLayout.LayoutParams(0, dp(44), 1f).apply { leftMargin = dp(4); rightMargin = dp(4) })
                     addView(autoTab, LinearLayout.LayoutParams(0, dp(44), 1f).apply { leftMargin = dp(4) })
+                    addView(portalTab, LinearLayout.LayoutParams(0, dp(44), 1f).apply { leftMargin = dp(4) })
                     visibility = View.GONE
                 }
                 settingsHeader = TextView(this@MainActivity).apply {
@@ -512,6 +534,8 @@ class MainActivity : Activity() {
                 addView(importDocx)
                 addView(freeSource, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
                 addView(importFree)
+                addView(portalSource, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                addView(importPortalButton)
                 addView(TextView(this@MainActivity).apply {
                     text = "Бесплатные серверы предоставляются сторонними операторами."
                     textSize = 10f; setTextColor(Color.GRAY); gravity = android.view.Gravity.CENTER
@@ -879,9 +903,13 @@ class MainActivity : Activity() {
         autoTab.background = modeBackground(autoMode)
         quattroTab.setTextColor(if (!autoMode && !activeFree) Color.WHITE else Color.LTGRAY)
         freeTab.setTextColor(if (!autoMode && activeFree) Color.WHITE else Color.LTGRAY)
-        autoTab.setTextColor(if (autoMode) Color.WHITE else Color.LTGRAY)
-        primarySource.visibility = if (activeFree) ViewGroup.GONE else ViewGroup.VISIBLE
-        freeSource.visibility = if (activeFree) ViewGroup.VISIBLE else ViewGroup.GONE
+        autoTab.setTextColor(if (autoMode && !activePortal) Color.WHITE else Color.LTGRAY)
+        portalTab.alpha = if (activePortal) 1f else 0.72f
+        portalTab.background = modeBackground(activePortal)
+        portalTab.setTextColor(if (activePortal) Color.WHITE else Color.LTGRAY)
+        primarySource.visibility = if (activeFree || activePortal) ViewGroup.GONE else ViewGroup.VISIBLE
+        freeSource.visibility = if (activeFree && !activePortal) ViewGroup.VISIBLE else ViewGroup.GONE
+        portalSource.visibility = if (activePortal) ViewGroup.VISIBLE else ViewGroup.GONE
         findImportButtonsVisibility()
         val list = activeNodes
         servers.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, list.map { it.name })
@@ -903,7 +931,9 @@ class MainActivity : Activity() {
         settingsHeader.visibility = if (settingsExpanded) View.VISIBLE else View.GONE
         modeSelectorRow.visibility = if (settingsExpanded) View.VISIBLE else View.GONE
         primarySource.visibility = if (settingsExpanded && !activeFree) View.VISIBLE else View.GONE
-        freeSource.visibility = if (settingsExpanded && activeFree) View.VISIBLE else View.GONE
+        freeSource.visibility = if (settingsExpanded && activeFree && !activePortal) View.VISIBLE else View.GONE
+        portalSource.visibility = if (settingsExpanded && activePortal) View.VISIBLE else View.GONE
+        importPortalButton.visibility = if (settingsExpanded && activePortal) View.VISIBLE else View.GONE
         bestFreeButton.visibility = if (settingsExpanded && activeFree) View.VISIBLE else View.GONE
         checkPing.visibility = if (settingsExpanded) View.VISIBLE else View.GONE
         for (i in 0 until page.childCount) {
@@ -1249,6 +1279,7 @@ class MainActivity : Activity() {
         val intent = Intent(this, GilrTanoVpnService::class.java)
             .setAction(GilrTanoVpnService.ACTION_START)
             .putExtra(GilrTanoVpnService.EXTRA_CONFIG, config)
+            .putExtra(GilrTanoVpnService.EXTRA_ENGINE, pendingEngine)
             .putExtra(GilrTanoVpnService.EXTRA_AUTO, automatic)
         fallbackConfig?.let { intent.putExtra(GilrTanoVpnService.EXTRA_FALLBACK_CONFIG, it) }
         preferredConfig?.let { intent.putExtra(GilrTanoVpnService.EXTRA_PREFERRED_CONFIG, it) }
