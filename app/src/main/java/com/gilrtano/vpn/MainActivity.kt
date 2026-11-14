@@ -9,6 +9,7 @@ import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.net.VpnService
 import android.os.Bundle
+import android.view.View
 import android.view.ViewGroup
 import android.view.MotionEvent
 import android.animation.AnimatorSet
@@ -301,6 +302,8 @@ class MainActivity : Activity() {
         bg.setStroke(dp(3), Color.rgb(48, 48, 52))
         connectButton.elevation = dp(10).toFloat()
     }
+
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     private fun styleDarkInterface() {
         val root = findViewById<ViewGroup>(android.R.id.content).getChildAt(0) as? LinearLayout ?: return
