@@ -151,26 +151,54 @@ class GilrTanoVpnService : VpnService() {
             val q = parsed
             val security = q.getQueryParameter("security") ?: "none"
             val network = q.getQueryParameter("type") ?: "tcp"
-            // Current Xray core rejects VLESS without TLS/REALITY for public server addresses.
-            require(security == "reality" || security == "tls") {
-                "Сервер VLESS без TLS/REALITY не поддерживается Xray. Выбери сервер с security=tls или security=reality."
+            // Xray supports VLESS with TLS, REALITY, and plaintext transport.
+            // Public free lists often contain security=none; rejecting it here
+            // discarded otherwise valid VLESS profiles before Xray could test them.
+            require(security in setOf("reality", "tls", "none")) {
+                "Неизвестный тип защиты VLESS: $security"
+            }
+            require(network in setOf("tcp", "ws", "grpc", "httpupgrade", "xhttp")) {
+                "Неподдерживаемый транспорт VLESS: $network"
             }
             val stream = JSONObject().put("network", network).put("security", security)
             if (security == "reality") {
+                val serverName = q.getQueryParameter("sni") ?: q.getQueryParameter("serverName") ?: ""
+                val publicKey = q.getQueryParameter("pbk") ?: ""
+                val shortId = q.getQueryParameter("sid") ?: ""
+                require(serverName.isNotBlank() && publicKey.isNotBlank() && shortId.isNotBlank()) {
+                    "В REALITY-профиле отсутствует SNI, public key или short ID"
+                }
                 val reality = JSONObject()
                     .put("show", false)
-                    .put("serverName", q.getQueryParameter("sni") ?: q.getQueryParameter("serverName") ?: "")
+                    .put("serverName", serverName)
                     .put("fingerprint", q.getQueryParameter("fp") ?: "chrome")
-                    .put("publicKey", q.getQueryParameter("pbk") ?: "")
-                    .put("shortId", q.getQueryParameter("sid") ?: "")
+                    .put("publicKey", publicKey)
+                    .put("shortId", shortId)
+                    .put("spiderX", q.getQueryParameter("spx") ?: "")
                 stream.put("realitySettings", reality)
             } else if (security == "tls") {
-                stream.put("tlsSettings", JSONObject().put("serverName", q.getQueryParameter("sni") ?: parsed.host))
+                val tls = JSONObject()
+                    .put("serverName", q.getQueryParameter("sni") ?: q.getQueryParameter("serverName") ?: parsed.host)
+                q.getQueryParameter("fp")?.takeIf { it.isNotBlank() }?.let { tls.put("fingerprint", it) }
+                q.getQueryParameter("alpn")?.takeIf { it.isNotBlank() }?.let { value ->
+                    tls.put("alpn", org.json.JSONArray(value.split(',').map { it.trim() }.filter { it.isNotEmpty() }))
+                }
+                stream.put("tlsSettings", tls)
             }
-            if (network == "ws") {
-                stream.put("wsSettings", JSONObject().put("path", q.getQueryParameter("path") ?: "/"))
+            if (network == "ws" || network == "httpupgrade") {
+                val ws = JSONObject().put("path", q.getQueryParameter("path") ?: "/")
+                q.getQueryParameter("host")?.takeIf { it.isNotBlank() }?.let {
+                    ws.put("headers", JSONObject().put("Host", it))
+                }
+                stream.put(if (network == "ws") "wsSettings" else "httpupgradeSettings", ws)
             } else if (network == "grpc") {
-                stream.put("grpcSettings", JSONObject().put("serviceName", q.getQueryParameter("serviceName") ?: ""))
+                stream.put("grpcSettings", JSONObject()
+                    .put("serviceName", q.getQueryParameter("serviceName") ?: "")
+                    .put("multiMode", q.getQueryParameter("mode") == "multi"))
+            } else if (network == "xhttp") {
+                stream.put("xhttpSettings", JSONObject()
+                    .put("path", q.getQueryParameter("path") ?: "/")
+                    .put("mode", q.getQueryParameter("mode") ?: "auto"))
             }
             val outbound = JSONObject()
                 .put("tag", "proxy").put("protocol", "vless")
