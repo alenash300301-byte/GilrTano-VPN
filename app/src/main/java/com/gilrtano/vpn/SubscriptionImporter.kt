@@ -27,34 +27,66 @@ object SubscriptionImporter {
     }
 
     private fun download(source: String): String {
-        val connection = (URL(source).openConnection() as HttpURLConnection).apply {
-            connectTimeout = 8000
-            readTimeout = 12000
-            requestMethod = "GET"
-            setRequestProperty("User-Agent", "GilrTanoVPN/0.7.7")
-            setRequestProperty("Accept", "text/plain, application/yaml, */*")
-            instanceFollowRedirects = true
-        }
-        try {
-            val code = connection.responseCode
-            require(code in 200..299) { "Сервер подписки ответил HTTP $code" }
-            val bytes = connection.inputStream.use { input ->
-                val out = java.io.ByteArrayOutputStream()
-                val buffer = ByteArray(8192)
-                var total = 0
-                while (true) {
-                    val count = input.read(buffer)
-                    if (count < 0) break
-                    total += count
-                    require(total <= MAX_BYTES) { "Подписка слишком большая (лимит 25 МБ)" }
-                    out.write(buffer, 0, count)
+        var lastError: Exception? = null
+        // Some subscription hosts close the first TLS/socket attempt before sending
+        // headers. Retry with a fresh connection instead of failing the import.
+        repeat(3) { attempt ->
+            var connection: HttpURLConnection? = null
+            try {
+                connection = (URL(source).openConnection() as HttpURLConnection).apply {
+                    connectTimeout = 15000
+                    readTimeout = 25000
+                    requestMethod = "GET"
+                    setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android) AppleWebKit/537.36 GilrTanoVPN/0.9.3")
+                    setRequestProperty("Accept", "text/plain, application/yaml, application/octet-stream, */*")
+                    setRequestProperty("Cache-Control", "no-cache")
+                    setRequestProperty("Connection", "close")
+                    instanceFollowRedirects = true
+                    useCaches = false
                 }
-                out.toByteArray()
+                val code = connection.responseCode
+                if (code !in 200..299) {
+                    val detail = runCatching {
+                        (connection.errorStream ?: connection.inputStream)
+                            .bufferedReader(Charsets.UTF_8).use { it.readText().take(300) }
+                    }.getOrNull().orEmpty()
+                    throw java.io.IOException(
+                        if (detail.isBlank()) "Сервер подписки ответил HTTP $code"
+                        else "Сервер подписки ответил HTTP $code: $detail"
+                    )
+                }
+                val bytes = connection.inputStream.use { input ->
+                    val out = java.io.ByteArrayOutputStream()
+                    val buffer = ByteArray(8192)
+                    var total = 0
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        total += count
+                        require(total <= MAX_BYTES) { "Подписка слишком большая (лимит 25 МБ)" }
+                        out.write(buffer, 0, count)
+                    }
+                    out.toByteArray()
+                }
+                val content = String(bytes, Charsets.UTF_8)
+                    .removePrefix("\uFEFF")
+                    .trim()
+                require(content.isNotBlank()) { "Сервер вернул пустую подписку" }
+                return content
+            } catch (e: Exception) {
+                lastError = e
+                // HTTP client errors and validation errors will not improve on retry.
+                if (e is IllegalArgumentException || (e is java.io.IOException &&
+                    e.message?.contains("HTTP ") == true)) throw e
+                if (attempt < 2) Thread.sleep(700L * (attempt + 1))
+            } finally {
+                connection?.disconnect()
             }
-            return String(bytes, Charsets.UTF_8).trim()
-        } finally {
-            connection.disconnect()
         }
+        throw java.io.IOException(
+            "Не удалось загрузить подписку после 3 попыток: ${lastError?.message ?: "соединение закрыто"}",
+            lastError
+        )
     }
 
     fun parse(raw: String): List<ImportedNode> {
