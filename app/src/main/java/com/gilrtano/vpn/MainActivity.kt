@@ -64,6 +64,7 @@ class MainActivity : Activity() {
     private lateinit var portalTab: Button
     private lateinit var portalSource: EditText
     private lateinit var importPortalButton: Button
+    private lateinit var portalYamlButton: Button
     private var portalNodes: List<ImportedNode> = emptyList()
     private var activePortal = false
     private var pendingEngine = "xray"
@@ -93,6 +94,7 @@ class MainActivity : Activity() {
     private var pendingAutomatic = false
     private val requestCode = 4101
     private val docxRequestCode = 4102
+    private val portalYamlRequestCode = 4103
 
     private val prefs by lazy { getPreferences(MODE_PRIVATE) }
     private val activeNodes: List<ImportedNode>
@@ -211,6 +213,16 @@ class MainActivity : Activity() {
             text = "Импортировать Portal"
             setOnClickListener { importPortal(portalSource.text.toString().trim()) }
         }
+        portalYamlButton = Button(this).apply {
+            text = "Выбрать WARP YAML"
+            setOnClickListener {
+                val pick = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                    addCategory(Intent.CATEGORY_OPENABLE)
+                    type = "*/*"
+                }
+                startActivityForResult(pick, portalYamlRequestCode)
+            }
+        }
         val importPrimary = Button(this).apply {
             text = "Импортировать Quattro"
             setOnClickListener { importFrom(primarySource.text.toString().trim(), false) }
@@ -258,8 +270,11 @@ class MainActivity : Activity() {
                     Toast.makeText(this@MainActivity, "В этом режиме пока нет серверов", Toast.LENGTH_LONG).show()
                 } else {
                     try {
-                        val config = if (activePortal) PortalConfigBuilder.build(node.uri) else GilrTanoVpnService.xrayConfigFromVless(node.uri)
-                        pendingEngine = if (activePortal) "singbox" else "xray"
+                        val isMihomoProfile = activePortal && node.uri.startsWith("mihomo://")
+                        val config = if (isMihomoProfile) {
+                            prefs.getString("portal_mihomo_profile", null) ?: error("Сначала выбери WARP YAML")
+                        } else if (activePortal) PortalConfigBuilder.build(node.uri) else GilrTanoVpnService.xrayConfigFromVless(node.uri)
+                        pendingEngine = if (isMihomoProfile) "mihomo" else if (activePortal) "singbox" else "xray"
                         val fallbackConfig = if (autoMode && !activePortal) {
                             (if (activeFree) quattroNodes.firstOrNull() else freeNodes.firstOrNull())
                                 ?.let { runCatching { GilrTanoVpnService.xrayConfigFromVless(it.uri) }.getOrNull() }
@@ -538,6 +553,7 @@ class MainActivity : Activity() {
                 addView(importFree)
                 addView(portalSource, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
                 addView(importPortalButton)
+                addView(portalYamlButton)
                 addView(TextView(this@MainActivity).apply {
                     text = "Бесплатные серверы предоставляются сторонними операторами."
                     textSize = 10f; setTextColor(Color.GRAY); gravity = android.view.Gravity.CENTER
@@ -977,6 +993,7 @@ class MainActivity : Activity() {
         freeSource.visibility = if (settingsExpanded && activeFree && !activePortal) View.VISIBLE else View.GONE
         portalSource.visibility = if (settingsExpanded && activePortal) View.VISIBLE else View.GONE
         importPortalButton.visibility = if (settingsExpanded && activePortal) View.VISIBLE else View.GONE
+        portalYamlButton.visibility = if (settingsExpanded && activePortal) View.VISIBLE else View.GONE
         bestFreeButton.visibility = if (settingsExpanded && activeFree) View.VISIBLE else View.GONE
         checkPing.visibility = if (settingsExpanded) View.VISIBLE else View.GONE
         for (i in 0 until page.childCount) {
@@ -986,7 +1003,7 @@ class MainActivity : Activity() {
                 val show = settingsExpanded && (
                     (!activePortal && !activeFree && (label == "Импортировать Quattro" || label == "Выбрать DOCX Quattro")) ||
                     (!activePortal && activeFree && label == "Импортировать бесплатные серверы") ||
-                    (activePortal && label == "Импортировать Portal")
+                    (activePortal && (label == "Импортировать Portal" || label == "Выбрать WARP YAML"))
                 )
                 if (label.startsWith("Импортировать") || label == "Выбрать DOCX Quattro") {
                     child.visibility = if (show) View.VISIBLE else View.GONE
@@ -1376,6 +1393,32 @@ class MainActivity : Activity() {
             pendingConfig = null
             connectButton.isEnabled = true
             status.text = "Разрешение VPN не предоставлено"
+        } else if (requestCode == portalYamlRequestCode && resultCode == RESULT_OK) {
+            val uri = data?.data ?: return
+            status.text = "Импортирую WARP YAML…"
+            Thread {
+                try {
+                    val yaml = contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+                        ?: error("Не удалось прочитать файл")
+                    require(yaml.contains("proxies:") && yaml.contains("type: masque")) {
+                        "Это не Clash/Mihomo MASQUE-конфигурация"
+                    }
+                    val profile = java.io.File(filesDir, "mihomo/PORTALWARP25.yaml")
+                    profile.parentFile?.mkdirs()
+                    profile.writeText(yaml, Charsets.UTF_8)
+                    runOnUiThread {
+                        portalNodes = listOf(ImportedNode("Cloudflare WARP · MASQUE", "mihomo://profile"))
+                        saveNodes("portal_nodes", portalNodes)
+                        prefs.edit().putString("portal_mihomo_profile", profile.absolutePath).apply()
+                        switchToPortal()
+                        servers.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, listOf("Cloudflare WARP · MASQUE"))
+                        servers.setSelection(0)
+                        status.text = "WARP MASQUE-конфигурация импортирована"
+                    }
+                } catch (e: Exception) {
+                    runOnUiThread { status.text = "Ошибка WARP YAML: ${e.message}" }
+                }
+            }.start()
         } else if (requestCode == docxRequestCode && resultCode == RESULT_OK) {
             val uri = data?.data ?: return
             status.text = "Читаю DOCX локально…"
