@@ -5,6 +5,8 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.net.VpnService
 import android.os.Bundle
 import android.view.ViewGroup
@@ -147,11 +149,10 @@ class MainActivity : Activity() {
 
         setContentView(LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(28, 36, 28, 28)
-            addView(TextView(this@MainActivity).apply { text = "GilrTano VPN"; textSize = 26f })
+            setPadding(20, 24, 20, 20)
+            addView(TextView(this@MainActivity).apply { text = "GilrTano"; textSize = 25f; setTextColor(Color.WHITE) })
             addView(TextView(this@MainActivity).apply {
-                text = "Выбери режим подключения"
-                textSize = 14f
+                text = "VPN"; textSize = 12f; setTextColor(Color.LTGRAY)
             })
             addView(LinearLayout(this@MainActivity).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -163,7 +164,7 @@ class MainActivity : Activity() {
             addView(importDocx)
             addView(freeSource, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
             addView(importFree)
-            addView(TextView(this@MainActivity).apply { text = "Сервер выбранного режима:"; textSize = 15f })
+            addView(TextView(this@MainActivity).apply { text = "СЕРВЕР"; textSize = 11f; setTextColor(Color.LTGRAY) })
             addView(servers)
             addView(pingStatus)
             addView(bestFreeButton)
@@ -172,13 +173,54 @@ class MainActivity : Activity() {
             addView(disconnect)
             addView(status)
             addView(TextView(this@MainActivity).apply {
-                text = "Бесплатные узлы принадлежат сторонним операторам; не используйте их для банков и важных аккаунтов."
-                textSize = 12f
+                text = "Бесплатные серверы принадлежат сторонним операторам."
+                textSize = 10f; setTextColor(Color.GRAY)
             })
         })
 
+        styleDarkInterface()
         activeFree = prefs.getBoolean("active_free_mode", false)
         refreshMode()
+    }
+
+    private fun styleDarkInterface() {
+        val root = findViewById<ViewGroup>(android.R.id.content).getChildAt(0) as? LinearLayout ?: return
+        root.setBackgroundColor(Color.rgb(8, 8, 10))
+        fun style(view: android.view.View) {
+            when (view) {
+                is Button -> {
+                    view.setTextColor(Color.WHITE)
+                    view.textSize = 13f
+                    view.isAllCaps = false
+                    view.background = GradientDrawable().apply {
+                        setColor(Color.rgb(34, 35, 39))
+                        cornerRadius = 18f
+                    }
+                    view.setPadding(16, 10, 16, 10)
+                    val lp = view.layoutParams
+                    if (lp != null) { lp.height = (44 * resources.displayMetrics.density).toInt(); view.layoutParams = lp }
+                }
+                is EditText -> {
+                    view.setTextColor(Color.WHITE)
+                    view.setHintTextColor(Color.GRAY)
+                    view.textSize = 14f
+                    view.setPadding(14, 10, 14, 10)
+                    view.background = GradientDrawable().apply {
+                        setColor(Color.rgb(24, 25, 28))
+                        cornerRadius = 14f
+                        setStroke(1, Color.rgb(55, 56, 62))
+                    }
+                }
+                is TextView -> {
+                    if (view.currentTextColor != Color.WHITE) view.setTextColor(Color.LTGRAY)
+                }
+                is Spinner -> {
+                    view.setBackgroundColor(Color.rgb(24, 25, 28))
+                }
+                is ViewGroup -> for (i in 0 until view.childCount) style(view.getChildAt(i))
+            }
+        }
+        style(root)
     }
 
     private fun switchMode(free: Boolean) {
