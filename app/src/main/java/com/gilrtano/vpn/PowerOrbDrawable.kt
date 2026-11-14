@@ -37,27 +37,29 @@ class PowerOrbDrawable : Drawable() {
         canvas.drawCircle(cx, cy, radius * 2.05f, paint)
         paint.shader = null
 
-        // Animated flame tongues surrounding the circular core.
-        for (i in 0 until 28) {
-            val angle = (Math.PI * 2.0 * i / 28.0).toFloat() + phase * .18f
-            val wave = (sin(phase * 1.7f + i * 1.31f) + 1f) * .5f
-            val inner = radius * 1.02f
-            val outer = radius * (1.18f + .26f * wave)
-            val spread = .075f + .045f * wave
-            val path = Path()
-            path.moveTo(cx + (cos(angle - spread) * inner).toFloat(), cy + (sin(angle - spread) * inner).toFloat())
-            path.quadTo(
-                cx + (cos(angle) * (outer + radius * .10f)).toFloat(),
-                cy + (sin(angle) * (outer + radius * .10f)).toFloat(),
-                cx + (cos(angle) * outer).toFloat(), cy + (sin(angle) * outer).toFloat()
-            )
-            path.quadTo(
-                cx + (cos(angle + spread) * inner).toFloat(),
-                cy + (sin(angle + spread) * inner).toFloat(),
-                cx + (cos(angle - spread) * inner).toFloat(), cy + (sin(angle - spread) * inner).toFloat()
-            )
-            paint.color = if (i % 3 == 0) Color.rgb(255, 198, 55) else flameColor
-            canvas.drawPath(path, paint)
+        // Flame tongues appear only after the VPN connection is established.
+        if (connected) {
+            for (i in 0 until 28) {
+                val angle = (Math.PI * 2.0 * i / 28.0).toFloat() + phase * .18f
+                val wave = (sin(phase * 1.7f + i * 1.31f) + 1f) * .5f
+                val inner = radius * 1.02f
+                val outer = radius * (1.18f + .26f * wave)
+                val spread = .075f + .045f * wave
+                val path = Path()
+                path.moveTo(cx + (cos(angle - spread) * inner).toFloat(), cy + (sin(angle - spread) * inner).toFloat())
+                path.quadTo(
+                    cx + (cos(angle) * (outer + radius * .10f)).toFloat(),
+                    cy + (sin(angle) * (outer + radius * .10f)).toFloat(),
+                    cx + (cos(angle) * outer).toFloat(), cy + (sin(angle) * outer).toFloat()
+                )
+                path.quadTo(
+                    cx + (cos(angle + spread) * inner).toFloat(),
+                    cy + (sin(angle + spread) * inner).toFloat(),
+                    cx + (cos(angle - spread) * inner).toFloat(), cy + (sin(angle - spread) * inner).toFloat()
+                )
+                paint.color = if (i % 3 == 0) Color.rgb(255, 198, 55) else flameColor
+                canvas.drawPath(path, paint)
+            }
         }
 
         paint.color = Color.rgb(7, 8, 8)
