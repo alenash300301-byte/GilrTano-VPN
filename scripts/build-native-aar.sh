@@ -1,46 +1,61 @@
 #!/usr/bin/env bash
-# Fetch and build the upstream teapod-core AAR using its own build script.
-# This script does not fabricate an AAR or substitute a stub dataplane.
+# Build the real upstream teapod-core fat AAR and install only the matching
+# all-ABI artifact required by app/build.gradle.kts.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CORE="$ROOT/upstream/teapod-core"
+PUBSPEC="$ROOT/upstream/teapodstream/pubspec.yaml"
 
-need() { command -v "$1" >/dev/null 2>&1 || { echo "ОШИБКА: не найдена команда $1" >&2; exit 2; }; }
-for x in git go java javac unzip zip; do need "$x"; done
+need() { command -v "$1" >/dev/null 2>&1 || { echo "ERROR: missing command: $1" >&2; exit 2; }; }
+for x in git go java javac jar javap unzip zip; do need "$x"; done
 
 if [[ ! -f "$CORE/build.sh" ]]; then
   if [[ -e "$CORE" ]]; then
-    echo "ОШИБКА: $CORE существует, но build.sh отсутствует; не перезаписываю исходники." >&2
+    echo "ERROR: $CORE exists but build.sh is missing; refusing to overwrite sources." >&2
     exit 2
   fi
   mkdir -p "$ROOT/upstream"
   git clone --depth=1 https://github.com/Wendor/teapod-core.git "$CORE"
 fi
+[[ -f "$PUBSPEC" ]] || { echo "ERROR: missing version source: $PUBSPEC" >&2; exit 3; }
+[[ -n "${ANDROID_HOME:-}${ANDROID_SDK_ROOT:-}" ]] || { echo "ERROR: Android SDK is not configured." >&2; exit 2; }
+[[ -n "${ANDROID_NDK_HOME:-}" ]] || { echo "ERROR: ANDROID_NDK_HOME is not configured." >&2; exit 2; }
 
-if [[ -z "${ANDROID_HOME:-}${ANDROID_SDK_ROOT:-}" ]]; then
-  echo "ОШИБКА: Android SDK не найден. Установите SDK и задайте ANDROID_HOME." >&2
-  exit 2
-fi
-if [[ -z "${ANDROID_NDK_HOME:-}" ]]; then
-  echo "ОШИБКА: Android NDK не найден. Задайте ANDROID_NDK_HOME." >&2
-  exit 2
-fi
 if [[ ! -x "$HOME/go/bin/gomobile" ]] && ! command -v gomobile >/dev/null 2>&1; then
-  echo "Устанавливаю gomobile..."
   go install golang.org/x/mobile/cmd/gomobile@latest
 fi
 GOMOBILE="$(command -v gomobile || printf '%s' "$HOME/go/bin/gomobile")"
 "$GOMOBILE" init
 
-if [[ ! -f "$CORE/../teapodstream/pubspec.yaml" ]]; then
-  echo "ОШИБКА: upstream build.sh требует соседний teapodstream/pubspec.yaml." >&2
-  exit 3
-fi
-# Upstream file may not have the executable bit in the Git checkout.
+VERSION="$(awk '/^version:/{split($2,v,"+"); print v[1]; exit}' "$PUBSPEC")"
+[[ -n "$VERSION" ]] || { echo "ERROR: cannot read AAR version from $PUBSPEC" >&2; exit 3; }
+
+# The upstream build script expects teapodstream next to teapod-core.
 (cd "$CORE" && PATH="$HOME/go/bin:$PATH" bash ./build.sh build)
 
-AAR="$CORE/outputs/teapod-core-*.aar"
-compgen -G "$AAR" >/dev/null || { echo "ОШИБКА: AAR не создан" >&2; exit 4; }
+FAT_AAR="$CORE/outputs/teapod-core-${VERSION}.aar"
+[[ -s "$FAT_AAR" ]] || { echo "ERROR: expected fat AAR not found: $FAT_AAR" >&2; exit 4; }
+TMP="$(mktemp -d)"
+trap 'rm -rf "$TMP"' EXIT
+unzip -q "$FAT_AAR" -d "$TMP/aar"
+[[ -s "$TMP/aar/classes.jar" ]] || { echo "ERROR: classes.jar missing from AAR" >&2; exit 5; }
+jar tf "$TMP/aar/classes.jar" | grep -q '^teapodcore/Teapodcore.class$' || {
+  echo "ERROR: Teapodcore Java bindings missing." >&2; exit 5;
+}
+javap -classpath "$TMP/aar/classes.jar" teapodcore.Teapodcore > "$TMP/api.txt"
+for method in startBox stopBox measureBoxDelay measureBoxOutboundDelay startXray stopXray startTun2Socks; do
+  grep -qi "$method" "$TMP/api.txt" || {
+    echo "ERROR: required native API method '$method' missing from AAR $VERSION." >&2
+    exit 6
+  }
+done
+for abi in arm64-v8a x86_64; do
+  [[ -s "$TMP/aar/jni/$abi/libgojni.so" ]] || {
+    echo "ERROR: fat AAR is missing jni/$abi/libgojni.so" >&2; exit 7;
+  }
+done
+
 mkdir -p "$ROOT/app/libs"
-cp $AAR "$ROOT/app/libs/"
-echo "AAR скопирован в app/libs. Перед подключением проверьте содержимое и ABI."
+rm -f "$ROOT/app/libs"/teapod-core-*.aar
+cp "$FAT_AAR" "$ROOT/app/libs/teapod-core-1.7.7.aar"
+echo "Verified native AAR $VERSION (arm64-v8a + x86_64; Xray + sing-box APIs) installed."
