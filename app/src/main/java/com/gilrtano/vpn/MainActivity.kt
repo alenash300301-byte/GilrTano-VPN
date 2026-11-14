@@ -13,6 +13,9 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import android.util.Base64
+import java.net.HttpURLConnection
+import java.net.URL
 
 class MainActivity : Activity() {
     private lateinit var status: TextView
@@ -28,7 +31,7 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         status = TextView(this).apply { text = "Отключено"; textSize = 18f }
         profile = EditText(this).apply {
-            hint = "Вставьте vless:// ссылку"
+            hint = "Вставьте VLESS-ссылку или ссылку подписки"
             minLines = 3
             maxLines = 5
             setText(getPreferences(MODE_PRIVATE).getString("vless_uri", ""))
@@ -37,18 +40,25 @@ class MainActivity : Activity() {
             text = "Подключить"
             setOnClickListener {
                 val uri = profile.text.toString().trim()
-                if (!uri.startsWith("vless://")) {
-                    Toast.makeText(this@MainActivity, "Нужна VLESS-ссылка vless://", Toast.LENGTH_LONG).show()
+                if (uri.isBlank()) {
+                    Toast.makeText(this@MainActivity, "Вставьте ссылку профиля", Toast.LENGTH_LONG).show()
                 } else {
                     getPreferences(MODE_PRIVATE).edit().putString("vless_uri", uri).apply()
-                    try {
-                        val config = GilrTanoVpnService.xrayConfigFromVless(uri)
-                        val permission = VpnService.prepare(this@MainActivity)
-                        if (permission != null) startActivityForResult(permission, requestCode)
-                        else startVpn(config)
-                    } catch (e: Exception) {
-                        status.text = "Профиль: ${e.message}"
-                    }
+                    status.text = "Загружаю профиль…"
+                    Thread {
+                        try {
+                            val vless = resolveVless(uri)
+                            val config = GilrTanoVpnService.xrayConfigFromVless(vless)
+                            runOnUiThread {
+                                pendingConfig = config
+                                val permission = VpnService.prepare(this@MainActivity)
+                                if (permission != null) startActivityForResult(permission, requestCode)
+                                else startVpn(config)
+                            }
+                        } catch (e: Exception) {
+                            runOnUiThread { status.text = "Профиль: " + e.message }
+                        }
+                    }.start()
                 }
             }
         }
@@ -67,6 +77,26 @@ class MainActivity : Activity() {
             addView(disconnect)
             addView(status)
         })
+    }
+
+    private fun resolveVless(input: String): String {
+        if (input.startsWith("vless://")) return input
+        val connection = (URL(input).openConnection() as HttpURLConnection).apply {
+            connectTimeout = 15000
+            readTimeout = 20000
+            requestMethod = "GET"
+            setRequestProperty("User-Agent", "GilrTanoVPN/0.7.6")
+        }
+        try {
+            val body = connection.inputStream.bufferedReader().use { it.readText() }.trim()
+            val decoded = if (body.startsWith("vless://")) body else try {
+                String(Base64.decode(body.replace("\\n", "").trim(), Base64.DEFAULT), Charsets.UTF_8)
+            } catch (_: Exception) { body }
+            return decoded.lineSequence().map { it.trim() }.firstOrNull { it.startsWith("vless://") }
+                ?: throw IllegalArgumentException("В подписке не найдена VLESS-конфигурация")
+        } finally {
+            connection.disconnect()
+        }
     }
 
     private var pendingConfig: String? = null
