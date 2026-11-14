@@ -287,7 +287,6 @@ class MainActivity : Activity() {
                 addView(importFree)
                 addView(cancelConnectButton)
                 addView(disconnect)
-                addView(status.apply { textSize = 13f; setPadding(dp(8), dp(8), dp(8), dp(8)) })
                 addView(TextView(this@MainActivity).apply {
                     text = "Бесплатные серверы предоставляются сторонними операторами."
                     textSize = 10f; setTextColor(Color.GRAY); gravity = android.view.Gravity.CENTER
