@@ -863,7 +863,7 @@ class MainActivity : Activity() {
         prefs.edit().putString("connection_mode", "portal").putBoolean("active_free_mode", false).apply()
         refreshMode()
         updateServerCard(status.text.toString().contains("Подключено"))
-        Toast.makeText(this, "Режим Portal · sing-box", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Режим Portal · Mihomo / sing-box", Toast.LENGTH_SHORT).show()
     }
 
     private fun importPortal(source: String) {
