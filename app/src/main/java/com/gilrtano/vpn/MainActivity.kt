@@ -217,12 +217,19 @@ class MainActivity : Activity() {
                 } else {
                     try {
                         val config = GilrTanoVpnService.xrayConfigFromVless(node.uri)
+                        val fallbackConfig = if (autoMode) {
+                            (if (activeFree) quattroNodes.firstOrNull() else freeNodes.firstOrNull())
+                                ?.let { runCatching { GilrTanoVpnService.xrayConfigFromVless(it.uri) }.getOrNull() }
+                        } else null
+                        val preferredConfig = if (autoMode && activeFree) {
+                            quattroNodes.firstOrNull()?.let { runCatching { GilrTanoVpnService.xrayConfigFromVless(it.uri) }.getOrNull() }
+                        } else null
                         pendingConfig = config
                         connectButton.isEnabled = true
                         status.text = "Подключаю: ${node.name}…"
                         val permission = VpnService.prepare(this@MainActivity)
                         if (permission != null) startActivityForResult(permission, requestCode)
-                        else startVpn(config)
+                        else startVpn(config, fallbackConfig, preferredConfig, autoMode)
                     } catch (e: Exception) {
                         pendingConfig = null
                         connectButton.isEnabled = true
@@ -1019,13 +1026,20 @@ class MainActivity : Activity() {
         }.start()
     }
 
-    private fun startVpn(config: String) {
+    private fun startVpn(
+        config: String,
+        fallbackConfig: String? = null,
+        preferredConfig: String? = null,
+        automatic: Boolean = false
+    ) {
         connectButton.isEnabled = true
-        startForegroundService(
-            Intent(this, GilrTanoVpnService::class.java)
-                .setAction(GilrTanoVpnService.ACTION_START)
-                .putExtra(GilrTanoVpnService.EXTRA_CONFIG, config)
-        )
+        val intent = Intent(this, GilrTanoVpnService::class.java)
+            .setAction(GilrTanoVpnService.ACTION_START)
+            .putExtra(GilrTanoVpnService.EXTRA_CONFIG, config)
+            .putExtra(GilrTanoVpnService.EXTRA_AUTO, automatic)
+        fallbackConfig?.let { intent.putExtra(GilrTanoVpnService.EXTRA_FALLBACK_CONFIG, it) }
+        preferredConfig?.let { intent.putExtra(GilrTanoVpnService.EXTRA_PREFERRED_CONFIG, it) }
+        startForegroundService(intent)
         status.text = "Запускаю VPN…"
     }
 
