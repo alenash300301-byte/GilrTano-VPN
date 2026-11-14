@@ -307,7 +307,13 @@ class MainActivity : Activity() {
                         addView(title); addView(vpn)
                     }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
                     addView(TextView(this@MainActivity).apply {
-                        text = "♛"; textSize = 29f; setTextColor(Color.rgb(255, 170, 20))
+                        text = "⚙"; textSize = 25f; setTextColor(Color.WHITE)
+                        setOnClickListener {
+                            settingsExpanded = true
+                            settingsHeader.visibility = View.VISIBLE
+                            findImportButtonsVisibility()
+                            scroll.post { scroll.smoothScrollTo(0, root.height) }
+                        }
                     })
                 })
                 // Tiger artwork stays clean while disconnected; flames are a separate animated overlay.
@@ -315,12 +321,36 @@ class MainActivity : Activity() {
                     setBackgroundColor(Color.BLACK)
                     addView(ImageView(this@MainActivity).apply {
                         setImageResource(R.drawable.tiger_hero_art)
-                        scaleType = ImageView.ScaleType.FIT_CENTER
-                        adjustViewBounds = true
+                        scaleType = ImageView.ScaleType.CENTER_CROP
+                        adjustViewBounds = false
                         setBackgroundColor(Color.TRANSPARENT)
                         contentDescription = "Тигр с зелёными глазами"
                     }, FrameLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
+                    ))
+                    addView(LinearLayout(this@MainActivity).apply {
+                        orientation = LinearLayout.VERTICAL
+                        gravity = android.view.Gravity.CENTER
+                        setPadding(dp(8), dp(2), dp(8), 0)
+                        addView(TextView(this@MainActivity).apply {
+                            text = "GilrTano"
+                            textSize = 31f
+                            gravity = android.view.Gravity.CENTER
+                            typeface = android.graphics.Typeface.create("serif", android.graphics.Typeface.BOLD_ITALIC)
+                            setTextColor(Color.rgb(242, 235, 228))
+                            setShadowLayer(dp(9).toFloat(), 0f, dp(2).toFloat(), Color.rgb(255, 54, 18))
+                        })
+                        addView(TextView(this@MainActivity).apply {
+                            text = "V P N"
+                            textSize = 21f
+                            gravity = android.view.Gravity.CENTER
+                            typeface = android.graphics.Typeface.DEFAULT_BOLD
+                            setTextColor(Color.rgb(255, 45, 35))
+                            setShadowLayer(dp(8).toFloat(), 0f, 0f, Color.RED)
+                        })
+                    }, FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+                        android.view.Gravity.TOP or android.view.Gravity.CENTER_HORIZONTAL
                     ))
                     tigerFlames = TigerFlameOverlayView(this@MainActivity).apply {
                         alpha = 0f
@@ -333,7 +363,7 @@ class MainActivity : Activity() {
                     ))
                 }
                 addView(tigerScene, LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, dp(334)
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(390)
                 ).apply { topMargin = dp(0); bottomMargin = dp(0) })
                 powerOrb = PowerOrbButtonView(this@MainActivity).apply {
                     text = ""
@@ -365,9 +395,9 @@ class MainActivity : Activity() {
                     false
                 }
                 powerOrb.contentDescription = "Кнопка питания VPN"
-                addView(powerOrb, LinearLayout.LayoutParams(dp(118), dp(118)).apply {
+                addView(powerOrb, LinearLayout.LayoutParams(dp(132), dp(132)).apply {
                     gravity = android.view.Gravity.CENTER
-                    topMargin = dp(-50); bottomMargin = dp(0)
+                    topMargin = dp(-66); bottomMargin = dp(0)
                 })
                 addView(status.apply {
                     text = "●  Отключено"; textSize = 17f
