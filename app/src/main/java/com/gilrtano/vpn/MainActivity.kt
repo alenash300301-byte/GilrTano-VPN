@@ -196,7 +196,7 @@ class MainActivity : Activity() {
                 val currentStatus = status.text.toString()
                 val isConnected = currentStatus.contains("Подключено")
                 val isConnecting = currentStatus.startsWith("Подключаю") ||
-                    currentStatus.startsWith("Запускаю") || currentStatus.startsWith("Запуск Xray")
+                    currentStatus.startsWith("Запускаю") || currentStatus.startsWith("Запуск Xray") || currentStatus.startsWith("Переключаю")
                 if (isConnected || isConnecting) {
                     pendingConfig = null
                     status.text = if (isConnected) "Отключаю VPN…" else "Отменяю подключение…"
@@ -395,7 +395,10 @@ class MainActivity : Activity() {
                         rightMargin = dp(6)
                     })
                     addView(freeTab, LinearLayout.LayoutParams(0, dp(44), 1f).apply {
-                        leftMargin = dp(6)
+                        leftMargin = dp(4); rightMargin = dp(4)
+                    })
+                    addView(autoTab, LinearLayout.LayoutParams(0, dp(44), 1f).apply {
+                        leftMargin = dp(4)
                     })
                 }, LinearLayout.LayoutParams.MATCH_PARENT, dp(48))
                 quattroTab.visibility = View.VISIBLE
