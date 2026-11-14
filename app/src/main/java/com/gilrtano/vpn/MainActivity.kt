@@ -19,6 +19,8 @@ import android.animation.ArgbEvaluator
 import android.view.animation.DecelerateInterpolator
 import android.widget.ArrayAdapter
 import android.widget.Button
+import android.widget.Chronometer
+import android.os.SystemClock
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ImageView
@@ -40,6 +42,10 @@ import java.util.concurrent.TimeUnit
 class MainActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var powerOrb: TextView
+    private lateinit var connectionTimer: Chronometer
+    private lateinit var serverCardTitle: TextView
+    private lateinit var serverCardSubtitle: TextView
+    private lateinit var serverCardPing: TextView
     private lateinit var settingsHeader: TextView
     private lateinit var pingStatus: TextView
     private lateinit var primarySource: EditText
@@ -75,10 +81,21 @@ class MainActivity : Activity() {
             if (message.startsWith("Подключено")) {
                 status.setTextColor(Color.rgb(36, 255, 72))
                 updatePowerOrb(true)
+                if (::connectionTimer.isInitialized) {
+                    connectionTimer.base = SystemClock.elapsedRealtime()
+                    connectionTimer.visibility = View.VISIBLE
+                    connectionTimer.start()
+                }
+                updateServerCard(true)
                 igniteConnectButton()
             } else if (message == "Отключено" || message.startsWith("Ошибка")) {
                 status.setTextColor(Color.LTGRAY)
                 updatePowerOrb(false)
+                if (::connectionTimer.isInitialized) {
+                    connectionTimer.stop()
+                    connectionTimer.visibility = View.GONE
+                }
+                updateServerCard(false)
                 resetConnectButtonGlow()
             } else if (message.startsWith("Подключаю") || message.startsWith("Запускаю") || message.startsWith("Запуск Xray")) {
                 status.setTextColor(Color.rgb(255, 166, 55))
@@ -275,8 +292,18 @@ class MainActivity : Activity() {
                     text = "●  Отключено"; textSize = 17f
                     gravity = android.view.Gravity.CENTER
                     setTextColor(Color.LTGRAY)
-                    setPadding(dp(8), dp(5), dp(8), dp(3))
+                    setPadding(dp(8), dp(5), dp(8), dp(0))
                 })
+                connectionTimer = Chronometer(this@MainActivity).apply {
+                    textSize = 14f
+                    gravity = android.view.Gravity.CENTER
+                    setTextColor(Color.WHITE)
+                    format = "%s"
+                    visibility = View.GONE
+                }
+                addView(connectionTimer, LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(22)
+                ))
                 addView(connectButton, LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, dp(68)
                 ).apply {
@@ -300,17 +327,27 @@ class MainActivity : Activity() {
                     })
                     addView(LinearLayout(this@MainActivity).apply {
                         orientation = LinearLayout.VERTICAL
-                        addView(TextView(this@MainActivity).apply {
+                        serverCardTitle = TextView(this@MainActivity).apply {
                             text = "Автоматический сервер"; textSize = 16f
                             setTextColor(Color.WHITE)
-                        })
-                        addView(TextView(this@MainActivity).apply {
+                        }
+                        serverCardSubtitle = TextView(this@MainActivity).apply {
                             text = "Лучший и самый быстрый"; textSize = 12f
                             setTextColor(Color.LTGRAY)
-                        })
+                        }
+                        addView(serverCardTitle)
+                        addView(serverCardSubtitle)
                     }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-                    addView(TextView(this@MainActivity).apply {
-                        text = "›"; textSize = 30f; setTextColor(Color.WHITE)
+                    addView(LinearLayout(this@MainActivity).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = android.view.Gravity.CENTER_VERTICAL
+                        serverCardPing = TextView(this@MainActivity).apply {
+                            text = ""; textSize = 13f; setTextColor(Color.rgb(0, 230, 55))
+                        }
+                        addView(serverCardPing)
+                        addView(TextView(this@MainActivity).apply {
+                            text = "  ›"; textSize = 27f; setTextColor(Color.WHITE)
+                        })
                     })
                 }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(76)).apply {
                     topMargin = dp(8); bottomMargin = dp(14)
@@ -440,6 +477,23 @@ class MainActivity : Activity() {
         }
         activeFree = prefs.getBoolean("active_free_mode", false)
         refreshMode()
+        updatePowerOrb(false)
+        updateServerCard(false)
+    }
+
+    private fun updateServerCard(connected: Boolean) {
+        if (!::serverCardTitle.isInitialized) return
+        val node = activeNodes.getOrNull(servers.selectedItemPosition)
+        if (connected && node != null) {
+            serverCardTitle.text = node.name
+            serverCardSubtitle.text = if (activeFree) "Бесплатный резерв" else "Защищённое соединение"
+            val ping = Regex("(\\d+)\\s*мс").find(pingStatus.text.toString())?.groupValues?.get(1)
+            serverCardPing.text = ping?.let { "$it мс" } ?: ""
+        } else {
+            serverCardTitle.text = "Автоматический сервер"
+            serverCardSubtitle.text = "Лучший и самый быстрый"
+            serverCardPing.text = ""
+        }
     }
 
     private fun updatePowerOrb(connected: Boolean) {
