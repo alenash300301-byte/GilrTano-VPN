@@ -34,7 +34,7 @@ val downloadMihomoAar by tasks.registering {
     doLast {
         val target = mihomoAar.get().asFile
         target.parentFile.mkdirs()
-        val url = "https://github.com/oviron/libmihomo-android/releases/download/v${mihomoWrapperVersion}/libmihomo-android-v${mihomoWrapperVersion}.aar
+        val url = "https://github.com/oviron/libmihomo-android/releases/download/v${mihomoWrapperVersion}/libmihomo-android-v${mihomoWrapperVersion}.aar"
         target.outputStream().use { out ->
             java.net.URL(url).openStream().use { input -> input.copyTo(out) }
         }
