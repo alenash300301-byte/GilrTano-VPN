@@ -412,7 +412,7 @@ class MainActivity : Activity() {
                             setTextColor(Color.WHITE)
                         }
                         serverCardSubtitle = TextView(this@MainActivity).apply {
-                            text = "Лучший и самый быстрый"; textSize = 12f
+                            text = "Автовыбор"; textSize = 12f
                             setTextColor(Color.LTGRAY)
                         }
                         addView(serverCardTitle)
@@ -465,7 +465,7 @@ class MainActivity : Activity() {
                     addView(metric("Исходящий", "—", " Мбит/с"), LinearLayout.LayoutParams(0, dp(62), 1f).apply { leftMargin = dp(6) })
                 }, LinearLayout.LayoutParams.MATCH_PARENT, dp(62))
                 addView(TextView(this@MainActivity).apply {
-                    text = "Скорость сети всего устройства · пинг до выбранного сервера"
+                    text = "Скорость сети"
                     textSize = 10f
                     setTextColor(Color.GRAY)
                     gravity = android.view.Gravity.CENTER
@@ -649,7 +649,7 @@ class MainActivity : Activity() {
             val root = content.getChildAt(0) as? ViewGroup
             val scroll = root?.getChildAt(0) as? android.widget.ScrollView
             scroll?.post { scroll.smoothScrollTo(0, settingsHeader.top) }
-            Toast.makeText(this, "Сначала добавь сервер: открой импорт подписки в настройках", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Добавь сервер в настройках", Toast.LENGTH_LONG).show()
             return
         }
         val names = nodes.map { it.name }.toTypedArray()
@@ -660,7 +660,7 @@ class MainActivity : Activity() {
                 val key = if (activeFree) "free_selected" else "quattro_selected"
                 prefs.edit().putInt(key, which).apply()
                 serverCardTitle.text = nodes[which].name
-                serverCardSubtitle.text = if (activeFree) "Бесплатный резерв" else "Quattro"
+                serverCardSubtitle.text = if (activeFree) "Бесплатный" else "Quattro"
                 serverCardPing.text = ""
                 pingStatus.text = "Пинг: —"
                 dialog.dismiss()
@@ -674,12 +674,12 @@ class MainActivity : Activity() {
         val node = activeNodes.getOrNull(servers.selectedItemPosition)
         if (connected && node != null) {
             serverCardTitle.text = node.name
-            serverCardSubtitle.text = if (activeFree) "Бесплатный резерв" else "Защищённое соединение"
+            serverCardSubtitle.text = if (activeFree) "Бесплатный резерв" else "Подключено"
             val ping = Regex("(\\d+)\\s*мс").find(pingStatus.text.toString())?.groupValues?.get(1)
             serverCardPing.text = ping?.let { "$it мс" } ?: ""
         } else {
             serverCardTitle.text = if (quattroNodes.isEmpty() && freeNodes.isEmpty()) "Сервер не добавлен" else "Автоматический сервер"
-            serverCardSubtitle.text = if (quattroNodes.isEmpty() && freeNodes.isEmpty()) "Добавьте подписку в настройках" else "Автовыбор · Quattro в приоритете"
+            serverCardSubtitle.text = if (quattroNodes.isEmpty() && freeNodes.isEmpty()) "Добавьте подписку в настройках" else "Автовыбор"
             serverCardPing.text = ""
         }
     }
