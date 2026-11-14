@@ -312,7 +312,7 @@ class MainActivity : Activity() {
                             settingsExpanded = true
                             settingsHeader.visibility = View.VISIBLE
                             findImportButtonsVisibility()
-                            scroll.post { scroll.smoothScrollTo(0, root.height) }
+                            root.post { scroll.smoothScrollTo(0, root.height) }
                         }
                     })
                 })
