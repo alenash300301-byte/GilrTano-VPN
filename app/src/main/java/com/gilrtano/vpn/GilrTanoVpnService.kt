@@ -137,7 +137,7 @@ class GilrTanoVpnService : VpnService() {
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to start Xray", e)
                 if (!stopping) {
-                    if (automaticMode && !usingFallback && !fallbackConfig.isNullOrBlank()) {
+                    if (automaticMode && nextFallbackConfig() != null) {
                         usingFallback = true
                         lastAutomaticSwitchAt = System.currentTimeMillis()
                         broadcastStatus("Не удалось запустить Quattro. Пробую бесплатный резерв…")
