@@ -757,11 +757,15 @@ class MainActivity : Activity() {
         val configured = freeSource.text.toString().trim().ifBlank {
             "https://raw.githubusercontent.com/morpheusadam/v2ray-config/main/subs/bundles/vless.txt"
         }
-        val sources = listOf(
-            configured,
-            "https://radarhub.top/v2ray.txt",
-            "https://cdn.jsdelivr.net/gh/morpheusadam/v2ray-config@main/subs/bundles/vless.txt"
-        ).distinct()
+        val primaryVless = "https://raw.githubusercontent.com/morpheusadam/v2ray-config/main/subs/bundles/vless.txt"
+        val legacyDefault = "https://raw.githubusercontent.com/morpheusadam/v2ray-config/main/subs/bundles/best.txt"
+        val sources = if (configured.isBlank() || configured == legacyDefault) {
+            listOf(primaryVless, "https://radarhub.top/v2ray.txt",
+                "https://cdn.jsdelivr.net/gh/morpheusadam/v2ray-config@main/subs/bundles/vless.txt")
+        } else {
+            listOf(configured, primaryVless, "https://radarhub.top/v2ray.txt",
+                "https://cdn.jsdelivr.net/gh/morpheusadam/v2ray-config@main/subs/bundles/vless.txt")
+        }.distinct()
         Thread {
             var imported: List<ImportedNode> = emptyList()
             var successfulSource: String? = null
