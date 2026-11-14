@@ -13,7 +13,7 @@ data class ImportedNode(val name: String, val uri: String)
 
 object SubscriptionImporter {
     private const val MAX_NODES = 600
-    private const val MAX_BYTES = 5 * 1024 * 1024
+    private const val MAX_BYTES = 25 * 1024 * 1024
 
     fun load(source: String): List<ImportedNode> {
         val trimmed = source.trim()
@@ -46,7 +46,7 @@ object SubscriptionImporter {
                     val count = input.read(buffer)
                     if (count < 0) break
                     total += count
-                    require(total <= MAX_BYTES) { "Подписка слишком большая (лимит 5 МБ)" }
+                    require(total <= MAX_BYTES) { "Подписка слишком большая (лимит 25 МБ)" }
                     out.write(buffer, 0, count)
                 }
                 out.toByteArray()
