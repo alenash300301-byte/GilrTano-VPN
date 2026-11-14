@@ -82,6 +82,10 @@ class GilrTanoVpnService : VpnService() {
                 if (!coreInitialized) {
                     synchronized(this@GilrTanoVpnService) {
                         if (!coreInitialized) {
+                            // Install Xray-native geodata before setting xray.location.asset.
+                            // Downloads are bounded, atomic and optional: no partial file
+                            // is ever exposed to the native core.
+                            GeoDataAssets.ensureInstalled(filesDir)
                             Teapodcore.initCoreEnv(filesDir.absolutePath, "")
                             Teapodcore.registerVpnProtector(object : VpnProtector {
                                 override fun protect(fd: Long): Boolean =
