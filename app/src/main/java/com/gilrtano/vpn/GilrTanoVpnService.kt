@@ -27,7 +27,8 @@ class GilrTanoVpnService : VpnService() {
     @Volatile private var activeEngine: String = "xray"
     @Volatile private var fallbackConfig: String? = null
     @Volatile private var rotationConfigs: List<String> = emptyList()
-    @Volatile private var rotationIndex = 0\n    @Volatile private var selectedFallbackConfig: String? = null
+    @Volatile private var rotationIndex = 0
+    @Volatile private var selectedFallbackConfig: String? = null
     @Volatile private var preferredConfig: String? = null
     @Volatile private var automaticMode = false
     @Volatile private var monitorRunning = false
@@ -70,7 +71,7 @@ class GilrTanoVpnService : VpnService() {
             if (rotationIndex >= rotationConfigs.size) rotationIndex = 0
             return rotationConfigs[rotationIndex++].also { selectedFallbackConfig = it }
         }
-        return fallbackConfig
+        return fallbackConfig.also { selectedFallbackConfig = it }
     }
 
     private fun switchTunnel(config: String) {
@@ -119,7 +120,7 @@ class GilrTanoVpnService : VpnService() {
                         Log.i(TAG, "Xray status=$status $message")
                         if (status == 0L && !stopping) establishTun()
                         else if (status < 0L && !stopping) {
-                            if (automaticMode && !usingFallback && !fallbackConfig.isNullOrBlank()) {
+                            if (automaticMode && nextFallbackConfig() != null) {
                                 usingFallback = true
                                 lastAutomaticSwitchAt = System.currentTimeMillis()
                                 broadcastStatus("Quattro недоступен. Запускаю бесплатный резерв…")
@@ -236,8 +237,8 @@ class GilrTanoVpnService : VpnService() {
 
                     if (consecutiveProbeFailures >= FAILURE_LIMIT &&
                         System.currentTimeMillis() - lastAutomaticSwitchAt > SWITCH_COOLDOWN_MS) {
-                        if (!usingFallback && !fallbackConfig.isNullOrBlank()) {
-                            val target = fallbackConfig!!
+                        if (rotationConfigs.isNotEmpty() || (!usingFallback && !fallbackConfig.isNullOrBlank())) {
+                            val target = nextFallbackConfig() ?: fallbackConfig.orEmpty()
                             usingFallback = true
                             lastAutomaticSwitchAt = System.currentTimeMillis()
                             consecutiveProbeFailures = 0
@@ -440,7 +441,8 @@ class GilrTanoVpnService : VpnService() {
         const val EXTRA_ENGINE = "engine"
         const val EXTRA_STATUS = "status"
         const val EXTRA_AUTO = "automatic_mode"
-        const val EXTRA_FALLBACK_CONFIG = "fallback_config"\n        const val EXTRA_ROTATION_CONFIGS = "rotation_configs"
+        const val EXTRA_FALLBACK_CONFIG = "fallback_config"
+        const val EXTRA_ROTATION_CONFIGS = "rotation_configs"
         const val EXTRA_PREFERRED_CONFIG = "preferred_config"
         private const val TAG = "GilrTanoVPN"
         private const val CHANNEL_ID = "gilrtano_vpn"
