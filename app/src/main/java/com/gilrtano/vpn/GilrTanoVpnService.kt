@@ -165,9 +165,10 @@ class GilrTanoVpnService : VpnService() {
                 val serverName = q.getQueryParameter("sni") ?: q.getQueryParameter("serverName") ?: ""
                 val publicKey = q.getQueryParameter("pbk") ?: ""
                 val shortId = q.getQueryParameter("sid") ?: ""
-                require(serverName.isNotBlank() && publicKey.isNotBlank() && shortId.isNotBlank()) {
-                    "В REALITY-профиле отсутствует SNI, public key или short ID"
+                require(serverName.isNotBlank() && publicKey.isNotBlank()) {
+                    "В REALITY-профиле отсутствует SNI или public key"
                 }
+                // REALITY shortId is optional in Xray; an empty value is valid.
                 val reality = JSONObject()
                     .put("show", false)
                     .put("serverName", serverName)
