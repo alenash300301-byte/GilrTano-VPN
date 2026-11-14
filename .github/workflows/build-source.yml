@@ -3,7 +3,10 @@ name: Build GilrTano VPN APK
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, feature/geo-assets-bootstrap]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
 
 permissions:
   contents: read
@@ -11,7 +14,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 100
+    timeout-minutes: 120
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -39,15 +42,13 @@ jobs:
           echo "ANDROID_NDK_HOME=/usr/local/lib/android/sdk/ndk/28.2.13676358" >> "$GITHUB_ENV"
           echo "$HOME/go/bin" >> "$GITHUB_PATH"
 
-      - name: Install gomobile
-        run: |
-          go install golang.org/x/mobile/cmd/gomobile@latest
-          gomobile init
-
-      - name: Build native Xray AAR
+      - name: Install native build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y patch unzip zip perl
+
+      - name: Build and verify native AAR
+        run: |
           chmod +x scripts/build-native-aar.sh
           ./scripts/build-native-aar.sh
           test -s app/libs/teapod-core-1.7.7.aar
@@ -57,11 +58,19 @@ jobs:
         with:
           gradle-version: '8.13'
 
-      - name: Build APK
-        run: gradle --no-daemon assembleDebug
+      - name: Build debug APK
+        run: gradle --no-daemon --stacktrace clean assembleDebug
+
+      - name: Verify APK
+        run: |
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK"
+          echo "APK size: $(du -h "$APK" | cut -f1)"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: GilrTano-VPN-APK
+          name: GilrTano-VPN-debug
           path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
