@@ -8,7 +8,11 @@ CORE="$ROOT/upstream/teapod-core"
 need() { command -v "$1" >/dev/null 2>&1 || { echo "ОШИБКА: не найдена команда $1" >&2; exit 2; }; }
 for x in git go java javac unzip zip; do need "$x"; done
 
-if [[ ! -d "$CORE/.git" ]]; then
+if [[ ! -f "$CORE/build.sh" ]]; then
+  if [[ -e "$CORE" ]]; then
+    echo "ОШИБКА: $CORE существует, но build.sh отсутствует; не перезаписываю исходники." >&2
+    exit 2
+  fi
   mkdir -p "$ROOT/upstream"
   git clone --depth=1 https://github.com/Wendor/teapod-core.git "$CORE"
 fi
