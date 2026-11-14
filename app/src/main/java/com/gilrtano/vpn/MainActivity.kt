@@ -21,7 +21,7 @@ class MainActivity : Activity() {
     private lateinit var primarySource: EditText
     private lateinit var freeSource: EditText
     private lateinit var servers: Spinner
-    private val requestCode = 4101
+    private val requestCode = 4101\n    private val docxRequestCode = 4102
     private var nodes: List<ImportedNode> = emptyList()
     private var pendingConfig: String? = null
 
@@ -51,8 +51,18 @@ class MainActivity : Activity() {
         }
         servers = Spinner(this)
         val importPrimary = Button(this).apply {
-            text = "Импортировать Quattro"
+            text = "Импортировать Quattro по ссылке / YAML"
             setOnClickListener { importFrom(primarySource.text.toString().trim(), false) }
+        }
+        val importDocx = Button(this).apply {
+            text = "Выбрать DOCX с конфигурацией Quattro"
+            setOnClickListener {
+                val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                    addCategory(Intent.CATEGORY_OPENABLE)
+                    type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                }
+                startActivityForResult(intent, docxRequestCode)
+            }
         }
         val importFree = Button(this).apply {
             text = "Импортировать бесплатный резерв"
@@ -154,6 +164,26 @@ class MainActivity : Activity() {
             pendingConfig?.let { startVpn(it) }
         } else if (requestCode == this.requestCode) {
             status.text = "Разрешение VPN не предоставлено"
+        } else if (requestCode == docxRequestCode && resultCode == RESULT_OK) {
+            val uri = data?.data ?: return
+            status.text = "Читаю DOCX локально…"
+            Thread {
+                try {
+                    val yaml = DocxTextExtractor.read(this, uri)
+                    val imported = SubscriptionImporter.parse(yaml)
+                    runOnUiThread {
+                        if (imported.isEmpty()) {
+                            status.text = "В DOCX не найдены поддерживаемые VLESS-профили"
+                        } else {
+                            nodes = imported
+                            servers.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, nodes.map { it.name })
+                            status.text = "Из DOCX импортировано VLESS-серверов: ${nodes.size}"
+                        }
+                    }
+                } catch (e: Exception) {
+                    runOnUiThread { status.text = "Ошибка чтения DOCX: ${e.message}" }
+                }
+            }.start()
         }
     }
 
