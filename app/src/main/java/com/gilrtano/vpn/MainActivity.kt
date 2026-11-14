@@ -820,7 +820,6 @@ class MainActivity : Activity() {
         autoTab.setTextColor(if (autoMode) Color.WHITE else Color.LTGRAY)
         primarySource.visibility = if (activeFree) ViewGroup.GONE else ViewGroup.VISIBLE
         freeSource.visibility = if (activeFree) ViewGroup.VISIBLE else ViewGroup.GONE
-        bestFreeButton.visibility = if (activeFree) ViewGroup.VISIBLE else ViewGroup.GONE
         findImportButtonsVisibility()
         val list = activeNodes
         servers.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, list.map { it.name })
@@ -839,8 +838,11 @@ class MainActivity : Activity() {
         val root = content.getChildAt(0) as? LinearLayout ?: return
         val scroll = root.getChildAt(0) as? android.widget.ScrollView ?: return
         val page = scroll.getChildAt(0) as? ViewGroup ?: return
+        settingsHeader.visibility = if (settingsExpanded) View.VISIBLE else View.GONE
         primarySource.visibility = if (settingsExpanded && !activeFree) View.VISIBLE else View.GONE
         freeSource.visibility = if (settingsExpanded && activeFree) View.VISIBLE else View.GONE
+        bestFreeButton.visibility = if (settingsExpanded && activeFree) View.VISIBLE else View.GONE
+        checkPing.visibility = if (settingsExpanded) View.VISIBLE else View.GONE
         for (i in 0 until page.childCount) {
             val child = page.getChildAt(i)
             if (child is Button) {
