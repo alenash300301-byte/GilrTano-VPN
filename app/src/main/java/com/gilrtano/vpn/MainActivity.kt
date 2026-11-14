@@ -985,7 +985,8 @@ class MainActivity : Activity() {
                 val label = child.text.toString()
                 val show = settingsExpanded && (
                     (!activePortal && !activeFree && (label == "Импортировать Quattro" || label == "Выбрать DOCX Quattro")) ||
-                    (!activePortal && activeFree && label == "Импортировать бесплатные серверы")
+                    (!activePortal && activeFree && label == "Импортировать бесплатные серверы") ||
+                    (activePortal && label == "Импортировать Portal")
                 )
                 if (label.startsWith("Импортировать") || label == "Выбрать DOCX Quattro") {
                     child.visibility = if (show) View.VISIBLE else View.GONE
