@@ -16,7 +16,13 @@ object SubscriptionImporter {
     private const val MAX_BYTES = 5 * 1024 * 1024
 
     fun load(source: String): List<ImportedNode> {
-        val content = if (source.startsWith("vless://")) source else download(source)
+        val trimmed = source.trim()
+        val content = when {
+            trimmed.startsWith("vless://") -> trimmed
+            trimmed.contains("proxies:") -> trimmed
+            trimmed.startsWith("http://") || trimmed.startsWith("https://") -> download(trimmed)
+            else -> error("Ожидается VLESS-ссылка, HTTPS-подписка или Clash YAML с блоком proxies:")
+        }
         return parse(content)
     }
 
