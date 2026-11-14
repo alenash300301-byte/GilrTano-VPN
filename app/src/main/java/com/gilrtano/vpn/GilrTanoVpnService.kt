@@ -64,7 +64,8 @@ class GilrTanoVpnService : VpnService() {
         Thread({
             synchronized(this) {
                 runCatching { Teapodcore.stopTun2Socks() }
-                runCatching { if (activeEngine == "singbox") Teapodcore.stopBox() else Teapodcore.stopXray() }
+                runCatching { Teapodcore.stopBox() }
+                runCatching { Teapodcore.stopXray() }
                 runCatching { tun?.close() }
                 tun = null
             }
