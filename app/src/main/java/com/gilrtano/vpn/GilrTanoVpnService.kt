@@ -24,15 +24,32 @@ class GilrTanoVpnService : VpnService() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> stopTunnel()
-            ACTION_START -> {
+            ACTION_START, ACTION_SWITCH -> {
                 val config = intent.getStringExtra(EXTRA_CONFIG)
                 if (config.isNullOrBlank()) {
                     broadcastStatus("Добавьте VLESS-ссылку")
                     stopSelf()
+                } else if (intent.action == ACTION_SWITCH) {
+                    switchTunnel(config)
                 } else startTunnel(config)
             }
         }
         return START_NOT_STICKY
+    }
+
+    private fun switchTunnel(config: String) {
+        stopping = true
+        broadcastStatus("Переключаю сервер…")
+        Thread({
+            synchronized(this) {
+                runCatching { Teapodcore.stopTun2Socks() }
+                runCatching { Teapodcore.stopXray() }
+                runCatching { tun?.close() }
+                tun = null
+            }
+            stopping = false
+            startTunnel(config)
+        }, "GilrTano-Xray-switch").start()
     }
 
     private fun startTunnel(config: String) {
@@ -161,6 +178,7 @@ class GilrTanoVpnService : VpnService() {
 
     companion object {
         const val ACTION_START = "com.gilrtano.vpn.START"
+        const val ACTION_SWITCH = "com.gilrtano.vpn.SWITCH"
         const val ACTION_STOP = "com.gilrtano.vpn.STOP"
         const val ACTION_STATUS = "com.gilrtano.vpn.STATUS"
         const val EXTRA_CONFIG = "xray_config"
