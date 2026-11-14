@@ -10,6 +10,10 @@ import android.graphics.drawable.GradientDrawable
 import android.net.VpnService
 import android.os.Bundle
 import android.view.ViewGroup
+import android.view.MotionEvent
+import android.animation.AnimatorSet
+import android.animation.ObjectAnimator
+import android.view.animation.DecelerateInterpolator
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
@@ -227,6 +231,32 @@ class MainActivity : Activity() {
                 setStroke((4 * resources.displayMetrics.density).toInt(), Color.rgb(255, 105, 12))
             }
             elevation = 12f
+            // Subtle fire pulse only while the user presses the power button.
+            setOnTouchListener { view, event ->
+                val pressed = event.actionMasked == MotionEvent.ACTION_DOWN
+                val released = event.actionMasked == MotionEvent.ACTION_UP ||
+                    event.actionMasked == MotionEvent.ACTION_CANCEL
+                if (pressed || released) {
+                    val targetScale = if (pressed) 0.975f else 1f
+                    val targetElevation = if (pressed) dp(18).toFloat() else dp(12).toFloat()
+                    AnimatorSet().apply {
+                        playTogether(
+                            ObjectAnimator.ofFloat(view, View.SCALE_X, targetScale),
+                            ObjectAnimator.ofFloat(view, View.SCALE_Y, targetScale),
+                            ObjectAnimator.ofFloat(view, View.TRANSLATION_Z, if (pressed) dp(6).toFloat() else 0f)
+                        )
+                        duration = if (pressed) 85L else 150L
+                        interpolator = DecelerateInterpolator()
+                        start()
+                    }
+                    (view.background as? GradientDrawable)?.setStroke(
+                        dp(if (pressed) 6 else 4),
+                        if (pressed) Color.rgb(255, 174, 55) else Color.rgb(255, 105, 12)
+                    )
+                    view.elevation = targetElevation
+                }
+                false
+            }
         }
         activeFree = prefs.getBoolean("active_free_mode", false)
         refreshMode()
