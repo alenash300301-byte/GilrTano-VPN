@@ -1,0 +1,122 @@
+import '../models/vpn_config.dart';
+import '../models/vpn_log_entry.dart';
+import '../models/dns_config.dart';
+import '../models/heartbeat_settings.dart';
+import '../models/routing_settings.dart';
+import '../models/xray_tuning.dart';
+import '../services/settings_service.dart';
+
+/// blocked — kill switch удерживает TUN-sink после обрыва: трафик заблокирован.
+enum VpnState { disconnected, connecting, connected, disconnecting, error, blocked }
+
+abstract class VpnEngine {
+  String get protocolName;
+
+  Future<void> connect(VpnConfig config, VpnEngineOptions options);
+  Future<void> disconnect();
+
+  Future<int?> pingConfig(VpnConfig config);
+  bool supportsConfig(VpnConfig config);
+}
+
+class VpnEngineOptions {
+  final int socksPort;
+  final int httpPort;
+  final String socksUser;
+  final String socksPassword;
+  final Set<String> excludedPackages;
+  final Set<String> includedPackages;
+  final LogLevel logLevel;
+  final bool enableUdp;
+  final bool allowIcmp;
+  final DnsMode dnsMode;
+  final DnsServerConfig dnsServer;
+  final VpnMode vpnMode;
+  final bool proxyOnly;
+  final bool showNotification;
+  final bool killSwitch;
+  final RoutingSettings routing;
+  final bool sniffingEnabled;
+  final int mtu;
+  final DnsQueryStrategy dnsQueryStrategy;
+  final bool blockQuic;
+  final bool ipv6Enabled;
+  final bool allowTethering;
+  final int obsProbeIntervalSec;
+  final TlsFingerprint tlsFingerprint;
+  final FragmentSettings fragment;
+  final NoiseSettings noise;
+  final MuxSettings mux;
+  final HeartbeatSettings heartbeat;
+
+  const VpnEngineOptions({
+    required this.socksPort,
+    required this.httpPort,
+    required this.socksUser,
+    required this.socksPassword,
+    this.excludedPackages = const {},
+    this.includedPackages = const {},
+    this.logLevel = LogLevel.info,
+    this.enableUdp = true,
+    this.allowIcmp = false,
+    this.dnsMode = DnsMode.proxy,
+    this.dnsServer = const DnsServerConfig(type: DnsType.udp, address: '1.1.1.1'),
+    this.vpnMode = VpnMode.allExcept,
+    this.proxyOnly = false,
+    this.showNotification = true,
+    this.killSwitch = false,
+    this.routing = const RoutingSettings(),
+    this.sniffingEnabled = true,
+    this.mtu = 1500,
+    this.dnsQueryStrategy = DnsQueryStrategy.ipv4Only,
+    this.blockQuic = false,
+    this.ipv6Enabled = false,
+    this.allowTethering = false,
+    this.obsProbeIntervalSec = 600,
+    this.tlsFingerprint = TlsFingerprint.defaultFp,
+    this.fragment = const FragmentSettings(),
+    this.noise = const NoiseSettings(),
+    this.mux = const MuxSettings(),
+    this.heartbeat = const HeartbeatSettings(),
+  });
+
+  /// Поля, которые ядро может заменить допустимыми значениями.
+  VpnEngineOptions copyWith({
+    int? mtu,
+    RoutingSettings? routing,
+    bool? sniffingEnabled,
+    FragmentSettings? fragment,
+    NoiseSettings? noise,
+    MuxSettings? mux,
+  }) =>
+      VpnEngineOptions(
+        socksPort: socksPort,
+        httpPort: httpPort,
+        socksUser: socksUser,
+        socksPassword: socksPassword,
+        excludedPackages: excludedPackages,
+        includedPackages: includedPackages,
+        logLevel: logLevel,
+        enableUdp: enableUdp,
+        allowIcmp: allowIcmp,
+        dnsMode: dnsMode,
+        dnsServer: dnsServer,
+        vpnMode: vpnMode,
+        proxyOnly: proxyOnly,
+        showNotification: showNotification,
+        killSwitch: killSwitch,
+        routing: routing ?? this.routing,
+        sniffingEnabled: sniffingEnabled ?? this.sniffingEnabled,
+        mtu: mtu ?? this.mtu,
+        dnsQueryStrategy: dnsQueryStrategy,
+        blockQuic: blockQuic,
+        ipv6Enabled: ipv6Enabled,
+        allowTethering: allowTethering,
+        obsProbeIntervalSec: obsProbeIntervalSec,
+        tlsFingerprint: tlsFingerprint,
+        fragment: fragment ?? this.fragment,
+        noise: noise ?? this.noise,
+        mux: mux ?? this.mux,
+        heartbeat: heartbeat,
+      );
+}

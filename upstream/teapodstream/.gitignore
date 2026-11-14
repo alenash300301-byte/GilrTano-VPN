@@ -1,0 +1,71 @@
+# ─────────────────────────────────────────
+#  Build outputs
+# ─────────────────────────────────────────
+build/
+*.apk
+*.aab
+*.jar
+*.class
+
+# ─────────────────────────────────────────
+#  Flutter / Dart
+# ─────────────────────────────────────────
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.metadata
+.pub-cache/
+.pub/
+pubspec.lock
+
+# ─────────────────────────────────────────
+#  Android
+# ─────────────────────────────────────────
+android/.gradle/
+android/.kotlin/
+android/app/build/
+android/local.properties
+android/key.properties
+android/*.jks
+android/*.keystore
+android/captures/
+
+# ─────────────────────────────────────────
+#  Native binaries (downloaded via ./build.sh binaries)
+# ─────────────────────────────────────────
+android/app/src/main/jniLibs/
+android/app/libs/*.aar
+assets/binaries/
+
+# ─────────────────────────────────────────
+#  IDE
+# ─────────────────────────────────────────
+.idea/
+*.iml
+*.swp
+*.swo
+*~
+.vscode/
+
+# ─────────────────────────────────────────
+#  OS
+# ─────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ─────────────────────────────────────────
+#  AI assistants
+# ─────────────────────────────────────────
+.qwen/
+.claude/
+.gemini/
+CLAUDE.md
+AGENTS.md
+wiki/
+redesign/
+docs/superpowers/
+
+# Интеграционные тесты на устройстве (tool/itest)
+runs/
+tool/itest/secrets.json
+.superpowers/
