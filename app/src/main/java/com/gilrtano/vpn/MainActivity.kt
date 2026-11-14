@@ -314,8 +314,8 @@ class MainActivity : Activity() {
             gravity = android.view.Gravity.CENTER
             setTextColor(Color.WHITE)
             layoutParams = LinearLayout.LayoutParams(
-                (184 * resources.displayMetrics.density).toInt(),
-                (184 * resources.displayMetrics.density).toInt()
+                (250 * resources.displayMetrics.density).toInt(),
+                (250 * resources.displayMetrics.density).toInt()
             ).apply { gravity = android.view.Gravity.CENTER; topMargin = (12 * resources.displayMetrics.density).toInt(); bottomMargin = (12 * resources.displayMetrics.density).toInt() }
             background = fireDrawable
             elevation = 12f
