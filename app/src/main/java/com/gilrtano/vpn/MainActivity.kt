@@ -470,6 +470,24 @@ class MainActivity : Activity() {
                 })
             })
         }
+        // Respect Android system bars so the brand header and bottom navigation
+        // never sit underneath the clock or gesture handle.
+        window.statusBarColor = Color.rgb(5, 5, 7)
+        window.navigationBarColor = Color.rgb(5, 5, 6)
+        root.setOnApplyWindowInsetsListener { view, insets ->
+            val bars = if (android.os.Build.VERSION.SDK_INT >= 30) {
+                insets.getInsets(android.view.WindowInsets.Type.systemBars())
+            } else {
+                android.graphics.Insets.of(
+                    insets.systemWindowInsetLeft,
+                    insets.systemWindowInsetTop,
+                    insets.systemWindowInsetRight,
+                    insets.systemWindowInsetBottom
+                )
+            }
+            view.setPadding(0, bars.top, 0, bars.bottom)
+            insets
+        }
         root.addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         root.addView(View(this).apply {
             setBackgroundColor(Color.rgb(28, 28, 30))
