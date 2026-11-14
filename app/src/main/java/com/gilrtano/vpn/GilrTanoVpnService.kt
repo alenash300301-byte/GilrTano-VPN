@@ -168,20 +168,17 @@ class GilrTanoVpnService : VpnService() {
             }
             if (!running) throw IllegalStateException("TUN-мост не запустился")
 
-            // Verify actual HTTPS traffic through this profile before showing
-            // a successful connection; a running TUN bridge alone is insufficient.
-            var internetReady = false
+            // Do not report success unless ALL required services work through
+            // the actual VPN tunnel. Retry the complete three-service check.
+            var servicesReady = false
             repeat(3) { attempt ->
-                if (!internetReady && !stopping) {
-                    internetReady = probeTunnel() >= 0L
-                    if (!internetReady && attempt < 2) Thread.sleep(650)
+                if (!servicesReady && !stopping) {
+                    servicesReady = probeTunnel() >= 0L
+                    if (!servicesReady && attempt < 2) Thread.sleep(900)
                 }
             }
-            if (!internetReady) {
-                throw IllegalStateException("Сервер ответил, но интернет через VPN не проходит")
-            }
-            if (!verifyRequiredServices()) {
-                throw IllegalStateException("Не все обязательные сервисы доступны через VPN")
+            if (!servicesReady) {
+                throw IllegalStateException("Не все обязательные сервисы доступны через VPN: YouTube, Instagram и Telegram")
             }
 
             broadcastStatus(
@@ -262,22 +259,27 @@ class GilrTanoVpnService : VpnService() {
         }, "GilrTano-connection-monitor").apply { isDaemon = true }.start()
     }
 
-    private fun probeTunnel(): Long = probeTunnelHost("www.gstatic.com", "/generate_204", 204)
-
-    private fun verifyRequiredServices(): Boolean {
-        val hosts = listOf(
+    /**
+     * Strict end-to-end check: YouTube, Instagram and Telegram must ALL
+     * complete an HTTPS request through the active tunnel. The slowest
+     * successful probe is returned so the automatic monitor also detects
+     * when any one of the required services stops working.
+     */
+    private fun probeTunnel(): Long {
+        val services = listOf(
             "www.youtube.com",
             "www.instagram.com",
             "api.telegram.org"
         )
-        val pool = java.util.concurrent.Executors.newFixedThreadPool(hosts.size)
+        val pool = java.util.concurrent.Executors.newFixedThreadPool(services.size)
         return try {
-            val checks = hosts.map { host ->
-                pool.submit<Boolean> {
-                    probeTunnelHost(host, "/", null) >= 0L
-                }
+            val checks = services.map { host ->
+                pool.submit<Long> { probeTunnelHost(host, "/", null) }
             }
-            checks.all { runCatching { it.get(4, java.util.concurrent.TimeUnit.SECONDS) }.getOrDefault(false) }
+            val latencies = checks.map {
+                runCatching { it.get(5, java.util.concurrent.TimeUnit.SECONDS) }.getOrDefault(-1L)
+            }
+            if (latencies.any { it < 0L }) -1L else latencies.maxOrNull() ?: -1L
         } finally {
             pool.shutdownNow()
         }
@@ -328,7 +330,7 @@ class GilrTanoVpnService : VpnService() {
             val code = Regex("HTTP/\\d(?:\\.\\d)?\\s+(\\d{3})").find(line)?.groupValues?.get(1)?.toIntOrNull()
                 ?: return -1L
             if (expectedCode != null && code != expectedCode) return -1L
-            if (expectedCode == null && code !in 200..499) return -1L
+            if (expectedCode == null && code !in 200..399) return -1L
             return (System.nanoTime() - started) / 1_000_000L
         } catch (_: Exception) {
             return -1L
