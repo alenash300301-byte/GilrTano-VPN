@@ -35,6 +35,8 @@ class MainActivity : Activity() {
     private lateinit var quattroTab: Button
     private lateinit var freeTab: Button
     private lateinit var bestFreeButton: Button
+    private lateinit var connectButton: Button
+    private lateinit var cancelConnectButton: Button
     @Volatile private var scanningFree = false
     private var activeFree = false
     private var quattroNodes: List<ImportedNode> = emptyList()
@@ -49,7 +51,11 @@ class MainActivity : Activity() {
 
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            status.text = intent?.getStringExtra(GilrTanoVpnService.EXTRA_STATUS) ?: "—"
+            val message = intent?.getStringExtra(GilrTanoVpnService.EXTRA_STATUS) ?: "—"
+            status.text = message
+            val busy = message.startsWith("Подключаю") || message.startsWith("Запускаю") || message.startsWith("Запуск Xray")
+            cancelConnectButton.isEnabled = busy
+            connectButton.isEnabled = !busy
         }
     }
 
@@ -112,7 +118,7 @@ class MainActivity : Activity() {
             text = "Импортировать бесплатные серверы"
             setOnClickListener { importFrom(freeSource.text.toString().trim(), true) }
         }
-        val connect = Button(this).apply {
+        connectButton = Button(this).apply {
             text = "Подключить выбранный сервер"
             setOnClickListener {
                 val node = activeNodes.getOrNull(servers.selectedItemPosition)
@@ -130,6 +136,17 @@ class MainActivity : Activity() {
                         status.text = "Профиль не поддерживается: ${e.message}"
                     }
                 }
+            }
+        }
+        cancelConnectButton = Button(this).apply {
+            text = "Отменить подключение"
+            isEnabled = false
+            setOnClickListener {
+                pendingConfig = null
+                cancelConnectButton.isEnabled = false
+                connectButton.isEnabled = true
+                status.text = "Отменяю подключение…"
+                startService(Intent(this@MainActivity, GilrTanoVpnService::class.java).setAction(GilrTanoVpnService.ACTION_STOP))
             }
         }
         val disconnect = Button(this).apply {
@@ -169,7 +186,8 @@ class MainActivity : Activity() {
             addView(pingStatus)
             addView(bestFreeButton)
             addView(checkPing)
-            addView(connect)
+            addView(connectButton)
+            addView(cancelConnectButton)
             addView(disconnect)
             addView(status)
             addView(TextView(this@MainActivity).apply {
@@ -396,6 +414,8 @@ class MainActivity : Activity() {
     }
 
     private fun startVpn(config: String) {
+        connectButton.isEnabled = false
+        cancelConnectButton.isEnabled = true
         startForegroundService(
             Intent(this, GilrTanoVpnService::class.java)
                 .setAction(GilrTanoVpnService.ACTION_START)
@@ -408,8 +428,11 @@ class MainActivity : Activity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == this.requestCode && resultCode == RESULT_OK) {
-            pendingConfig?.let { startVpn(it) }
+            pendingConfig?.let { startVpn(it) } ?: run { status.text = "Подключение отменено" }
         } else if (requestCode == this.requestCode) {
+            pendingConfig = null
+            cancelConnectButton.isEnabled = false
+            connectButton.isEnabled = true
             status.text = "Разрешение VPN не предоставлено"
         } else if (requestCode == docxRequestCode && resultCode == RESULT_OK) {
             val uri = data?.data ?: return
