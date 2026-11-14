@@ -468,7 +468,8 @@ class MainActivity : Activity() {
                 }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             }
             navItem("⌂", "Главная", { scroll.smoothScrollTo(0, 0) }, true)
-            navItem("▤", "Серверы", { showServerPicker() })
+            navItem("◎", "Серверы", { showServerPicker() })
+            navItem("▥", "Статистика", { showTrafficStats() })
             navItem("⚙", "Настройки", {
                 settingsExpanded = true
                 settingsHeader.visibility = View.VISIBLE
@@ -751,6 +752,25 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun showTrafficStats() {
+        val uid = applicationInfo.uid
+        val rx = android.net.TrafficStats.getUidRxBytes(uid)
+        val tx = android.net.TrafficStats.getUidTxBytes(uid)
+        fun format(bytes: Long): String = if (bytes < 0) "нет данных" else {
+            val mb = bytes / (1024.0 * 1024.0)
+            String.format(java.util.Locale.getDefault(), "%.1f МБ", mb)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Статистика GilrTano VPN")
+            .setMessage(
+                "Получено приложением: ${format(rx)}\n" +
+                "Отправлено приложением: ${format(tx)}\n\n" +
+                "Это общий сетевой трафик приложения Android, а не подтверждённая скорость VPN-туннеля."
+            )
+            .setPositiveButton("ОК", null)
+            .show()
+    }
+
     private fun refreshMode() {
         autoTab.isEnabled = !autoMode
         quattroTab.isEnabled = autoMode || activeFree
@@ -978,7 +998,20 @@ class MainActivity : Activity() {
                 val fastest = checked.sortedBy { it.second }
                 runOnUiThread {
                     if (fastest.isEmpty()) {
+                        // A failed scan is never a connected state: restore every
+                        // visual control so the screen cannot remain falsely green.
                         status.text = "За 22 секунды рабочий сервер не найден. Попробуй обновить список позже."
+                        status.setTextColor(Color.LTGRAY)
+                        updatePowerOrb(false)
+                        if (::tigerFlames.isInitialized) tigerFlames.setActive(false)
+                        if (::connectionTimer.isInitialized) {
+                            connectionTimer.stop()
+                            connectionTimer.visibility = View.GONE
+                        }
+                        updateServerCard(false)
+                        resetConnectButtonGlow()
+                        setPowerButtonLabel("ПОДКЛЮЧИТЬ")
+                        connectButton.isEnabled = true
                     } else {
                         freeNodes = fastest.map { it.first }
                         saveNodes("free_nodes", freeNodes)
