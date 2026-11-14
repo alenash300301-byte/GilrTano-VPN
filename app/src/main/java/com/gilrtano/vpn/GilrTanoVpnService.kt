@@ -35,25 +35,31 @@ class GilrTanoVpnService : VpnService() {
         stopping = false
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, notification("Запуск Xray…"))
-        try {
-            Teapodcore.initCoreEnv(filesDir.absolutePath, "")
-            Teapodcore.registerVpnProtector(object : VpnProtector {
-                override fun protect(fd: Long): Boolean = this@GilrTanoVpnService.protect(fd.toInt())
-            })
-            Teapodcore.startXray(config, object : XrayCallback {
-                override fun onStatus(status: Long, message: String) {
-                    Log.i(TAG, "Xray status=$status $message")
-                    if (status == 0L && !stopping) establishTun()
-                    else if (status < 0L && !stopping) {
-                        broadcastStatus("Ошибка Xray: $message")
-                        stopTunnel()
+        // Native core initialization/start can block; never run it on Android's service main thread.
+        Thread({
+            try {
+                Teapodcore.initCoreEnv(filesDir.absolutePath, "")
+                Teapodcore.registerVpnProtector(object : VpnProtector {
+                    override fun protect(fd: Long): Boolean = this@GilrTanoVpnService.protect(fd.toInt())
+                })
+                Teapodcore.startXray(config, object : XrayCallback {
+                    override fun onStatus(status: Long, message: String) {
+                        Log.i(TAG, "Xray status=$status $message")
+                        if (status == 0L && !stopping) establishTun()
+                        else if (status < 0L && !stopping) {
+                            broadcastStatus("Ошибка Xray: $message")
+                            stopTunnel()
+                        }
                     }
+                })
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to start Xray", e)
+                if (!stopping) {
+                    broadcastStatus("Ошибка запуска: ${e.message}")
+                    stopTunnel()
                 }
-            })
-        } catch (e: Exception) {
-            broadcastStatus("Ошибка запуска: ${e.message}")
-            stopTunnel()
-        }
+            }
+        }, "GilrTano-Xray-start").start()
     }
 
     @Synchronized private fun establishTun() {
@@ -139,7 +145,10 @@ class GilrTanoVpnService : VpnService() {
             val q = parsed
             val security = q.getQueryParameter("security") ?: "none"
             val network = q.getQueryParameter("type") ?: "tcp"
-            require(security == "reality" || security == "tls" || security == "none") { "Неподдерживаемый security=$security" }
+            // Current Xray core rejects VLESS without TLS/REALITY for public server addresses.
+            require(security == "reality" || security == "tls") {
+                "Сервер VLESS без TLS/REALITY не поддерживается Xray. Выбери сервер с security=tls или security=reality."
+            }
             val stream = JSONObject().put("network", network).put("security", security)
             if (security == "reality") {
                 val reality = JSONObject()
