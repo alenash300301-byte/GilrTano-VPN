@@ -721,7 +721,7 @@ class MainActivity : Activity() {
                     (activeFree && label == "Импортировать бесплатные серверы")
                 )
                 if (label == "QUATTRO" || label == "БЕСПЛАТНЫЙ РЕЗЕРВ") {
-                    child.visibility = if (settingsExpanded) View.VISIBLE else View.GONE
+                    child.visibility = View.VISIBLE
                 }
                 if (label.startsWith("Импортировать") || label == "Выбрать DOCX Quattro") {
                     child.visibility = if (show) View.VISIBLE else View.GONE
