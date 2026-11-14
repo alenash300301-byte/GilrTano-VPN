@@ -67,7 +67,16 @@ class MainActivity : Activity() {
             setText(prefs.getString("free_subscription_url", "https://raw.githubusercontent.com/morpheusadam/v2ray-config/main/subs/bundles/best.txt"))
             inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
         }
-        servers = Spinner(this)
+        servers = Spinner(this).apply {
+            onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+                override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: android.view.View?, position: Int, id: Long) {
+                    val key = if (activeFree) "free_selected" else "quattro_selected"
+                    prefs.edit().putInt(key, position).apply()
+                    pingStatus.text = "Пинг: —"
+                }
+                override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
+            }
+        }
 
         quattroTab = Button(this).apply {
             text = "QUATTRO"
