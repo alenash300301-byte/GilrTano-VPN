@@ -70,16 +70,8 @@ class FireButtonDrawable : Drawable() {
         paint.strokeWidth = radius * .035f
         paint.color = if (connected) Color.rgb(31, 255, 62) else if (pressed) Color.rgb(255, 170, 40) else Color.rgb(26, 26, 29)
         canvas.drawCircle(0f, 0f, radius, paint)
-        paint.style = Paint.Style.STROKE
-        paint.strokeCap = Paint.Cap.ROUND
-        paint.strokeWidth = radius * .11f
-        paint.color = if (connected) Color.WHITE else if (pressed) Color.rgb(255, 202, 120) else Color.rgb(215, 215, 220)
-        val p = Path().apply {
-            moveTo(0f, -radius*.42f)
-            lineTo(0f, -radius*.04f)
-            arcTo(RectFCompat.circle(radius*.43f), -48f, 276f, false)
-        }
-        canvas.drawPath(p, paint)
+        // The single control's label is rendered by the Button itself.
+        // Keep the central fire core uncluttered so CONNECT / DISCONNECT stays legible.
         paint.style = Paint.Style.FILL
         canvas.restoreToCount(save)
     }
