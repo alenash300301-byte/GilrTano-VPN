@@ -61,6 +61,7 @@ class MainActivity : Activity() {
     private var autoMode = true
     private var activeMode: String = "auto"
     private lateinit var bestFreeButton: Button
+    private lateinit var checkPing: Button
     private lateinit var connectButton: Button
     private val fireDrawable = FireButtonDrawable()
     private var fireAnimator: ValueAnimator? = null
@@ -253,7 +254,7 @@ class MainActivity : Activity() {
             text = "Найти лучший бесплатный сервер (проверка интернета)"
             setOnClickListener { refreshFreeServersAndFindBest() }
         }
-        val checkPing = Button(this).apply {
+        checkPing = Button(this).apply {
             text = "Проверить пинг"
             setOnClickListener { measureSelectedPing() }
         }
