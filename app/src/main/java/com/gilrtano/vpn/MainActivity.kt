@@ -303,8 +303,10 @@ class MainActivity : Activity() {
                 val tigerScene = FrameLayout(this@MainActivity).apply {
                     setBackgroundColor(Color.BLACK)
                     addView(ImageView(this@MainActivity).apply {
-                        setImageResource(R.drawable.tiger_hero)
+                        setImageResource(R.drawable.tiger_hero_art)
                         scaleType = ImageView.ScaleType.FIT_CENTER
+                        adjustViewBounds = true
+                        setBackgroundColor(Color.TRANSPARENT)
                         contentDescription = "Тигр с зелёными глазами"
                     }, FrameLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
@@ -320,10 +322,10 @@ class MainActivity : Activity() {
                     ))
                 }
                 addView(tigerScene, LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, dp(286)
-                ).apply { topMargin = dp(0); bottomMargin = dp(0) })
-                powerOrb = TextView(this@MainActivity).apply {
-                    text = "⏻"; textSize = 55f
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(320)
+                ).apply { topMargin = dp(2); bottomMargin = dp(0) })
+                powerOrb = PowerOrbButtonView(this@MainActivity).apply {
+                    text = ""
                     gravity = android.view.Gravity.CENTER
                     setTextColor(Color.WHITE)
                     typeface = android.graphics.Typeface.create("sans-serif-light", android.graphics.Typeface.NORMAL)
@@ -354,7 +356,7 @@ class MainActivity : Activity() {
                 powerOrb.contentDescription = "Кнопка питания VPN"
                 addView(powerOrb, LinearLayout.LayoutParams(dp(132), dp(132)).apply {
                     gravity = android.view.Gravity.CENTER
-                    topMargin = dp(-42); bottomMargin = dp(0)
+                    topMargin = dp(-48); bottomMargin = dp(0)
                 })
                 addView(status.apply {
                     text = "●  Отключено"; textSize = 17f
