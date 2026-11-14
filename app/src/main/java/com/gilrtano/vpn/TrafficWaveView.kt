@@ -50,5 +50,7 @@ class TrafficWaveView @JvmOverloads constructor(
         area.close()
         canvas.drawPath(area, fill)
         canvas.drawPath(wave, line)
+        phase += 0.10f
+        postInvalidateDelayed(80L)
     }
 }
