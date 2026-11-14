@@ -1,0 +1,73 @@
+name: Build native Xray AAR
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'upstream/**'
+      - 'scripts/build-native-aar.sh'
+      - '.github/workflows/build-native.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-native:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+          cache-dependency-path: upstream/teapod-core/go.sum
+
+      - name: Set up Android SDK and NDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android NDK
+        run: |
+          sdkmanager --install "ndk;28.2.13676358"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
+          echo "$HOME/go/bin" >> "$GITHUB_PATH"
+
+      - name: Install gomobile
+        run: |
+          go install golang.org/x/mobile/cmd/gomobile@latest
+          gomobile init
+
+      - name: Build native AAR
+        env:
+          ANDROID_HOME: ${{ env.ANDROID_HOME }}
+          ANDROID_SDK_ROOT: ${{ env.ANDROID_HOME }}
+          ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/28.2.13676358
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y patch unzip zip perl
+          chmod +x scripts/build-native-aar.sh
+          ./scripts/build-native-aar.sh
+
+      - name: Verify AAR contents
+        run: |
+          AAR=$(find upstream/teapod-core/outputs -maxdepth 1 -name 'teapod-core-*.aar' ! -name '*-arm64-v8a-*' ! -name '*-x86_64-*' | head -n1)
+          test -n "$AAR"
+          unzip -l "$AAR" | grep -E 'jni/arm64-v8a/libgojni.so|classes.jar'
+          unzip -p "$AAR" classes.jar > /tmp/teapod-classes.jar
+          jar tf /tmp/teapod-classes.jar | grep -E 'teapodcore/(Teapodcore|VpnProtector|XrayCallback).class'
+
+      - name: Upload native AAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: GilrTano-teapod-core-AAR
+          path: upstream/teapod-core/outputs/teapod-core-1.7.7.aar
+          if-no-files-found: error
