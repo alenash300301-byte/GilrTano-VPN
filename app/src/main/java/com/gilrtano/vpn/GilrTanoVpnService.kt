@@ -85,10 +85,10 @@ class GilrTanoVpnService : VpnService() {
             // StartTun2Socks returns after scheduling its engine. Do not tell the
             // user VPN is connected until the native bridge reports it running.
             var running = false
-            repeat(20) {
+            for (attempt in 0 until 20) {
                 if (Teapodcore.isTunRunning()) {
                     running = true
-                    return@repeat
+                    break
                 }
                 Thread.sleep(100)
             }
