@@ -24,6 +24,9 @@ import android.widget.LinearLayout
 import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
+import android.text.SpannableString
+import android.text.Spanned
+import android.text.style.ForegroundColorSpan
 import android.net.Uri
 import org.json.JSONArray
 import org.json.JSONObject
@@ -75,11 +78,11 @@ class MainActivity : Activity() {
             // The single power button remains usable while connecting so it can cancel,
             // and while connected so it can disconnect.
             connectButton.isEnabled = true
-            connectButton.text = when {
-                message.startsWith("Подключено") || message.startsWith("Отключаю") -> "⏻\nОТКЛЮЧИТЬ"
-                busy -> "⏻\nПОДКЛЮЧЕНИЕ…"
-                else -> "⏻\nПОДКЛЮЧИТЬ"
-            }
+            setPowerButtonLabel(
+                if (message.startsWith("Подключено") || message.startsWith("Отключаю")) "ОТКЛЮЧИТЬ"
+                else if (busy) "ПОДКЛЮЧЕНИЕ…"
+                else "ПОДКЛЮЧИТЬ"
+            )
             connectButton.contentDescription = when {
                 message.startsWith("Подключено") -> "Отключить VPN"
                 busy -> "Отменить подключение"
@@ -321,7 +324,7 @@ class MainActivity : Activity() {
         setContentView(root)
         styleDarkInterface()
         installButtonFeedback()
-        connectButton.text = "⏻   ПОДКЛЮЧИТЬ"
+        setPowerButtonLabel("ПОДКЛЮЧИТЬ")
         connectButton.apply {
             textSize = 18f
             typeface = android.graphics.Typeface.DEFAULT_BOLD
@@ -372,6 +375,16 @@ class MainActivity : Activity() {
         }
         activeFree = prefs.getBoolean("active_free_mode", false)
         refreshMode()
+    }
+
+    private fun setPowerButtonLabel(label: String) {
+        val full = "⏻   $label"
+        val styled = SpannableString(full)
+        styled.setSpan(
+            ForegroundColorSpan(Color.rgb(255, 112, 18)),
+            0, 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+        )
+        connectButton.text = styled
     }
 
     // Flame tongues move continuously only while VPN is genuinely connected.
