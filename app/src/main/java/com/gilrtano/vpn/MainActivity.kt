@@ -39,6 +39,7 @@ import java.util.concurrent.TimeUnit
 
 class MainActivity : Activity() {
     private lateinit var status: TextView
+    private lateinit var powerOrb: TextView
     private lateinit var settingsHeader: TextView
     private lateinit var pingStatus: TextView
     private lateinit var primarySource: EditText
@@ -66,15 +67,22 @@ class MainActivity : Activity() {
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             val message = intent?.getStringExtra(GilrTanoVpnService.EXTRA_STATUS) ?: "—"
-            status.text = message
+            status.text = when {
+                message.startsWith("Подключено") -> "●  Подключено"
+                message == "Отключено" -> "●  Отключено"
+                else -> message
+            }
             if (message.startsWith("Подключено")) {
                 status.setTextColor(Color.rgb(36, 255, 72))
+                updatePowerOrb(true)
                 igniteConnectButton()
             } else if (message == "Отключено" || message.startsWith("Ошибка")) {
                 status.setTextColor(Color.LTGRAY)
+                updatePowerOrb(false)
                 resetConnectButtonGlow()
             } else if (message.startsWith("Подключаю") || message.startsWith("Запускаю") || message.startsWith("Запуск Xray")) {
                 status.setTextColor(Color.rgb(255, 166, 55))
+                updatePowerOrb(false)
             }
             val busy = message.startsWith("Подключаю") || message.startsWith("Запускаю") || message.startsWith("Запуск Xray")
             // The single power button remains usable while connecting so it can cancel,
@@ -236,38 +244,38 @@ class MainActivity : Activity() {
                         text = "♛"; textSize = 29f; setTextColor(Color.rgb(255, 170, 20))
                     })
                 })
-                addView(View(this@MainActivity).apply {
-                    setBackgroundColor(Color.rgb(190, 61, 10))
-                }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)).apply {
-                    topMargin = dp(8); bottomMargin = dp(8)
-                })
                 // Approved home composition: large tiger artwork, then one wide action button.
                 addView(ImageView(this@MainActivity).apply {
                     setImageResource(R.drawable.tiger_hero)
                     scaleType = ImageView.ScaleType.CENTER_CROP
+                    setBackgroundColor(Color.BLACK)
                     contentDescription = "Реалистичный тигр с зелёными глазами и огнём"
                 }, LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, dp(270)
-                ).apply { topMargin = dp(2); bottomMargin = dp(0) })
-                addView(TextView(this@MainActivity).apply {
-                    text = "⏻"; textSize = 54f
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(286)
+                ).apply { topMargin = dp(0); bottomMargin = dp(0) })
+                powerOrb = TextView(this@MainActivity).apply {
+                    text = "⏻"; textSize = 55f
                     gravity = android.view.Gravity.CENTER
                     setTextColor(Color.WHITE)
+                    typeface = android.graphics.Typeface.create("sans-serif-light", android.graphics.Typeface.NORMAL)
                     background = GradientDrawable().apply {
                         shape = GradientDrawable.OVAL
-                        setColor(Color.rgb(7, 7, 8))
+                        setColor(Color.rgb(8, 8, 9))
                         setStroke(dp(3), Color.rgb(255, 112, 18))
                     }
-                    elevation = dp(10).toFloat()
-                }, LinearLayout.LayoutParams(dp(112), dp(112)).apply {
+                    elevation = dp(14).toFloat()
+                    setLayerType(View.LAYER_TYPE_SOFTWARE, null)
+                    paint.setShadowLayer(dp(12).toFloat(), 0f, 0f, Color.rgb(255, 112, 18))
+                }
+                addView(powerOrb, LinearLayout.LayoutParams(dp(104), dp(104)).apply {
                     gravity = android.view.Gravity.CENTER
-                    topMargin = dp(-24); bottomMargin = dp(2)
+                    topMargin = dp(-36); bottomMargin = dp(0)
                 })
                 addView(status.apply {
                     text = "●  Отключено"; textSize = 17f
                     gravity = android.view.Gravity.CENTER
                     setTextColor(Color.LTGRAY)
-                    setPadding(dp(8), dp(4), dp(8), dp(4))
+                    setPadding(dp(8), dp(5), dp(8), dp(3))
                 })
                 addView(connectButton, LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, dp(68)
@@ -432,6 +440,19 @@ class MainActivity : Activity() {
         }
         activeFree = prefs.getBoolean("active_free_mode", false)
         refreshMode()
+    }
+
+    private fun updatePowerOrb(connected: Boolean) {
+        if (!::powerOrb.isInitialized) return
+        val accent = if (connected) Color.rgb(0, 255, 48) else Color.rgb(255, 112, 18)
+        powerOrb.background = GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(if (connected) Color.rgb(0, 34, 10) else Color.rgb(8, 8, 9))
+            setStroke(dp(3), accent)
+        }
+        powerOrb.paint.setShadowLayer(dp(if (connected) 20 else 10).toFloat(), 0f, 0f, accent)
+        powerOrb.elevation = dp(if (connected) 20 else 12).toFloat()
+        powerOrb.invalidate()
     }
 
     private fun setPowerButtonLabel(label: String) {
