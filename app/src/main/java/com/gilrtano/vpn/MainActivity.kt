@@ -66,6 +66,7 @@ class MainActivity : Activity() {
     private lateinit var bestFreeButton: Button
     private lateinit var checkPing: Button
     private lateinit var modeSelectorRow: LinearLayout
+    private lateinit var pingMetric: TextView
     private lateinit var downloadMetric: TextView
     private lateinit var uploadMetric: TextView
     private val trafficHandler = Handler(Looper.getMainLooper())
@@ -408,7 +409,7 @@ class MainActivity : Activity() {
                     setPadding(dp(16), dp(10), dp(14), dp(10))
                     setOnClickListener { showServerPicker() }
                     addView(TextView(this@MainActivity).apply {
-                        text = "◎"; textSize = 31f; setTextColor(Color.WHITE)
+                        text = "🌐"; textSize = 25f; setTextColor(Color.WHITE)
                         setPadding(0, 0, dp(14), 0)
                     })
                     addView(LinearLayout(this@MainActivity).apply {
@@ -460,6 +461,7 @@ class MainActivity : Activity() {
                                 typeface = android.graphics.Typeface.DEFAULT_BOLD
                                 setTextColor(Color.rgb(30, 238, 65))
                                 setPadding(0, dp(3), 0, 0)
+                                if (title == "Пинг") pingMetric = this
                                 if (title == "Скачать") downloadMetric = this
                                 if (title == "Отдать") uploadMetric = this
                             })
@@ -1221,7 +1223,15 @@ class MainActivity : Activity() {
                 ((System.nanoTime() - started) / 1_000_000L)
             }
             runOnUiThread {
-                pingStatus.text = if (result.isSuccess) "Пинг до сервера: ${result.getOrThrow()} мс (TCP)" else "Сервер не отвечает на проверку"
+                if (result.isSuccess) {
+                    val ms = result.getOrThrow()
+                    pingStatus.text = "Пинг до сервера: ${ms} мс (TCP)"
+                    if (::pingMetric.isInitialized) pingMetric.text = "$ms мс"
+                    if (::serverCardPing.isInitialized) serverCardPing.text = "$ms мс"
+                } else {
+                    pingStatus.text = "Сервер не отвечает на проверку"
+                    if (::pingMetric.isInitialized) pingMetric.text = "— мс"
+                }
             }
         }.start()
     }
