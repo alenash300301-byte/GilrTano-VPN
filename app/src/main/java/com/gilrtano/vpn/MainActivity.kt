@@ -13,6 +13,8 @@ import android.view.ViewGroup
 import android.view.MotionEvent
 import android.animation.AnimatorSet
 import android.animation.ObjectAnimator
+import android.animation.ValueAnimator
+import android.animation.ArgbEvaluator
 import android.view.animation.DecelerateInterpolator
 import android.widget.ArrayAdapter
 import android.widget.Button
@@ -130,6 +132,7 @@ class MainActivity : Activity() {
                     Toast.makeText(this@MainActivity, "В этом режиме пока нет серверов", Toast.LENGTH_LONG).show()
                 } else {
                     try {
+                        igniteConnectButton()
                         val config = GilrTanoVpnService.xrayConfigFromVless(node.uri)
                         pendingConfig = config
                         connectButton.isEnabled = false
@@ -260,6 +263,37 @@ class MainActivity : Activity() {
         }
         activeFree = prefs.getBoolean("active_free_mode", false)
         refreshMode()
+    }
+
+    // A short ember-to-flame ignition when the user starts connecting.
+    private fun igniteConnectButton() {
+        val bg = connectButton.background as? GradientDrawable ?: return
+        val dim = Color.rgb(42, 15, 7)
+        val hot = Color.rgb(112, 27, 5)
+        val ember = Color.rgb(255, 105, 12)
+        val bright = Color.rgb(255, 190, 65)
+        val animator = ValueAnimator.ofFloat(0f, 1f, 0.72f, 1f, 0.88f)
+        animator.duration = 1050L
+        animator.interpolator = DecelerateInterpolator()
+        animator.addUpdateListener { animation ->
+            val t = animation.animatedValue as Float
+            val color = ArgbEvaluator().evaluate(t, dim, hot) as Int
+            val edge = ArgbEvaluator().evaluate(t, ember, bright) as Int
+            bg.setColor(color)
+            bg.setStroke(dp(4 + (4 * t).toInt()), edge)
+            connectButton.elevation = dp(12 + (10 * t).toInt()).toFloat()
+            connectButton.scaleX = 1f + 0.025f * t
+            connectButton.scaleY = 1f + 0.025f * t
+        }
+        animator.addListener(object : android.animation.AnimatorListenerAdapter() {
+            override fun onAnimationEnd(animation: android.animation.Animator) {
+                connectButton.animate().scaleX(1f).scaleY(1f).setDuration(220L).start()
+                bg.setColor(dim)
+                bg.setStroke(dp(4), ember)
+                connectButton.elevation = dp(12).toFloat()
+            }
+        })
+        animator.start()
     }
 
     private fun styleDarkInterface() {
