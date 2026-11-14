@@ -982,9 +982,9 @@ class MainActivity : Activity() {
         // Public free nodes expire frequently. Check a much larger portion of the
         // imported catalogue and allow slow handshakes, rather than rejecting all
         // candidates after one short 25-second window.
-        val candidates = freeNodes.take(60)
+        val candidates = freeNodes.take(180)
         Thread {
-            val pool = Executors.newFixedThreadPool(4)
+            val pool = Executors.newFixedThreadPool(6)
             val completion = java.util.concurrent.ExecutorCompletionService<Pair<ImportedNode, Long>?>(pool)
             try {
                 candidates.forEach { node ->
@@ -1000,7 +1000,7 @@ class MainActivity : Activity() {
                     })
                 }
                 val checked = mutableListOf<Pair<ImportedNode, Long>>()
-                val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(22)
+                val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(55)
                 var completed = 0
                 while (completed < candidates.size && System.nanoTime() < deadline && checked.size < 3) {
                     val remaining = deadline - System.nanoTime()
@@ -1020,7 +1020,7 @@ class MainActivity : Activity() {
                     if (fastest.isEmpty()) {
                         // A failed scan is never a connected state: restore every
                         // visual control so the screen cannot remain falsely green.
-                        status.text = "За 22 секунды рабочий сервер не найден. Попробуй обновить список позже."
+                        status.text = "Проверено серверов: $completed из ${candidates.size}. Рабочие пока не ответили — попробуй повторить поиск позже."
                         status.setTextColor(Color.LTGRAY)
                         updatePowerOrb(false)
                         if (::tigerFlames.isInitialized) tigerFlames.setActive(false)
