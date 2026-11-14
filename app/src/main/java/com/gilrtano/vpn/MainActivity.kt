@@ -1350,6 +1350,12 @@ class MainActivity : Activity() {
             .putExtra(GilrTanoVpnService.EXTRA_ENGINE, pendingEngine)
             .putExtra(GilrTanoVpnService.EXTRA_AUTO, automatic)
         fallbackConfig?.let { intent.putExtra(GilrTanoVpnService.EXTRA_FALLBACK_CONFIG, it) }
+        if (automatic && activeFree) {
+            val rotation = freeNodes.mapNotNull { node ->
+                runCatching { GilrTanoVpnService.xrayConfigFromVless(node.uri) }.getOrNull()
+            }.filter { it != config }
+            intent.putExtra(GilrTanoVpnService.EXTRA_ROTATION_CONFIGS, JSONArray(rotation).toString())
+        }
         preferredConfig?.let { intent.putExtra(GilrTanoVpnService.EXTRA_PREFERRED_CONFIG, it) }
         startForegroundService(intent)
         status.text = "Запускаю VPN…"
