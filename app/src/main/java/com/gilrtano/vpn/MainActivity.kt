@@ -982,9 +982,9 @@ class MainActivity : Activity() {
         // Public free nodes expire frequently. Check a much larger portion of the
         // imported catalogue and allow slow handshakes, rather than rejecting all
         // candidates after one short 25-second window.
-        val candidates = freeNodes.take(180)
+        val candidates = freeNodes.take(80)
         Thread {
-            val pool = Executors.newFixedThreadPool(6)
+            val pool = Executors.newFixedThreadPool(8)
             val completion = java.util.concurrent.ExecutorCompletionService<Pair<ImportedNode, Long>?>(pool)
             try {
                 candidates.forEach { node ->
@@ -1000,9 +1000,9 @@ class MainActivity : Activity() {
                     })
                 }
                 val checked = mutableListOf<Pair<ImportedNode, Long>>()
-                val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(55)
+                val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(18)
                 var completed = 0
-                while (completed < candidates.size && System.nanoTime() < deadline && checked.size < 3) {
+                while (completed < candidates.size && System.nanoTime() < deadline && checked.size < if (autoConnectWhenReady) 1 else 2) {
                     val remaining = deadline - System.nanoTime()
                     val future = completion.poll(remaining, TimeUnit.NANOSECONDS) ?: break
                     completed++
@@ -1013,7 +1013,7 @@ class MainActivity : Activity() {
                             if (scanningFree) status.text = "Автопоиск: проверено $done из ${candidates.size}…"
                         }
                     }
-                    if (checked.size >= 3) break
+                    if (checked.size >= if (autoConnectWhenReady) 1 else 2) break
                 }
                 val fastest = checked.sortedBy { it.second }
                 runOnUiThread {
