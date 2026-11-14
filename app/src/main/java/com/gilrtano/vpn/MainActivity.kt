@@ -835,9 +835,9 @@ class MainActivity : Activity() {
         // Public free nodes expire frequently. Check a much larger portion of the
         // imported catalogue and allow slow handshakes, rather than rejecting all
         // candidates after one short 25-second window.
-        val candidates = freeNodes.take(80)
+        val candidates = freeNodes.take(60)
         Thread {
-            val pool = Executors.newFixedThreadPool(12)
+            val pool = Executors.newFixedThreadPool(4)
             val completion = java.util.concurrent.ExecutorCompletionService<Pair<ImportedNode, Long>?>(pool)
             try {
                 candidates.forEach { node ->
@@ -853,7 +853,7 @@ class MainActivity : Activity() {
                     })
                 }
                 val checked = mutableListOf<Pair<ImportedNode, Long>>()
-                val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(25)
+                val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(22)
                 var completed = 0
                 while (completed < candidates.size && System.nanoTime() < deadline && checked.size < 3) {
                     val remaining = deadline - System.nanoTime()
@@ -871,7 +871,7 @@ class MainActivity : Activity() {
                 val fastest = checked.sortedBy { it.second }
                 runOnUiThread {
                     if (fastest.isEmpty()) {
-                        status.text = "За 25 секунд рабочий сервер не найден. Попробуй обновить список позже."
+                        status.text = "За 22 секунды рабочий сервер не найден. Попробуй обновить список позже."
                     } else {
                         freeNodes = fastest.map { it.first }
                         saveNodes("free_nodes", freeNodes)
