@@ -156,7 +156,11 @@ class GilrTanoVpnService : VpnService() {
                 Thread.sleep(100)
             }
             if (!running) throw IllegalStateException("TUN-мост не запустился")
-            broadcastStatus("Подключено · Xray и TUN работают")
+            broadcastStatus(
+                if (automaticMode) {
+                    if (usingFallback) "Подключено · бесплатный резерв" else "Подключено · Quattro"
+                } else "Подключено · Xray и TUN работают"
+            )
             updateNotification("Подключено")
             startConnectionMonitor()
         } catch (e: Exception) {
