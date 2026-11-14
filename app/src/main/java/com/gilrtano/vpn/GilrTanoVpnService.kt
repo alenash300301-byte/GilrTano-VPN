@@ -84,6 +84,8 @@ class GilrTanoVpnService : VpnService(), TunInterface {
             synchronized(this) {
                 if (mihomoStarted) runCatching { Clash.stopTun() }
                 mihomoStarted = false
+                if (mihomoStarted) runCatching { Clash.stopTun() }
+                mihomoStarted = false
                 runCatching { Teapodcore.stopTun2Socks() }
                 runCatching { Teapodcore.stopBox() }
                 runCatching { Teapodcore.stopXray() }
@@ -161,6 +163,9 @@ class GilrTanoVpnService : VpnService(), TunInterface {
     }
 
     private fun startMihomo(profilePath: String) {
+        activeConfig = profilePath
+        createNotificationChannel()
+        startForeground(NOTIFICATION_ID, notification("Запуск WARP MASQUE…"))
         Thread({
             try {
                 val home = java.io.File(filesDir, "mihomo").apply { mkdirs() }
