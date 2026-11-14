@@ -90,10 +90,10 @@ class TigerFlameOverlayView(context: Context) : View(context) {
         for (i in 0 until visibleCount) {
             val angle = (Math.PI * 2.0 * i / count).toFloat() - (Math.PI / 2f)
             val wave = (sin(phase * 1.65f + i * 1.27f) + 1f) * .5f
-            val x = cx + cos(angle) * rx
-            val y = cy + sin(angle) * ry
-            val nx = cos(angle)
-            val ny = sin(angle)
+            val x = cx + cos(angle.toDouble()).toFloat() * rx
+            val y = cy + sin(angle.toDouble()).toFloat() * ry
+            val nx = cos(angle.toDouble()).toFloat()
+            val ny = sin(angle.toDouble()).toFloat()
             val length = (18f + 28f * wave) * unit
             val half = (4f + 4f * wave) * unit
             val drift = sin(phase + i * .63f) * 5f * unit
