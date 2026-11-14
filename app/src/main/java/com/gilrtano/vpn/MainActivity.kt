@@ -18,10 +18,12 @@ import android.widget.Toast
 
 class MainActivity : Activity() {
     private lateinit var status: TextView
-    private lateinit var profile: EditText
+    private lateinit var primarySource: EditText
+    private lateinit var freeSource: EditText
     private lateinit var servers: Spinner
     private val requestCode = 4101
     private var nodes: List<ImportedNode> = emptyList()
+    private var pendingConfig: String? = null
 
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -32,20 +34,29 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         status = TextView(this).apply { text = "Отключено"; textSize = 17f }
-        profile = EditText(this).apply {
-            hint = "Ссылка Quattro, VLESS или подписка"
+        primarySource = EditText(this).apply {
+            hint = "Quattro: ссылка подписки или вставленный YAML"
+            minLines = 3
+            maxLines = 8
+            setText(getPreferences(MODE_PRIVATE).getString("subscription_url", ""))
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or
+                android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE or
+                android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+        }
+        freeSource = EditText(this).apply {
+            hint = "Резерв: ссылка бесплатной подписки VLESS (добавьте проверенный источник)"
             minLines = 2
             maxLines = 4
-            setText(getPreferences(MODE_PRIVATE).getString("subscription_url", ""))
+            setText(getPreferences(MODE_PRIVATE).getString("free_subscription_url", ""))
         }
         servers = Spinner(this)
-        val import = Button(this).apply {
-            text = "Импортировать Quattro / подписку"
-            setOnClickListener { importFrom(profile.text.toString().trim(), false) }
+        val importPrimary = Button(this).apply {
+            text = "Импортировать Quattro"
+            setOnClickListener { importFrom(primarySource.text.toString().trim(), false) }
         }
-        val free = Button(this).apply {
-            text = "Загрузить бесплатный резерв"
-            setOnClickListener { importFrom(FREE_VLESS_URL, true) }
+        val importFree = Button(this).apply {
+            text = "Импортировать бесплатный резерв"
+            setOnClickListener { importFrom(freeSource.text.toString().trim(), true) }
         }
         val connect = Button(this).apply {
             text = "Подключить выбранный сервер"
@@ -62,7 +73,7 @@ class MainActivity : Activity() {
                         if (permission != null) startActivityForResult(permission, requestCode)
                         else startVpn(config)
                     } catch (e: Exception) {
-                        status.text = "Ошибка профиля: ${e.message}"
+                        status.text = "Этот профиль пока не поддерживается: ${e.message}"
                     }
                 }
             }
@@ -78,19 +89,20 @@ class MainActivity : Activity() {
             setPadding(32, 48, 32, 32)
             addView(TextView(this@MainActivity).apply { text = "GilrTano VPN"; textSize = 25f })
             addView(TextView(this@MainActivity).apply {
-                text = "Основной профиль Quattro и бесплатный резерв"
+                text = "Quattro — основной профиль. Бесплатный резерв подключается отдельно."
                 textSize = 14f
             })
-            addView(profile, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-            addView(import)
-            addView(free)
+            addView(primarySource, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            addView(importPrimary)
+            addView(freeSource, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            addView(importFree)
             addView(TextView(this@MainActivity).apply { text = "Сервер:"; textSize = 15f })
             addView(servers)
             addView(connect)
             addView(disconnect)
             addView(status)
             addView(TextView(this@MainActivity).apply {
-                text = "Бесплатные публичные узлы принадлежат неизвестным операторам. Не используйте их для банков и важных аккаунтов."
+                text = "Публичные бесплатные узлы контролируются неизвестными операторами. Не используйте их для банков, паролей и важных аккаунтов."
                 textSize = 12f
             })
         })
@@ -98,7 +110,7 @@ class MainActivity : Activity() {
 
     private fun importFrom(source: String, isFree: Boolean) {
         if (source.isBlank()) {
-            Toast.makeText(this, "Вставьте ссылку Quattro или подписки", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Вставьте ссылку подписки или конфигурацию YAML", Toast.LENGTH_LONG).show()
             return
         }
         status.text = if (isFree) "Загружаю бесплатный резерв…" else "Загружаю Quattro…"
@@ -107,7 +119,7 @@ class MainActivity : Activity() {
                 val imported = SubscriptionImporter.load(source)
                 runOnUiThread {
                     if (imported.isEmpty()) {
-                        status.text = "Не найдено поддерживаемых VLESS-серверов"
+                        status.text = "Не найдено поддерживаемых VLESS-серверов. Hysteria2 пока не поддерживается."
                         return@runOnUiThread
                     }
                     nodes = imported
@@ -116,11 +128,9 @@ class MainActivity : Activity() {
                         android.R.layout.simple_spinner_dropdown_item,
                         nodes.map { it.name }
                     )
-                    if (!isFree) {
-                        profile.setText(source)
-                        getPreferences(MODE_PRIVATE).edit().putString("subscription_url", source).apply()
-                    }
-                    status.text = "Импортировано серверов: ${nodes.size}. Hysteria2 пока пропускается."
+                    val key = if (isFree) "free_subscription_url" else "subscription_url"
+                    getPreferences(MODE_PRIVATE).edit().putString(key, source).apply()
+                    status.text = "Импортировано VLESS-серверов: ${nodes.size}. Выберите сервер."
                 }
             } catch (e: Exception) {
                 runOnUiThread { status.text = "Ошибка импорта: ${e.message}" }
@@ -128,10 +138,7 @@ class MainActivity : Activity() {
         }.start()
     }
 
-    private var pendingConfig: String? = null
-
     private fun startVpn(config: String) {
-        pendingConfig = config
         startForegroundService(
             Intent(this, GilrTanoVpnService::class.java)
                 .setAction(GilrTanoVpnService.ACTION_START)
@@ -160,10 +167,5 @@ class MainActivity : Activity() {
     override fun onStop() {
         runCatching { unregisterReceiver(receiver) }
         super.onStop()
-    }
-
-    companion object {
-        private const val FREE_VLESS_URL =
-            "https://raw.githubusercontent.com/morpheusadam/v2ray-config/main/subs/bundles/vless.txt"
     }
 }
