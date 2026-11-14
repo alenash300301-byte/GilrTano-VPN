@@ -455,8 +455,8 @@ class MainActivity : Activity() {
                                 setTextColor(Color.rgb(30, 238, 65))
                                 setPadding(0, dp(3), 0, 0)
                                 if (title == "Пинг") pingMetric = this
-                                if (title == "Скачать") downloadMetric = this
-                                if (title == "Отдать") uploadMetric = this
+                                if (title == "Входящий") downloadMetric = this
+                                if (title == "Исходящий") uploadMetric = this
                             })
                         }
                     }
