@@ -1002,7 +1002,7 @@ class MainActivity : Activity() {
                 val checked = mutableListOf<Pair<ImportedNode, Long>>()
                 val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(18)
                 var completed = 0
-                while (completed < candidates.size && System.nanoTime() < deadline && checked.size < if (autoConnectWhenReady) 1 else 2) {
+                while (completed < candidates.size && System.nanoTime() < deadline && checked.size < (if (autoConnectWhenReady) 1 else 2)) {
                     val remaining = deadline - System.nanoTime()
                     val future = completion.poll(remaining, TimeUnit.NANOSECONDS) ?: break
                     completed++
@@ -1013,7 +1013,7 @@ class MainActivity : Activity() {
                             if (scanningFree) status.text = "Автопоиск: проверено $done из ${candidates.size}…"
                         }
                     }
-                    if (checked.size >= if (autoConnectWhenReady) 1 else 2) break
+                    if (checked.size >= (if (autoConnectWhenReady) 1 else 2)) break
                 }
                 val fastest = checked.sortedBy { it.second }
                 runOnUiThread {
