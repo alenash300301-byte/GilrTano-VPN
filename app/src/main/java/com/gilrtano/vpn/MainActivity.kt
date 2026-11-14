@@ -155,6 +155,7 @@ class MainActivity : Activity() {
         quattroNodes = restoreNodes("quattro_nodes")
         freeNodes = restoreNodes("free_nodes")
         portalNodes = restoreNodes("portal_nodes")
+        activePortal = prefs.getString("connection_mode", "") == "portal"
 
         status = TextView(this).apply { text = "Отключено"; textSize = 14f; maxLines = 2; gravity = android.view.Gravity.CENTER; setPadding(dp(18), dp(4), dp(18), dp(4)) }
         pingStatus = TextView(this).apply { text = "Пинг: —"; textSize = 15f }
@@ -972,7 +973,7 @@ class MainActivity : Activity() {
         val page = scroll.getChildAt(0) as? ViewGroup ?: return
         settingsHeader.visibility = if (settingsExpanded) View.VISIBLE else View.GONE
         modeSelectorRow.visibility = if (settingsExpanded) View.VISIBLE else View.GONE
-        primarySource.visibility = if (settingsExpanded && !activeFree) View.VISIBLE else View.GONE
+        primarySource.visibility = if (settingsExpanded && !activeFree && !activePortal) View.VISIBLE else View.GONE
         freeSource.visibility = if (settingsExpanded && activeFree && !activePortal) View.VISIBLE else View.GONE
         portalSource.visibility = if (settingsExpanded && activePortal) View.VISIBLE else View.GONE
         importPortalButton.visibility = if (settingsExpanded && activePortal) View.VISIBLE else View.GONE
@@ -983,8 +984,8 @@ class MainActivity : Activity() {
             if (child is Button) {
                 val label = child.text.toString()
                 val show = settingsExpanded && (
-                    (!activeFree && (label == "Импортировать Quattro" || label == "Выбрать DOCX Quattro")) ||
-                    (activeFree && label == "Импортировать бесплатные серверы")
+                    (!activePortal && !activeFree && (label == "Импортировать Quattro" || label == "Выбрать DOCX Quattro")) ||
+                    (!activePortal && activeFree && label == "Импортировать бесплатные серверы")
                 )
                 if (label.startsWith("Импортировать") || label == "Выбрать DOCX Quattro") {
                     child.visibility = if (show) View.VISIBLE else View.GONE
