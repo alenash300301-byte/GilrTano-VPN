@@ -128,11 +128,16 @@ class MainActivity : Activity() {
                     try {
                         val config = GilrTanoVpnService.xrayConfigFromVless(node.uri)
                         pendingConfig = config
+                        connectButton.isEnabled = false
+                        cancelConnectButton.isEnabled = true
                         status.text = "Подключаю: ${node.name}…"
                         val permission = VpnService.prepare(this@MainActivity)
                         if (permission != null) startActivityForResult(permission, requestCode)
                         else startVpn(config)
                     } catch (e: Exception) {
+                        pendingConfig = null
+                        connectButton.isEnabled = true
+                        cancelConnectButton.isEnabled = false
                         status.text = "Профиль не поддерживается: ${e.message}"
                     }
                 }
