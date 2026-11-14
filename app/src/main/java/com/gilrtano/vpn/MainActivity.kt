@@ -264,7 +264,7 @@ class MainActivity : Activity() {
                 // Approved home composition: large tiger artwork, then one wide action button.
                 addView(ImageView(this@MainActivity).apply {
                     setImageResource(R.drawable.tiger_hero)
-                    scaleType = ImageView.ScaleType.CENTER_CROP
+                    scaleType = ImageView.ScaleType.FIT_CENTER
                     setBackgroundColor(Color.BLACK)
                     contentDescription = "Реалистичный тигр с зелёными глазами и огнём"
                 }, LinearLayout.LayoutParams(
@@ -305,7 +305,7 @@ class MainActivity : Activity() {
                     ViewGroup.LayoutParams.MATCH_PARENT, dp(22)
                 ))
                 addView(connectButton, LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, dp(68)
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(56)
                 ).apply {
                     gravity = android.view.Gravity.CENTER
                     topMargin = dp(10); bottomMargin = dp(18)
@@ -349,7 +349,7 @@ class MainActivity : Activity() {
                             text = "  ›"; textSize = 27f; setTextColor(Color.WHITE)
                         })
                     })
-                }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(76)).apply {
+                }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(70)).apply {
                     topMargin = dp(8); bottomMargin = dp(14)
                 })
                 addView(servers, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)))
@@ -393,6 +393,9 @@ class MainActivity : Activity() {
             })
         }
         root.addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        root.addView(View(this).apply {
+            setBackgroundColor(Color.rgb(28, 28, 30))
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)))
         root.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = android.view.Gravity.CENTER
