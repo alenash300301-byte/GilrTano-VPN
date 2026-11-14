@@ -9,6 +9,8 @@ import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.util.Log
+import io.github.oviron.libmihomo.Clash
+import io.github.oviron.libmihomo.TunInterface
 import teapodcore.Teapodcore
 import teapodcore.VpnProtector
 import teapodcore.XrayCallback
@@ -16,8 +18,9 @@ import org.json.JSONObject
 import java.net.Socket
 import javax.net.ssl.SSLSocketFactory
 
-class GilrTanoVpnService : VpnService() {
+class GilrTanoVpnService : VpnService(), TunInterface {
     private var tun: ParcelFileDescriptor? = null
+    @Volatile private var mihomoStarted = false
     @Volatile private var stopping = false
 
     // Core environment and socket protection are process-wide setup; keep them
@@ -79,6 +82,8 @@ class GilrTanoVpnService : VpnService() {
         broadcastStatus("Переключаю сервер…")
         Thread({
             synchronized(this) {
+                if (mihomoStarted) runCatching { Clash.stopTun() }
+                mihomoStarted = false
                 runCatching { Teapodcore.stopTun2Socks() }
                 runCatching { Teapodcore.stopBox() }
                 runCatching { Teapodcore.stopXray() }
@@ -92,6 +97,10 @@ class GilrTanoVpnService : VpnService() {
 
     private fun startTunnel(config: String) {
         stopping = false
+        if (activeEngine == "mihomo") {
+            startMihomo(config)
+            return
+        }
         activeConfig = config
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, notification("Запуск Xray…"))
@@ -150,6 +159,100 @@ class GilrTanoVpnService : VpnService() {
             }
         }, "GilrTano-Xray-start").start()
     }
+
+    private fun startMihomo(profilePath: String) {
+        Thread({
+            try {
+                val home = java.io.File(filesDir, "mihomo").apply { mkdirs() }
+                Clash.load(applicationInfo.nativeLibraryDir)
+                require(Clash.isLoaded()) { "Не удалось загрузить ядро Mihomo" }
+                val init = JSONObject().put("homeDir", home.absolutePath).toString()
+                val setup = JSONObject().put("profile", profilePath).toString()
+                Clash.quickSetup(init, setup) { error ->
+                    if (!error.isNullOrBlank()) {
+                        Log.e(TAG, "Mihomo profile error: $error")
+                        broadcastStatus("Ошибка Portal/Mihomo: $error")
+                        stopTunnel()
+                    } else {
+                        runCatching { establishMihomoTun() }.onFailure {
+                            Log.e(TAG, "Mihomo TUN start failed", it)
+                            broadcastStatus("Ошибка запуска WARP: ${it.message}")
+                            stopTunnel()
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Mihomo initialization failed", e)
+                broadcastStatus("Не удалось запустить WARP: ${e.message}")
+                stopTunnel()
+            }
+        }, "GilrTano-Mihomo-start").start()
+    }
+
+    @Synchronized private fun establishMihomoTun() {
+        if (stopping || mihomoStarted) return
+        val pfd = Builder()
+            .setSession("GilrTano VPN · WARP MASQUE")
+            .setMtu(1280)
+            .addAddress("10.77.0.2", 30)
+            .addRoute("0.0.0.0", 0)
+            .addDnsServer("1.1.1.1")
+            .addDnsServer("8.8.8.8")
+            .establish() ?: throw IllegalStateException("Android не создал VPN-интерфейс")
+        try {
+            Clash.startTUN(
+                pfd.detachFd(), this, "GilrTano-WARP", "system",
+                "10.77.0.1/30", "1.1.1.1,8.8.8.8", 1280
+            )
+            mihomoStarted = true
+            Thread({
+                try {
+                    Thread.sleep(1800)
+                    val ok = probeMihomoTunnel()
+                    if (!ok) throw IllegalStateException("YouTube, Instagram и Telegram не прошли проверку через WARP")
+                    if (!stopping) {
+                        broadcastStatus("Подключено · Portal WARP MASQUE")
+                        updateNotification("Подключено · WARP MASQUE")
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Mihomo tunnel verification failed", e)
+                    broadcastStatus("WARP запущен, но интернет не подтверждён: ${e.message}")
+                    stopTunnel()
+                }
+            }, "GilrTano-Mihomo-check").start()
+        } catch (e: Exception) {
+            runCatching { pfd.close() }
+            throw e
+        }
+    }
+
+    private fun probeMihomoTunnel(): Boolean {
+        val urls = listOf(
+            "https://www.youtube.com/generate_204",
+            "https://www.instagram.com/",
+            "https://api.telegram.org/"
+        )
+        val pool = java.util.concurrent.Executors.newFixedThreadPool(urls.size)
+        return try {
+            val results = urls.map { address ->
+                pool.submit<Boolean> {
+                    val connection = (java.net.URL(address).openConnection() as java.net.HttpURLConnection)
+                    try {
+                        connection.connectTimeout = 5000
+                        connection.readTimeout = 5000
+                        connection.instanceFollowRedirects = true
+                        connection.requestMethod = "GET"
+                        connection.responseCode in 200..399
+                    } finally { connection.disconnect() }
+                }
+            }
+            results.all { runCatching { it.get(7, java.util.concurrent.TimeUnit.SECONDS) }.getOrDefault(false) }
+        } finally { pool.shutdownNow() }
+    }
+
+    override fun protect(fd: Int) { super.protect(fd) }
+
+    override fun resolverProcess(protocol: Int, source: String, target: String, uid: Int): String = ""
 
     @Synchronized private fun establishTun() {
         if (stopping || tun != null) return
@@ -372,6 +475,8 @@ class GilrTanoVpnService : VpnService() {
         // Native shutdown may block; run it away from Android's main thread.
         Thread({
             synchronized(this) {
+                if (mihomoStarted) runCatching { Clash.stopTun() }
+                mihomoStarted = false
                 runCatching { Teapodcore.stopTun2Socks() }
                 runCatching { Teapodcore.stopXray() }
                 runCatching { tun?.close() }
