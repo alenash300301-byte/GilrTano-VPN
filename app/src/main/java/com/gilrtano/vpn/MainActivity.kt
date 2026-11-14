@@ -1405,7 +1405,11 @@ class MainActivity : Activity() {
                     }
                     val profile = java.io.File(filesDir, "mihomo/PORTALWARP25.yaml")
                     profile.parentFile?.mkdirs()
-                    profile.writeText(yaml, Charsets.UTF_8)
+                    val mobileYaml = yaml
+                        .replace("allow-lan: true", "allow-lan: false")
+                        .replace("ip: 172.16.0.2\\n", "ip: 172.16.0.2/32\\n")
+                        .replace("ipv6: 2606:4700:110:8fa3:508c:50aa:6256:acea\\n", "ipv6: 2606:4700:110:8fa3:508c:50aa:6256:acea/128\\n")
+                    profile.writeText(mobileYaml, Charsets.UTF_8)
                     runOnUiThread {
                         portalNodes = listOf(ImportedNode("Cloudflare WARP · MASQUE", "mihomo://profile"))
                         saveNodes("portal_nodes", portalNodes)
