@@ -24,6 +24,7 @@ class GilrTanoVpnService : VpnService() {
     // ready across reconnects instead of repeating native initialization.
     @Volatile private var coreInitialized = false
     @Volatile private var activeConfig: String? = null
+    @Volatile private var activeEngine: String = "xray"
     @Volatile private var fallbackConfig: String? = null
     @Volatile private var preferredConfig: String? = null
     @Volatile private var automaticMode = false
@@ -37,6 +38,7 @@ class GilrTanoVpnService : VpnService() {
             ACTION_STOP -> stopTunnel()
             ACTION_START, ACTION_SWITCH -> {
                 val config = intent.getStringExtra(EXTRA_CONFIG)
+                activeEngine = intent.getStringExtra(EXTRA_ENGINE) ?: "xray"
                 if (config.isNullOrBlank()) {
                     broadcastStatus("Добавьте VLESS-ссылку")
                     stopSelf()
@@ -62,7 +64,7 @@ class GilrTanoVpnService : VpnService() {
         Thread({
             synchronized(this) {
                 runCatching { Teapodcore.stopTun2Socks() }
-                runCatching { Teapodcore.stopXray() }
+                runCatching { if (activeEngine == "singbox") Teapodcore.stopBox() else Teapodcore.stopXray() }
                 runCatching { tun?.close() }
                 tun = null
             }
@@ -96,7 +98,7 @@ class GilrTanoVpnService : VpnService() {
                     }
                 }
                 if (stopping) return@Thread
-                Teapodcore.startXray(config, object : XrayCallback {
+                val callback = object : XrayCallback {
                     override fun onStatus(status: Long, message: String) {
                         Log.i(TAG, "Xray status=$status $message")
                         if (status == 0L && !stopping) establishTun()
@@ -112,7 +114,9 @@ class GilrTanoVpnService : VpnService() {
                             }
                         }
                     }
-                })
+                }
+                if (activeEngine == "singbox") Teapodcore.startBox(config, filesDir.absolutePath, callback)
+                else Teapodcore.startXray(config, callback)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to start Xray", e)
                 if (!stopping) {
@@ -415,6 +419,7 @@ class GilrTanoVpnService : VpnService() {
         const val ACTION_STOP = "com.gilrtano.vpn.STOP"
         const val ACTION_STATUS = "com.gilrtano.vpn.STATUS"
         const val EXTRA_CONFIG = "xray_config"
+        const val EXTRA_ENGINE = "engine"
         const val EXTRA_STATUS = "status"
         const val EXTRA_AUTO = "automatic_mode"
         const val EXTRA_FALLBACK_CONFIG = "fallback_config"
