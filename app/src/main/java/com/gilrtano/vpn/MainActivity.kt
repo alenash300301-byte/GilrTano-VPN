@@ -529,6 +529,7 @@ class MainActivity : Activity() {
     private fun updatePowerOrb(connected: Boolean) {
         if (!::powerOrb.isInitialized) return
         powerOrbDrawable.setConnected(connected)
+        powerOrb.setTextColor(if (connected) Color.rgb(0, 255, 48) else Color.WHITE)
         powerOrb.elevation = dp(if (connected) 20 else 12).toFloat()
         powerOrb.invalidate()
     }
@@ -660,7 +661,10 @@ class MainActivity : Activity() {
         val selected = prefs.getInt(selectedKey, 0).coerceIn(0, (list.size - 1).coerceAtLeast(0))
         if (list.isNotEmpty()) servers.setSelection(selected)
         pingStatus.text = "Пинг: —"
-        status.text = if (activeFree) "Режим: бесплатный резерв" else "Режим: Quattro"
+        if (!status.text.toString().contains("Подключено")) {
+            status.text = "●  Отключено"
+            status.setTextColor(Color.LTGRAY)
+        }
     }
 
     private fun findImportButtonsVisibility() {
@@ -677,6 +681,9 @@ class MainActivity : Activity() {
                     (!activeFree && (label == "Импортировать Quattro" || label == "Выбрать DOCX Quattro")) ||
                     (activeFree && label == "Импортировать бесплатные серверы")
                 )
+                if (label == "QUATTRO" || label == "БЕСПЛАТНЫЙ РЕЗЕРВ") {
+                    child.visibility = if (settingsExpanded) View.VISIBLE else View.GONE
+                }
                 if (label.startsWith("Импортировать") || label == "Выбрать DOCX Quattro") {
                     child.visibility = if (show) View.VISIBLE else View.GONE
                 }
