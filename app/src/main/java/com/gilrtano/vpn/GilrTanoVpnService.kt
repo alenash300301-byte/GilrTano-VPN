@@ -49,8 +49,8 @@ class GilrTanoVpnService : VpnService() {
                 } else if (intent.action == ACTION_SWITCH) {
                     automaticMode = false
                     portalMode = false
-                    boxMode = false
-                    switchTunnel(config, false)
+                    boxMode = intent.getBooleanExtra(EXTRA_ENGINE_BOX, false)
+                    switchTunnel(config, boxMode)
                 } else {
                     boxMode = intent.action == ACTION_START_PORTAL || intent.getBooleanExtra(EXTRA_ENGINE_BOX, false)
                     portalMode = intent.getBooleanExtra(EXTRA_PORTAL, intent.action == ACTION_START_PORTAL)
