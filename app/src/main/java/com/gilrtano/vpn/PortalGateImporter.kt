@@ -3,6 +3,7 @@ package com.gilrtano.vpn
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
+import java.io.ByteArrayInputStream
 import java.io.InputStream
 import java.io.InputStreamReader
 import java.util.Locale
@@ -28,15 +29,27 @@ object PortalGateImporter {
         ZipInputStream(input).use { zip ->
             while (true) {
                 val entry = zip.nextEntry ?: break
-                if (!entry.isDirectory && entry.name.endsWith(".conf", ignoreCase = true)) {
-                    val text = BufferedReader(InputStreamReader(zip, Charsets.UTF_8)).readText()
-                    runCatching { parseConf(text, entry.name.substringAfterLast('/').substringBeforeLast('.')) }
-                        .onSuccess { result += it }
+                if (!entry.isDirectory) {
+                    val entryName = entry.name.substringAfterLast('/')
+                    when {
+                        entryName.endsWith(".conf", ignoreCase = true) -> {
+                            val text = BufferedReader(InputStreamReader(zip, Charsets.UTF_8)).readText()
+                            runCatching { parseConf(text, entryName.substringBeforeLast('.')) }
+                                .onSuccess { result += it }
+                        }
+                        entryName.endsWith(".yaml", ignoreCase = true) ||
+                            entryName.endsWith(".yml", ignoreCase = true) -> {
+                            val bytes = zip.readBytes()
+                            runCatching {
+                                PortalGateMasqueImporter.parseYaml(ByteArrayInputStream(bytes), entryName)
+                            }.onSuccess { result += it }
+                        }
+                    }
                     zip.closeEntry()
                 }
             }
         }
-        require(result.isNotEmpty()) { "В архиве не найдены корректные .conf профили PORTAL GATE" }
+        require(result.isNotEmpty()) { "В архиве не найдены поддерживаемые профили PORTAL GATE (.conf / AmneziaWG YAML / MASQUE YAML)" }
         return result.distinctBy { it.config }
     }
 
