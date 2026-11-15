@@ -67,6 +67,7 @@ class MainActivity : Activity() {
     private lateinit var bestFreeButton: Button
     private lateinit var checkPing: Button
     private lateinit var modeSelectorRow: LinearLayout
+    private lateinit var regionSelector: TextView
     private lateinit var pingMetric: TextView
     private lateinit var downloadMetric: TextView
     private lateinit var uploadMetric: TextView
@@ -412,7 +413,7 @@ class MainActivity : Activity() {
                 // Minimal region selector: a single text row, no card or extra panel.
                 val regionLabels = arrayOf("Азия", "Европа", "США")
                 val regionKey = "selected_region"
-                val regionText = TextView(this@MainActivity).apply {
+                regionSelector = TextView(this@MainActivity).apply {
                     text = "◎  ${prefs.getString(regionKey, "Европа")}  ⌄"
                     textSize = 19f
                     setTextColor(Color.WHITE)
@@ -430,7 +431,7 @@ class MainActivity : Activity() {
                             .show()
                     }
                 }
-                addView(regionText, LinearLayout.LayoutParams(
+                addView(regionSelector, LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, dp(40)
                 ).apply { topMargin = dp(0); bottomMargin = dp(0) })
 
@@ -856,6 +857,7 @@ class MainActivity : Activity() {
 
     private fun refreshMode() {
         val portalSelected = activeMode == "portal"
+        if (::regionSelector.isInitialized) regionSelector.visibility = if (portalSelected) View.GONE else View.VISIBLE
         portalTab.isEnabled = !portalSelected
         portalTab.alpha = if (portalSelected) 1f else 0.72f
         quattroTab.isEnabled = !portalSelected && !activeFree
