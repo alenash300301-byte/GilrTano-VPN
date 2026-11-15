@@ -25,7 +25,7 @@ class GilrTanoVpnService : VpnService() {
     @Volatile private var coreInitialized = false
     @Volatile private var activeConfig: String? = null
     @Volatile private var fallbackConfig: String? = null
-    @Volatile private var fallbackChain: List<Pair<String, Boolean>> = emptyList()
+    @Volatile private var fallbackChain: List<Triple<String, Boolean, Boolean>> = emptyList()
     @Volatile private var fallbackIndex = -1
     @Volatile private var preferredConfig: String? = null
     @Volatile private var automaticMode = false
@@ -79,17 +79,17 @@ class GilrTanoVpnService : VpnService() {
                     boxMode = intent.getBooleanExtra(EXTRA_ENGINE_BOX, false)
                     switchTunnel(config, boxMode)
                 } else {
-                    boxMode = intent.action == ACTION_START_PORTAL || intent.getBooleanExtra(EXTRA_ENGINE_BOX, false)
+                    boxMode = if (intent.action == ACTION_START_PORTAL) usesBoxEngine(config) else intent.getBooleanExtra(EXTRA_ENGINE_BOX, false)
                     portalMode = intent.getBooleanExtra(EXTRA_PORTAL, intent.action == ACTION_START_PORTAL)
                     automaticMode = intent.getBooleanExtra(EXTRA_AUTO, false)
                     fallbackConfig = intent.getStringExtra(EXTRA_FALLBACK_CONFIG)
                     // Keep the bundled profiles as an ordered failover chain. When the
                     // first bundled profile is the primary, exclude it from the fallback list.
                     fallbackChain = if (intent.action == ACTION_START_PORTAL) {
-                        bundledProfiles.filter { it.config != config }.map { it.config to true }
+                        bundledProfiles.filter { it.config != config }.map { Triple(it.config, usesBoxEngine(it.config), true) }
                     } else emptyList()
                     if (!fallbackConfig.isNullOrBlank()) {
-                        fallbackChain = fallbackChain + (fallbackConfig!! to false)
+                        fallbackChain = fallbackChain + Triple(fallbackConfig!!, intent.getBooleanExtra(EXTRA_FALLBACK_ENGINE_BOX, false), false)
                     }
                     fallbackIndex = -1
                     fallbackBoxMode = intent.getBooleanExtra(EXTRA_FALLBACK_ENGINE_BOX, false)
@@ -145,12 +145,18 @@ class GilrTanoVpnService : VpnService() {
         usingFallback = true
         lastAutomaticSwitchAt = System.currentTimeMillis()
         consecutiveProbeFailures = 0
-        val (config, isBox) = fallbackChain[next]
-        val label = if (isBox) "PORTAL AmneziaWG ${next + 1}/${fallbackChain.size}" else "Quattro"
+        val (config, isBox, isPortal) = fallbackChain[next]
+        val label = when { isPortal && isBox -> "PORTAL AmneziaWG ${next + 1}/${fallbackChain.size}"; isPortal -> "PORTAL MASQUE ${next + 1}/${fallbackChain.size}"; else -> "Quattro" }
         broadcastStatus("$reason. Переключаюсь на $label…")
-        switchTunnel(config, isBox, isBox)
+        switchTunnel(config, isBox, isPortal)
         return true
     }
+    // AmneziaWG profiles use sing-box JSON (endpoints); MASQUE profiles use
+    // Xray JSON (outbounds). Select the native engine from the actual schema.
+    private fun usesBoxEngine(config: String): Boolean = runCatching {
+        JSONObject(config).has("endpoints")
+    }.getOrDefault(false)
+
     private fun startTunnel(config: String) {
         stopping = false
         activeConfig = config
@@ -185,7 +191,7 @@ class GilrTanoVpnService : VpnService() {
                             if (automaticMode && advanceFallback("Основной протокол недоступен")) {
                                 return
                             } else {
-                                broadcastStatus("Ошибка ${if (boxMode) "sing-box/Hysteria2" else "Quattro"}: $message")
+                                broadcastStatus("Ошибка ${when { portalMode && boxMode -> "PORTAL AmneziaWG"; portalMode -> "PORTAL MASQUE"; boxMode -> "sing-box/Hysteria2"; else -> "Quattro" }}: $message")
                                 stopTunnel()
                             }
                         }
@@ -194,7 +200,7 @@ class GilrTanoVpnService : VpnService() {
                 if (boxMode) Teapodcore.startBox(config, filesDir.absolutePath, callback)
                 else Teapodcore.startXray(config, callback)
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to start ${if (boxMode) "sing-box/Hysteria2" else "Quattro"}", e)
+                Log.e(TAG, "Failed to start ${when { portalMode && boxMode -> "PORTAL AmneziaWG"; portalMode -> "PORTAL MASQUE"; boxMode -> "sing-box/Hysteria2"; else -> "Quattro" }}", e)
                 if (!stopping) {
                     if (automaticMode && advanceFallback("Не удалось запустить основной протокол")) {
                         return@Thread
