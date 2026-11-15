@@ -32,7 +32,8 @@ object ProtocolConfig {
 
     private fun withXhttpExtra(uri: String, config: String): String {
         val parsed = Uri.parse(uri)
-        val rawExtra = parsed.getQueryParameter("extra") ?: return config
+        val rawExtra = parsed.getQueryParameter("extra")?.trim()
+            ?.takeUnless { it.isBlank() || it.equals("null", ignoreCase = true) } ?: return config
         val extra = runCatching { JSONObject(rawExtra) }.getOrElse {
             error("Параметр XHTTP extra содержит некорректный JSON")
         }
@@ -57,7 +58,8 @@ object ProtocolConfig {
         val id = data.optString("id")
         require(host.isNotBlank() && id.isNotBlank()) { "В VMess-профиле отсутствует адрес или UUID" }
         val security = data.optString("tls").lowercase()
-        val network = data.optString("net", "tcp").lowercase()
+        val networkRaw = data.optString("net", "tcp").lowercase()
+        val network = if (networkRaw == "raw") "tcp" else networkRaw
         val user = JSONObject().put("id", id).put("alterId", data.optInt("aid", 0))
             .put("security", data.optString("scy").ifBlank { "auto" })
         val stream = JSONObject().put("network", network)
