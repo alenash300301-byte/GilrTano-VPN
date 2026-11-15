@@ -86,6 +86,7 @@ class MainActivity : Activity() {
     private var pendingFallbackConfig: String? = null
     private var pendingPreferredConfig: String? = null
     private var pendingAutomatic = false
+    private var pendingPortalAwg = false
     private val requestCode = 4101
     private val docxRequestCode = 4102
 
@@ -226,44 +227,36 @@ class MainActivity : Activity() {
                         .setAction(GilrTanoVpnService.ACTION_STOP))
                     return@setOnClickListener
                 }
-                if (autoMode) {
-                    activeFree = quattroNodes.isEmpty() && freeNodes.isNotEmpty()
-                    prefs.edit().putBoolean("active_free_mode", activeFree).apply()
-                    refreshMode()
-                    if (quattroNodes.isEmpty() && freeNodes.isEmpty()) {
-                        status.text = "Ищу бесплатный резерв…"
-                        refreshFreeServersAndFindBest(autoConnectWhenReady = true)
-                        return@setOnClickListener
-                    }
-                }
-                val node = activeNodes.getOrNull(servers.selectedItemPosition)
-                if (node == null) {
-                    Toast.makeText(this@MainActivity, "В этом режиме пока нет серверов", Toast.LENGTH_LONG).show()
-                } else {
+                // One-tap mode: request a fresh WARP/AmneziaWG profile from the
+                // same generator API used by the Cyberportal web UI, then start it.
+                status.text = "Получаю новую конфигурацию WARP…"
+                connectButton.isEnabled = false
+                Thread {
                     try {
-                        val config = GilrTanoVpnService.xrayConfigFromVless(node.uri)
-                        val fallbackConfig = if (autoMode) {
-                            (if (activeFree) quattroNodes.firstOrNull() else freeNodes.firstOrNull())
-                                ?.let { runCatching { GilrTanoVpnService.xrayConfigFromVless(it.uri) }.getOrNull() }
-                        } else null
-                        val preferredConfig = if (autoMode) {
-                            quattroNodes.firstOrNull()?.let { runCatching { GilrTanoVpnService.xrayConfigFromVless(it.uri) }.getOrNull() }
-                        } else null
-                        pendingConfig = config
-                        pendingFallbackConfig = fallbackConfig
-                        pendingPreferredConfig = preferredConfig
-                        pendingAutomatic = autoMode
-                        connectButton.isEnabled = true
-                        status.text = "Подключаю: ${node.name}…"
-                        val permission = VpnService.prepare(this@MainActivity)
-                        if (permission != null) startActivityForResult(permission, requestCode)
-                        else startVpn(config, fallbackConfig, preferredConfig, autoMode)
+                        val generated = WarpGeneratorClient.generateAmneziaProfile()
+                        val profile = PortalGateImporter.parseConf(generated, "WARP-Cyberportal")
+                        val quattro = quattroNodes.firstOrNull()
+                            ?.let { runCatching { GilrTanoVpnService.xrayConfigFromVless(it.uri) }.getOrNull() }
+                        runOnUiThread {
+                            pendingConfig = profile.config
+                            pendingFallbackConfig = quattro
+                            pendingPreferredConfig = null
+                            pendingAutomatic = true
+                            pendingPortalAwg = true
+                            connectButton.isEnabled = true
+                            status.text = "WARP создан. Запрашиваю разрешение VPN…"
+                            val permission = VpnService.prepare(this@MainActivity)
+                            if (permission != null) startActivityForResult(permission, requestCode)
+                            else startWarpVpn(profile.config, quattro)
+                        }
                     } catch (e: Exception) {
-                        pendingConfig = null
-                        connectButton.isEnabled = true
-                        status.text = "Профиль не поддерживается: ${e.message}"
+                        runOnUiThread {
+                            connectButton.isEnabled = true
+                            status.text = "Не удалось получить WARP: ${e.message ?: "ошибка генератора"}"
+                            resetConnectButtonGlow()
+                        }
                     }
-                }
+                }.start()
             }
         }
         bestFreeButton = Button(this).apply {
@@ -1213,6 +1206,19 @@ class MainActivity : Activity() {
         }.start()
     }
 
+    private fun startWarpVpn(config: String, fallbackQuattro: String?) {
+        val intent = Intent(this, GilrTanoVpnService::class.java)
+            .setAction(GilrTanoVpnService.ACTION_START_PORTAL)
+            .putExtra(GilrTanoVpnService.EXTRA_CONFIG, config)
+            .putExtra(GilrTanoVpnService.EXTRA_ENGINE_BOX, true)
+            .putExtra(GilrTanoVpnService.EXTRA_PORTAL, true)
+            .putExtra(GilrTanoVpnService.EXTRA_AUTO, true)
+            .putExtra(GilrTanoVpnService.EXTRA_FALLBACK_CONFIG, fallbackQuattro)
+            .putExtra(GilrTanoVpnService.EXTRA_FALLBACK_ENGINE_BOX, false)
+        startForegroundService(intent)
+        status.text = "Запускаю WARP через AmneziaWG…"
+    }
+
     private fun startVpn(
         config: String,
         fallbackConfig: String? = null,
@@ -1235,14 +1241,19 @@ class MainActivity : Activity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == this.requestCode && resultCode == RESULT_OK) {
             pendingConfig?.let {
-                startVpn(it, pendingFallbackConfig, pendingPreferredConfig, pendingAutomatic)
+                if (pendingPortalAwg) startWarpVpn(it, pendingFallbackConfig)
+                else startVpn(it, pendingFallbackConfig, pendingPreferredConfig, pendingAutomatic)
                 pendingConfig = null
                 pendingFallbackConfig = null
                 pendingPreferredConfig = null
                 pendingAutomatic = false
+                pendingPortalAwg = false
             } ?: run { status.text = "Подключение отменено" }
         } else if (requestCode == this.requestCode) {
             pendingConfig = null
+            pendingFallbackConfig = null
+            pendingPreferredConfig = null
+            pendingPortalAwg = false
             connectButton.isEnabled = true
             status.text = "Разрешение VPN не предоставлено"
         } else if (requestCode == docxRequestCode && resultCode == RESULT_OK) {
