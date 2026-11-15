@@ -982,7 +982,7 @@ class MainActivity : Activity() {
         page.addView(settingsScroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
         dialog.setContentView(page)
         dialog.show()
-        dialog.window?.setBackgroundDrawableResource(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
+        dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
         dialog.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
     }
 
