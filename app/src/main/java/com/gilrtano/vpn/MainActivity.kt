@@ -982,15 +982,81 @@ class MainActivity : Activity() {
                 }.show()
         }
         addRow("Импорт конфигурации") {
-            dialog.dismiss()
-            settingsExpanded = true
-            findImportButtonsVisibility()
-            Toast.makeText(this, "Выберите режим и импортируйте конфигурацию на экране приложения", Toast.LENGTH_LONG).show()
+            val choices = arrayOf("Импортировать Quattro по ссылке", "Выбрать DOCX Quattro", "Импортировать бесплатные серверы")
+            AlertDialog.Builder(this)
+                .setTitle("Импорт конфигурации")
+                .setItems(choices) { _, which ->
+                    when (which) {
+                        0 -> {
+                            val input = EditText(this).apply {
+                                hint = "Ссылка Quattro или Clash YAML"
+                                setText(prefs.getString("subscription_url", ""))
+                                setPadding(dp(16), dp(12), dp(16), dp(12))
+                            }
+                            AlertDialog.Builder(this)
+                                .setTitle("Ссылка Quattro")
+                                .setView(input)
+                                .setNegativeButton("Отмена", null)
+                                .setPositiveButton("Импортировать") { _, _ ->
+                                    val url = input.text.toString().trim()
+                                    if (url.isNotBlank()) {
+                                        primarySource.setText(url)
+                                        prefs.edit().putString("subscription_url", url).apply()
+                                        dialog.dismiss()
+                                        importFrom(url, false)
+                                    } else Toast.makeText(this, "Вставь ссылку подписки", Toast.LENGTH_SHORT).show()
+                                }.show()
+                        }
+                        1 -> {
+                            dialog.dismiss()
+                            importDocx.performClick()
+                        }
+                        2 -> {
+                            val input = EditText(this).apply {
+                                hint = "Ссылка бесплатной подписки"
+                                setText(prefs.getString("free_subscription_url", "https://raw.githubusercontent.com/morpheusadam/v2ray-config/main/subs/bundles/vless.txt"))
+                                setPadding(dp(16), dp(12), dp(16), dp(12))
+                            }
+                            AlertDialog.Builder(this)
+                                .setTitle("Бесплатные серверы")
+                                .setView(input)
+                                .setNegativeButton("Отмена", null)
+                                .setPositiveButton("Импортировать") { _, _ ->
+                                    val url = input.text.toString().trim()
+                                    if (url.isNotBlank()) {
+                                        freeSource.setText(url)
+                                        prefs.edit().putString("free_subscription_url", url).apply()
+                                        dialog.dismiss()
+                                        importFrom(url, true)
+                                    } else Toast.makeText(this, "Вставь ссылку подписки", Toast.LENGTH_SHORT).show()
+                                }.show()
+                        }
+                    }
+                }.show()
         }
-        addRow("Quattro") {
-            dialog.dismiss()
-            settingsExpanded = true
-            findImportButtonsVisibility()
+        addRow("Quattro", "${quattroNodes.size} серверов") {
+            AlertDialog.Builder(this)
+                .setTitle("Quattro")
+                .setMessage(if (quattroNodes.isEmpty()) "Подписка ещё не импортирована." else "Сохранено серверов: ${quattroNodes.size}")
+                .setPositiveButton("Импортировать") { _, _ ->
+                    val input = EditText(this).apply {
+                        hint = "Ссылка Quattro или Clash YAML"
+                        setText(prefs.getString("subscription_url", ""))
+                    }
+                    AlertDialog.Builder(this).setTitle("Импорт Quattro").setView(input)
+                        .setNegativeButton("Отмена", null)
+                        .setPositiveButton("Продолжить") { _, _ ->
+                            val url = input.text.toString().trim()
+                            if (url.isNotBlank()) {
+                                primarySource.setText(url)
+                                prefs.edit().putString("subscription_url", url).apply()
+                                dialog.dismiss()
+                                importFrom(url, false)
+                            }
+                        }.show()
+                }
+                .setNegativeButton("Закрыть", null)
+                .show()
         }
         addDivider()
         addRow("О приложении") {
