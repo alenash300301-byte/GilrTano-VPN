@@ -49,7 +49,7 @@ jobs:
       - name: Set up Android NDK
         uses: nttld/setup-ndk@v1
         with:
-          ndk-version: r29
+          ndk-version: 28.2.13676358
           add-to-path: true
 
       - name: Set up Gradle
@@ -70,11 +70,23 @@ jobs:
           test -s libXray.aar
           test -s libXray-sources.jar
 
-      - name: Integrate AAR into Android app
+      - name: Build legacy teapod-core AAR
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/28.2.13676358
+        run: |
+          go mod download
+          go install golang.org/x/mobile/cmd/gomobile@latest
+          "${HOME}/go/bin/gomobile" init
+          bash upstream/teapod-core/build.sh build
+          test -s upstream/teapod-core/outputs/teapod-core-1.7.7.aar
+
+      - name: Integrate AARs into Android app
         run: |
           mkdir -p app/libs
           cp .build/libXray/libXray.aar app/libs/libXray.aar
+          cp upstream/teapod-core/outputs/teapod-core-1.7.7.aar app/libs/teapod-core-1.7.7.aar
           test -s app/libs/libXray.aar
+          test -s app/libs/teapod-core-1.7.7.aar
 
       - name: Build GilrTano debug APK
         run: gradle --no-daemon :app:assembleDebug
