@@ -943,9 +943,11 @@ class MainActivity : Activity() {
     }
 
     private fun configForNode(node: ImportedNode): Pair<String, Boolean> =
-        if (node.uri.startsWith("hy2://", true) || node.uri.startsWith("hysteria2://", true))
-            Hysteria2Config.fromUri(node.uri) to true
-        else GilrTanoVpnService.xrayConfigFromVless(node.uri) to false
+        when {
+            node.uri.startsWith("hy2://", true) || node.uri.startsWith("hysteria2://", true) ->
+                Hysteria2Config.fromUri(node.uri) to true
+            else -> ProtocolConfig.toXrayConfig(node.uri) to false
+        }
 
     private fun importFrom(source: String, isFree: Boolean) {
         if (source.isBlank()) {
