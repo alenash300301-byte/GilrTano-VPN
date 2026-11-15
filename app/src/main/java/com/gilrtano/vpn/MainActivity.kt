@@ -60,6 +60,7 @@ class MainActivity : Activity() {
     private lateinit var servers: Spinner
     private lateinit var quattroTab: Button
     private lateinit var freeTab: Button
+    private lateinit var portalGateButton: Button
     private lateinit var autoTab: Button
     private var autoMode = true
     private var activeMode: String = "auto"
@@ -189,7 +190,7 @@ class MainActivity : Activity() {
             setOnClickListener { switchMode(false) }
         }
 
-        val portalGateButton = Button(this).apply {
+        portalGateButton = Button(this).apply {
             text = "ОТКРЫТЬ PORTAL GATE"
             setOnClickListener { startActivity(Intent(this@MainActivity, PortalGateActivity::class.java)) }
         }
