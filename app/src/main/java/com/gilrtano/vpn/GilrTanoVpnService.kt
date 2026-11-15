@@ -83,12 +83,18 @@ class GilrTanoVpnService : VpnService() {
                     portalMode = intent.getBooleanExtra(EXTRA_PORTAL, intent.action == ACTION_START_PORTAL)
                     automaticMode = intent.getBooleanExtra(EXTRA_AUTO, false)
                     fallbackConfig = intent.getStringExtra(EXTRA_FALLBACK_CONFIG)
-                    // Keep the bundled profiles as an ordered failover chain. When the
-                    // first bundled profile is the primary, exclude it from the fallback list.
+                    val suppliedFallbacks = runCatching {
+                        val array = org.json.JSONArray(intent.getStringExtra(EXTRA_FALLBACK_CHAIN).orEmpty())
+                        (0 until array.length()).mapNotNull { index ->
+                            val item = array.optJSONObject(index) ?: return@mapNotNull null
+                            val candidate = item.optString("config").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                            Triple(candidate, item.optBoolean("engineBox", false), item.optBoolean("portal", false))
+                        }
+                    }.getOrDefault(emptyList())
                     fallbackChain = if (intent.action == ACTION_START_PORTAL) {
                         bundledProfiles.filter { it.config != config }.map { Triple(it.config, usesBoxEngine(it.config), true) }
-                    } else emptyList()
-                    if (!fallbackConfig.isNullOrBlank()) {
+                    } else suppliedFallbacks
+                    if (!fallbackConfig.isNullOrBlank() && suppliedFallbacks.isEmpty()) {
                         fallbackChain = fallbackChain + Triple(fallbackConfig!!, intent.getBooleanExtra(EXTRA_FALLBACK_ENGINE_BOX, false), false)
                     }
                     fallbackIndex = -1
