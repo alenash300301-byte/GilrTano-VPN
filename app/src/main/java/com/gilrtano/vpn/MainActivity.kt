@@ -61,6 +61,9 @@ class MainActivity : Activity() {
     private lateinit var quattroTab: Button
     private lateinit var freeTab: Button
     private lateinit var portalGateButton: Button
+    private lateinit var importPrimary: Button
+    private lateinit var importDocx: Button
+    private lateinit var importFree: Button
     private lateinit var autoTab: Button
     private var autoMode = true
     private var activeMode: String = "auto"
@@ -196,11 +199,11 @@ class MainActivity : Activity() {
             text = "ОТКРЫТЬ PORTAL GATE"
             setOnClickListener { startActivity(Intent(this@MainActivity, PortalGateActivity::class.java)) }
         }
-        val importPrimary = Button(this).apply {
+        importPrimary = Button(this).apply {
             text = "Импортировать Quattro"
             setOnClickListener { importFrom(primarySource.text.toString().trim(), false) }
         }
-        val importDocx = Button(this).apply {
+        importDocx = Button(this).apply {
             text = "Выбрать DOCX Quattro"
             setOnClickListener {
                 val pick = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
@@ -210,7 +213,7 @@ class MainActivity : Activity() {
                 startActivityForResult(pick, docxRequestCode)
             }
         }
-        val importFree = Button(this).apply {
+        importFree = Button(this).apply {
             text = "Импортировать бесплатные серверы"
             setOnClickListener { importFrom(freeSource.text.toString().trim(), true) }
         }
