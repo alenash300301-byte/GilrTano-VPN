@@ -201,12 +201,12 @@ class GilrTanoVpnService : VpnService() {
                 .addDnsServer("2606:4700:4700::1111")
                 .establish() ?: throw IllegalStateException("Android не создал VPN-интерфейс")
             tun = pfd
-            // Force HTTP/3 apps to fall back to HTTPS/TCP because many public
-            // free SOCKS nodes do not relay UDP reliably. This avoids apps
-            // hanging on a broken QUIC path; ICMP is not needed here.
+            // Keep UDP enabled: YouTube and other Google apps prefer HTTP/3
+            // over QUIC (UDP/443). Blocking QUIC can leave playback stalled on
+            // networks where the app does not promptly fall back to TCP.
             val error = Teapodcore.startTun2Socks(
                 pfd.fd.toLong(), 1280L, SOCKS_PORT.toLong(),
-                "", "", false, true, null
+                "", "", false, false, null
             )
             if (error.isNotEmpty()) throw IllegalStateException("tun2socks: $error")
 
