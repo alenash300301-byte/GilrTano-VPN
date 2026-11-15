@@ -19,7 +19,7 @@ import org.json.JSONArray
 import java.net.Socket
 import javax.net.ssl.SSLSocketFactory
 
-class GilrTanoVpnService : VpnService(), TunInterface {
+class GilrTanoVpnService : VpnService() {
     private var tun: ParcelFileDescriptor? = null
     @Volatile private var mihomoStarted = false
     @Volatile private var stopping = false
@@ -207,7 +207,12 @@ class GilrTanoVpnService : VpnService(), TunInterface {
             .establish() ?: throw IllegalStateException("Android не создал VPN-интерфейс")
         try {
             Clash.startTUN(
-                pfd.detachFd(), this, "GilrTano-WARP", "system",
+                pfd.detachFd(), object : TunInterface {
+                    override fun protect(fd: Int) {
+                        this@GilrTanoVpnService.protect(fd)
+                    }
+                    override fun resolverProcess(protocol: Int, source: String, target: String, uid: Int): String = ""
+                }, "GilrTano-WARP", "system",
                 "10.77.0.1/30", "1.1.1.1,8.8.8.8", 1280
             )
             mihomoStarted = true
@@ -255,10 +260,6 @@ class GilrTanoVpnService : VpnService(), TunInterface {
             results.all { runCatching { it.get(7, java.util.concurrent.TimeUnit.SECONDS) }.getOrDefault(false) }
         } finally { pool.shutdownNow() }
     }
-
-    override fun protect(fd: Int): Boolean = super.protect(fd)
-
-    override fun resolverProcess(protocol: Int, source: String, target: String, uid: Int): String = ""
 
     @Synchronized private fun establishTun() {
         if (stopping || tun != null) return
