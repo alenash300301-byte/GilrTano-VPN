@@ -75,17 +75,16 @@ object PortalGateMasqueImporter {
                 .put("security", "tls")
                 .put("tlsSettings", JSONObject().put("serverName", sni).put("alpn", JSONArray().put("h3")))
                 .put("masqueSettings", masque)
+            field(p, "dialer-proxy", "dialer_proxy")?.let { parent ->
+                val parentTag = tags[parent] ?: error("$name: dialer-proxy '$parent' не найден")
+                require(parentTag != tag) { "$name: циклическая цепочка dialer-proxy" }
+                stream.put("sockopt", JSONObject().put("dialerProxy", parentTag))
+            }
             val outbound = JSONObject()
                 .put("tag", tag)
                 .put("protocol", "masque")
                 .put("settings", JSONObject().put("address", server).put("port", port).put("remoteDNS", JSONArray(dns)))
                 .put("streamSettings", stream)
-
-            field(p, "dialer-proxy", "dialer_proxy")?.let { parent ->
-                val parentTag = tags[parent] ?: error("$name: dialer-proxy '$parent' не найден")
-                require(parentTag != tag) { "$name: циклическая цепочка dialer-proxy" }
-                outbound.put("proxySettings", JSONObject().put("tag", parentTag))
-            }
             outbounds.put(outbound)
         }
 
