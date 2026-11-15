@@ -7,6 +7,9 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 export ANDROID_HOME="${ANDROID_HOME:-/opt/homebrew/share/android-commandlinetools}"
 export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.2.13676358"
 export PATH="/opt/homebrew/bin:$HOME/go/bin:$ANDROID_HOME/platform-tools:$PATH"
+# cronet-go links the Android static archive using Clang/GNU -l:filename syntax.
+# Go cgo blocks this linker flag unless it is explicitly allow-listed.
+export CGO_LDFLAGS_ALLOW='-l:.*'
 
 GO_BIN="go"
 GOMOBILE_BIN="$HOME/go/bin/gomobile"
