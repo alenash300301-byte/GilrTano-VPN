@@ -310,12 +310,7 @@ class MainActivity : Activity() {
                     }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
                     addView(TextView(this@MainActivity).apply {
                         text = "⚙"; textSize = 25f; setTextColor(Color.WHITE)
-                        setOnClickListener {
-                            settingsExpanded = true
-                            settingsHeader.visibility = View.VISIBLE
-                            findImportButtonsVisibility()
-                            root.post { (root.parent as? android.widget.ScrollView)?.smoothScrollTo(0, root.height) }
-                        }
+                        setOnClickListener { openSettingsScreen() }
                     })
                 })
                 // The uploaded GIF is the complete hero composition: tiger, realistic fire and orb.
@@ -861,6 +856,66 @@ class MainActivity : Activity() {
             status.text = "●  Отключено"
             status.setTextColor(Color.LTGRAY)
         }
+    }
+
+
+    private fun openSettingsScreen() {
+        val dialog = android.app.Dialog(this)
+        val page = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(18), dp(20), dp(20))
+            setBackgroundColor(Color.rgb(5, 5, 7))
+        }
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+        }
+        header.addView(TextView(this).apply {
+            text = "‹"; textSize = 34f; setTextColor(Color.WHITE)
+            setPadding(0, 0, dp(18), 0)
+            setOnClickListener { dialog.dismiss() }
+        })
+        header.addView(TextView(this).apply {
+            text = "Настройки"; textSize = 24f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(Color.WHITE)
+        })
+        page.addView(header, LinearLayout.LayoutParams.MATCH_PARENT, dp(56))
+        val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val settingsScroll = android.widget.ScrollView(this).apply { addView(content) }
+        fun section(label: String) {
+            content.addView(TextView(this).apply {
+                text = label; textSize = 16f; setTextColor(Color.rgb(235, 65, 65))
+                setPadding(0, dp(18), 0, dp(8))
+            })
+        }
+        fun addSetting(view: View, height: Int = ViewGroup.LayoutParams.WRAP_CONTENT) {
+            content.addView(view, LinearLayout.LayoutParams.MATCH_PARENT, height)
+        }
+        section("РЕЖИМЫ ПОДКЛЮЧЕНИЯ")
+        addSetting(modeSelectorRow, dp(48))
+        section("ВЫБОР СЕРВЕРА")
+        addSetting(servers, dp(50))
+        addSetting(checkPing, dp(48))
+        addSetting(pingStatus, dp(36))
+        section("QUATTRO — ССЫЛКА ИЛИ YAML")
+        addSetting(primarySource)
+        addSetting(importPrimary, dp(48))
+        addSetting(importDocx, dp(48))
+        section("PORTAL GATE / БЕСПЛАТНЫЙ РЕЗЕРВ")
+        addSetting(portalGateButton, dp(48))
+        addSetting(freeSource)
+        addSetting(importFree, dp(48))
+        addSetting(bestFreeButton, dp(48))
+        content.addView(TextView(this).apply {
+            text = "Серверы и ссылки хранятся локально на устройстве."
+            textSize = 11f; setTextColor(Color.GRAY); setPadding(0, dp(14), 0, dp(8))
+        })
+        page.addView(settingsScroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+        dialog.setContentView(page)
+        dialog.show()
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        dialog.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
     }
 
     private fun findImportButtonsVisibility() {
