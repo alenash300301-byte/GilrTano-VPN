@@ -90,6 +90,7 @@ class MainActivity : Activity() {
     private var pendingPreferredConfig: String? = null
     private var pendingAutomatic = false
     private var pendingPortalAwg = false
+    private var pendingPortalGenerate = false
     private var pendingEngineBox = false
     private val requestCode = 4101
     private val docxRequestCode = 4102
@@ -1252,17 +1253,39 @@ class MainActivity : Activity() {
         pendingPreferredConfig = null
         pendingAutomatic = true
         pendingPortalAwg = true
-        status.text = "Запускаю встроенный PORTAL GATE…"
+        pendingPortalGenerate = true
+        status.text = "Подготавливаю PORTAL GATE: создаю персональную конфигурацию…"
         if (permission != null) startActivityForResult(permission, requestCode)
-        else {
-            startWarpVpn(bundledPortal, fallback)
-            pendingConfig = null
-            pendingFallbackConfig = null
-            pendingPortalAwg = false
-            pendingAutomatic = false
-        }
+        else { startPortalGeneration(fallback); clearPendingPortalRequest() }
     }
 
+    private fun clearPendingPortalRequest() {
+        pendingConfig = null; pendingFallbackConfig = null; pendingPreferredConfig = null
+        pendingAutomatic = false; pendingPortalAwg = false; pendingPortalGenerate = false; pendingEngineBox = false
+    }
+
+    private fun startPortalGeneration(fallbackQuattro: String?) {
+        connectButton.isEnabled = false
+        status.text = "Создаю конфигурацию PORTAL GATE…"
+        Thread({
+            val generated = runCatching {
+                val conf = WarpGeneratorClient.generateAmneziaProfile()
+                PortalGateImporter.parseConf(conf, "PORTAL-GENERATED")
+                conf
+            }
+            runOnUiThread {
+                connectButton.isEnabled = true
+                if (generated.isSuccess) {
+                    status.text = "Конфигурация создана. Запускаю PORTAL GATE…"
+                    startWarpVpn(generated.getOrThrow(), fallbackQuattro)
+                } else {
+                    val reason = generated.exceptionOrNull()?.message?.take(140).orEmpty()
+                    status.text = "Генератор недоступен${if (reason.isNotBlank()) ": $reason" else ""}. Перехожу на встроенные профили…"
+                    startWarpVpn(GilrTanoVpnService.BUNDLED_PORTAL_CONFIG, fallbackQuattro)
+                }
+            }
+        }, "GilrTano-PORTAL-generator").start()
+    }
     private fun startWarpVpn(config: String, fallbackQuattro: String?) {
         val intent = Intent(this, GilrTanoVpnService::class.java)
             .setAction(GilrTanoVpnService.ACTION_START_PORTAL)
@@ -1301,21 +1324,14 @@ class MainActivity : Activity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == this.requestCode && resultCode == RESULT_OK) {
             pendingConfig?.let {
-                if (pendingPortalAwg) startWarpVpn(it, pendingFallbackConfig)
-                else startVpn(it, pendingFallbackConfig, pendingPreferredConfig, pendingAutomatic, pendingEngineBox)
-                pendingConfig = null
-                pendingFallbackConfig = null
-                pendingPreferredConfig = null
-                pendingAutomatic = false
-                pendingPortalAwg = false
-                pendingEngineBox = false
+                val fallback = pendingFallbackConfig
+                if (pendingPortalAwg && pendingPortalGenerate) startPortalGeneration(fallback)
+                else if (pendingPortalAwg) startWarpVpn(it, fallback)
+                else startVpn(it, fallback, pendingPreferredConfig, pendingAutomatic, pendingEngineBox)
+                clearPendingPortalRequest()
             } ?: run { status.text = "Подключение отменено" }
         } else if (requestCode == this.requestCode) {
-            pendingConfig = null
-            pendingFallbackConfig = null
-            pendingPreferredConfig = null
-            pendingPortalAwg = false
-            pendingEngineBox = false
+            clearPendingPortalRequest()
             connectButton.isEnabled = true
             status.text = "Разрешение VPN не предоставлено"
         } else if (requestCode == docxRequestCode && resultCode == RESULT_OK) {
