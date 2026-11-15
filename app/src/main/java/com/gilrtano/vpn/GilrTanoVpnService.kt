@@ -284,6 +284,8 @@ class GilrTanoVpnService : VpnService() {
                             consecutiveProbeFailures = 0
                             broadcastStatus("Связь ухудшилась. Переключаю на резервный сервер…")
                             switchTunnel(target, fallbackBoxMode, false)
+                        } else if (usingFallback && fallbackIndex + 1 in fallbackChain.indices) {
+                            advanceFallback("Резервный сервер потерял связь")
                         } else if (usingFallback && !preferredConfig.isNullOrBlank() &&
                             System.currentTimeMillis() - lastAutomaticSwitchAt >= RECOVERY_INTERVAL_MS) {
                             val target = preferredConfig!!
