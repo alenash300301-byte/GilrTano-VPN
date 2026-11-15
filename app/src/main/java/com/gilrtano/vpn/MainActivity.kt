@@ -533,6 +533,19 @@ class MainActivity : Activity() {
             insets
         }
         root.addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        val homeContent = scroll.getChildAt(0) as? ViewGroup
+        homeContent?.let { page ->
+            // Keep only the brand header, tiger/power control, status and mode selector on Home.
+            for (index in 5..12) if (index < page.childCount) page.getChildAt(index).visibility = View.GONE
+            modeSelectorRow.visibility = View.VISIBLE
+            settingsHeader.visibility = View.GONE
+            portalGateButton.visibility = View.GONE
+            primarySource.visibility = View.GONE
+            freeSource.visibility = View.GONE
+            importPrimary.visibility = View.GONE
+            importDocx.visibility = View.GONE
+            importFree.visibility = View.GONE
+        }
         setContentView(root)
         trafficHandler.removeCallbacks(trafficSample)
         trafficHandler.post(trafficSample)
