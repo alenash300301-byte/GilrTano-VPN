@@ -19,6 +19,13 @@ android {
         release { isMinifyEnabled = false }
     }
 
+    // Both Go-based AARs bundle libgojni.so; package one shared copy.
+    packaging {
+        jniLibs {
+            pickFirsts += "**/libgojni.so"
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
