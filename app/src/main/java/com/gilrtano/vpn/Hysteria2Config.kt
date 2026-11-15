@@ -15,6 +15,9 @@ object Hysteria2Config {
         val tls = JSONObject().put("enabled", true)
         uri.getQueryParameter("sni")?.takeIf { it.isNotBlank() }?.let { tls.put("server_name", it) }
         tls.put("insecure", uri.getQueryParameter("insecure")?.toBooleanStrictOrNull() ?: false)
+        uri.getQueryParameter("fp")?.takeIf { it.isNotBlank() }?.let { fingerprint ->
+            tls.put("utls", JSONObject().put("enabled", true).put("fingerprint", fingerprint))
+        }
         uri.getQueryParameter("alpn")?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() }
             ?.takeIf { it.isNotEmpty() }?.let { tls.put("alpn", JSONArray(it)) }
         val outbound = JSONObject()
