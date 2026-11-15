@@ -29,14 +29,14 @@ class PortalMasqueVpnService : VpnService() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> stopPortal()
-            ACTION_START -> startPortal(intent.getIntExtra(EXTRA_ENDPOINT, 0))
+            ACTION_START -> startPortal(intent.getIntExtra(EXTRA_ENDPOINT, AUTO_ENDPOINT))
         }
         return START_NOT_STICKY
     }
 
     private fun startPortal(endpointIndex: Int) {
         if (started) return
-        if (endpointIndex !in PortalMasqueConfig.endpoints.indices) {
+        if (endpointIndex != AUTO_ENDPOINT && endpointIndex !in PortalMasqueConfig.endpoints.indices) {
             sendStatus("Ошибка PORTAL: неизвестный сервер")
             stopSelf()
             return
@@ -66,31 +66,74 @@ class PortalMasqueVpnService : VpnService() {
                 tunnel = pfd
                 if (stopping) return@Thread
 
-                // The resolver's own sockets must also be protected from the VPN.
+                // Protect Xray's own resolver sockets from being routed back into TUN.
                 LibXray.setDNS(controller, "1.1.1.1:53")
-                val config = PortalMasqueConfig.build(
-                    PortalMasqueConfig.endpoints[endpointIndex],
-                    credentials,
-                    pfd.fd
-                )
-                val request = JSONObject()
-                    .put("apiVersion", 3)
-                    .put("method", "runXray")
-                    .put("payload", JSONObject().put("xrayJson", config))
-                val response = JSONObject(LibXray.invoke(request.toString()))
-                if (!response.optBoolean("success", false)) {
-                    throw IllegalStateException(response.optString("error", "libXray не запустился"))
+                val candidates = if (endpointIndex == AUTO_ENDPOINT) {
+                    PortalMasqueConfig.endpoints
+                } else {
+                    listOf(PortalMasqueConfig.endpoints[endpointIndex])
+                }
+                var lastFailure = "Нет доступного MASQUE-узла"
+                var connectedName: String? = null
+                for (endpoint in candidates) {
+                    if (stopping) return@Thread
+                    try {
+                        val config = PortalMasqueConfig.build(endpoint, credentials, pfd.fd)
+                        val request = JSONObject()
+                            .put("apiVersion", 3)
+                            .put("method", "runXray")
+                            .put("payload", JSONObject().put("xrayJson", config))
+                        val response = JSONObject(LibXray.invoke(request.toString()))
+                        if (!response.optBoolean("success", false)) {
+                            throw IllegalStateException(response.optString("error", "libXray не запустился"))
+                        }
+                        if (!verifyWarpInternet()) {
+                            throw IllegalStateException("туннель запущен, но проверка интернета WARP не пройдена")
+                        }
+                        connectedName = endpoint.name
+                        break
+                    } catch (endpointError: Exception) {
+                        lastFailure = "${endpoint.name}: ${endpointError.message ?: "ошибка запуска"}"
+                        Log.w(TAG, "PORTAL endpoint failed: ${endpoint.name}", endpointError)
+                        runCatching {
+                            LibXray.invoke(JSONObject().put("apiVersion", 3).put("method", "stopXray").toString())
+                        }
+                    }
                 }
                 if (stopping) return@Thread
-                sendStatus("Подключено · ${PortalMasqueConfig.endpoints[endpointIndex].name}")
+                val name = connectedName ?: throw IllegalStateException(lastFailure)
+                sendStatus("Подключено · $name")
                 getSystemService(NotificationManager::class.java)
-                    .notify(NOTIFICATION_ID, notification("Подключено · ${PortalMasqueConfig.endpoints[endpointIndex].name}"))
+                    .notify(NOTIFICATION_ID, notification("Подключено · $name"))
             } catch (e: Exception) {
                 Log.e(TAG, "PORTAL startup failed", e)
                 sendStatus("Ошибка PORTAL: ${e.message ?: "неизвестная ошибка"}")
                 stopPortal()
             }
         }, "GilrTano-Portal-start").start()
+    }
+
+    /**
+     * A successful runXray response only means the core started. Confirm that
+     * traffic actually traverses Cloudflare WARP before showing Connected.
+     */
+    private fun verifyWarpInternet(): Boolean {
+        val connection = (java.net.URL("https://www.cloudflare.com/cdn-cgi/trace").openConnection()
+            as java.net.HttpURLConnection).apply {
+            connectTimeout = 10000
+            readTimeout = 10000
+            requestMethod = "GET"
+            instanceFollowRedirects = false
+            setRequestProperty("Cache-Control", "no-cache")
+        }
+        return try {
+            val code = connection.responseCode
+            if (code !in 200..299) return false
+            val body = connection.inputStream.bufferedReader().use { it.readText() }
+            body.lineSequence().any { it.trim() == "warp=on" }
+        } finally {
+            connection.disconnect()
+        }
     }
 
     private fun stopPortal() {
@@ -160,6 +203,7 @@ class PortalMasqueVpnService : VpnService() {
         const val ACTION_STOP = "com.gilrtano.vpn.PORTAL_STOP"
         const val ACTION_STATUS = "com.gilrtano.vpn.PORTAL_STATUS"
         const val EXTRA_ENDPOINT = "portal_endpoint"
+        const val AUTO_ENDPOINT = -1
         const val EXTRA_STATUS = "portal_status"
         private const val TAG = "GilrTanoPortal"
         private const val CHANNEL_ID = "gilrtano_portal"
