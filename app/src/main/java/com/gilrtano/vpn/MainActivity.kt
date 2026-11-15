@@ -1070,7 +1070,11 @@ class MainActivity : Activity() {
                         }
                         1 -> {
                             dialog.dismiss()
-                            importDocx.performClick()
+                            val pick = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                                addCategory(Intent.CATEGORY_OPENABLE)
+                                type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                            }
+                            startActivityForResult(pick, docxRequestCode)
                         }
                         2 -> {
                             val input = EditText(this).apply {
