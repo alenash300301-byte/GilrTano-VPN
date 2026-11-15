@@ -53,9 +53,25 @@ class GilrTanoVpnService : VpnService() {
         when (intent?.action) {
             ACTION_STOP -> stopTunnel()
             ACTION_START, ACTION_SWITCH, ACTION_START_PORTAL -> {
-                val config = intent.getStringExtra(EXTRA_CONFIG)
+                val requestedConfig = intent.getStringExtra(EXTRA_CONFIG)
+                // The sentinel asks the service to choose the first valid profile from
+                // the APK's bundled PORTAL archive. Profile data stays inside this process
+                // and is never sent through Binder as a large Intent payload.
+                val bundledProfiles = if (intent.action == ACTION_START_PORTAL) {
+                    runCatching {
+                        assets.open("portal_gate.zip").use { input -> PortalGateImporter.parseZip(input) }
+                    }.onFailure { error ->
+                        Log.e(TAG, "Could not load bundled PORTAL GATE archive", error)
+                    }.getOrDefault(emptyList())
+                } else emptyList()
+                val useBundledPrimary = intent.action == ACTION_START_PORTAL &&
+                    requestedConfig == BUNDLED_PORTAL_CONFIG
+                val config = if (useBundledPrimary) bundledProfiles.firstOrNull()?.config else requestedConfig
                 if (config.isNullOrBlank()) {
-                    broadcastStatus("Добавьте профиль Quattro или PORTAL GATE")
+                    broadcastStatus(
+                        if (intent.action == ACTION_START_PORTAL) "Встроенный архив PORTAL GATE пуст или не читается"
+                        else "Добавьте профиль Quattro или PORTAL GATE"
+                    )
                     stopSelf()
                 } else if (intent.action == ACTION_SWITCH) {
                     automaticMode = false
@@ -67,20 +83,11 @@ class GilrTanoVpnService : VpnService() {
                     portalMode = intent.getBooleanExtra(EXTRA_PORTAL, intent.action == ACTION_START_PORTAL)
                     automaticMode = intent.getBooleanExtra(EXTRA_AUTO, false)
                     fallbackConfig = intent.getStringExtra(EXTRA_FALLBACK_CONFIG)
-                    // Never send the 121-profile archive through an Intent extra:
-                    // Binder has a small transaction limit and the aggregate configs can
-                    // exceed it, crashing the app before the generated WARP is attempted.
-                    // Load the bundled archive inside this service process instead.
-                    fallbackChain = emptyList()
-                    if (intent.action == ACTION_START_PORTAL) {
-                        fallbackChain = runCatching {
-                            assets.open("portal_gate.zip").use { input ->
-                                PortalGateImporter.parseZip(input).map { it.config to true }
-                            }
-                        }.onFailure { error ->
-                            Log.e(TAG, "Could not load bundled PORTAL GATE archive", error)
-                        }.getOrDefault(emptyList())
-                    }
+                    // Keep the bundled profiles as an ordered failover chain. When the
+                    // first bundled profile is the primary, exclude it from the fallback list.
+                    fallbackChain = if (intent.action == ACTION_START_PORTAL) {
+                        bundledProfiles.filter { it.config != config }.map { it.config to true }
+                    } else emptyList()
                     if (!fallbackConfig.isNullOrBlank()) {
                         fallbackChain = fallbackChain + (fallbackConfig!! to false)
                     }
@@ -502,6 +509,7 @@ class GilrTanoVpnService : VpnService() {
         const val ACTION_SWITCH = "com.gilrtano.vpn.SWITCH"
         const val ACTION_STOP = "com.gilrtano.vpn.STOP"
         const val ACTION_START_PORTAL = "com.gilrtano.vpn.START_PORTAL"
+        const val BUNDLED_PORTAL_CONFIG = "__GILRTANO_BUNDLED_PORTAL__"
         const val ACTION_STATUS = "com.gilrtano.vpn.STATUS"
         const val EXTRA_CONFIG = "xray_config"
         const val EXTRA_ENGINE_BOX = "engine_box"

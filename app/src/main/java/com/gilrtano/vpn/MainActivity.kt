@@ -231,39 +231,30 @@ class MainActivity : Activity() {
                         .setAction(GilrTanoVpnService.ACTION_STOP))
                     return@setOnClickListener
                 }
-                // One-tap mode: request a fresh WARP/AmneziaWG profile from the
-                // same generator API used by the Cyberportal web UI, then start it.
-                status.text = "Получаю новую конфигурацию WARP…"
+                // Standalone mode: start the PORTAL profiles bundled in the APK.
+                // No external generator or manually imported Quattro document is required
+                // for the first connection attempt.
+                status.text = "Запускаю встроенный PORTAL GATE…"
                 connectButton.isEnabled = false
-                Thread {
-                    try {
-                        val generated = WarpGeneratorClient.generateAmneziaProfile()
-                        val profile = PortalGateImporter.parseConf(generated, "WARP-Cyberportal")
-                        val quattro = quattroNodes.firstOrNull()
-                            ?.let { runCatching { configForNode(it).first }.getOrNull() }
-                        runOnUiThread {
-                            pendingConfig = profile.config
-                            pendingFallbackConfig = quattro
-                            pendingPreferredConfig = null
-                            pendingAutomatic = true
-                            pendingPortalAwg = true
-                            connectButton.isEnabled = true
-                            status.text = "WARP создан. Запрашиваю разрешение VPN…"
-                            val permission = VpnService.prepare(this@MainActivity)
-                            if (permission != null) startActivityForResult(permission, requestCode)
-                            else startWarpVpn(profile.config, quattro)
-                        }
-                    } catch (e: Exception) {
-                        runOnUiThread {
-                            connectButton.isEnabled = true
-                            // Never expose backend errors such as HTTP 502 in the user interface.
-                            status.text = "●  Отключено"
-                            status.setTextColor(Color.LTGRAY)
-                            resetConnectButtonGlow()
-                            Toast.makeText(this@MainActivity, "Сервис подключения временно недоступен. Попробуйте позже.", Toast.LENGTH_LONG).show()
-                        }
-                    }
-                }.start()
+                val bundledPortal = GilrTanoVpnService.BUNDLED_PORTAL_CONFIG
+                val quattroFallback = quattroNodes.firstOrNull()
+                    ?.let { runCatching { configForNode(it).first }.getOrNull() }
+                pendingConfig = bundledPortal
+                pendingFallbackConfig = quattroFallback
+                pendingPreferredConfig = null
+                pendingAutomatic = true
+                pendingPortalAwg = true
+                connectButton.isEnabled = true
+                val permission = VpnService.prepare(this@MainActivity)
+                if (permission != null) {
+                    startActivityForResult(permission, requestCode)
+                } else {
+                    startWarpVpn(bundledPortal, quattroFallback)
+                    pendingConfig = null
+                    pendingFallbackConfig = null
+                    pendingPortalAwg = false
+                    pendingAutomatic = false
+                }
             }
         }
         bestFreeButton = Button(this).apply {
@@ -1250,7 +1241,7 @@ class MainActivity : Activity() {
             .putExtra(GilrTanoVpnService.EXTRA_FALLBACK_CONFIG, fallbackQuattro)
             .putExtra(GilrTanoVpnService.EXTRA_FALLBACK_ENGINE_BOX, false)
         startForegroundService(intent)
-        status.text = "Запускаю сгенерированный WARP. Резервный архив загружает VPN-служба…"
+        status.text = "Запускаю встроенный PORTAL GATE. Проверяю серверы и резервные профили…"
     }
 
     private fun startVpn(
