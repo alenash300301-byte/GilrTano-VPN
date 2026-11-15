@@ -181,12 +181,12 @@ class MainActivity : Activity() {
             setOnClickListener { switchMode(false) }
         }
         freeTab = Button(this).apply {
-            text = "БЕСПЛАТНЫЙ"
-            setOnClickListener { switchMode(true) }
+            text = "PORTAL GATE"
+            setOnClickListener { startActivity(Intent(this@MainActivity, PortalGateActivity::class.java)) }
         }
         autoTab = Button(this).apply {
-            text = "АВТО"
-            setOnClickListener { switchToAuto() }
+            text = "АВТО QUATTRO"
+            setOnClickListener { switchMode(false) }
         }
 
         val portalGateButton = Button(this).apply {
@@ -490,8 +490,7 @@ class MainActivity : Activity() {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = android.view.Gravity.CENTER
                     addView(quattroTab, LinearLayout.LayoutParams(0, dp(44), 1f).apply { rightMargin = dp(6) })
-                    addView(freeTab, LinearLayout.LayoutParams(0, dp(44), 1f).apply { leftMargin = dp(4); rightMargin = dp(4) })
-                    addView(autoTab, LinearLayout.LayoutParams(0, dp(44), 1f).apply { leftMargin = dp(4) })
+                    addView(freeTab, LinearLayout.LayoutParams(0, dp(44), 1f).apply { leftMargin = dp(4) })
                     visibility = View.GONE
                 }
                 settingsHeader = TextView(this@MainActivity).apply {
@@ -510,6 +509,7 @@ class MainActivity : Activity() {
                     }
                 }
                 addView(settingsHeader)
+                portalGateButton.visibility = View.GONE
                 addView(portalGateButton)
                 addView(modeSelectorRow, LinearLayout.LayoutParams.MATCH_PARENT, dp(48))
                 addView(primarySource, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
@@ -603,9 +603,9 @@ class MainActivity : Activity() {
                 false
             }
         }
-        activeMode = prefs.getString("connection_mode", "auto") ?: "auto"
-        autoMode = activeMode == "auto"
-        activeFree = prefs.getBoolean("active_free_mode", false)
+        activeMode = prefs.getString("connection_mode", "quattro") ?: "quattro"
+        autoMode = false
+        activeFree = false
         refreshMode()
         updatePowerOrb(false)
         updateServerCard(false)
@@ -873,10 +873,11 @@ class MainActivity : Activity() {
         val scroll = root.getChildAt(0) as? android.widget.ScrollView ?: return
         val page = scroll.getChildAt(0) as? ViewGroup ?: return
         settingsHeader.visibility = if (settingsExpanded) View.VISIBLE else View.GONE
+        portalGateButton.visibility = if (settingsExpanded) View.VISIBLE else View.GONE
         modeSelectorRow.visibility = if (settingsExpanded) View.VISIBLE else View.GONE
         primarySource.visibility = if (settingsExpanded && !activeFree) View.VISIBLE else View.GONE
-        freeSource.visibility = if (settingsExpanded && activeFree) View.VISIBLE else View.GONE
-        bestFreeButton.visibility = if (settingsExpanded && activeFree) View.VISIBLE else View.GONE
+        freeSource.visibility = View.GONE
+        bestFreeButton.visibility = View.GONE
         checkPing.visibility = if (settingsExpanded) View.VISIBLE else View.GONE
         for (i in 0 until page.childCount) {
             val child = page.getChildAt(i)
@@ -884,7 +885,7 @@ class MainActivity : Activity() {
                 val label = child.text.toString()
                 val show = settingsExpanded && (
                     (!activeFree && (label == "Импортировать Quattro" || label == "Выбрать DOCX Quattro")) ||
-                    (activeFree && label == "Импортировать бесплатные серверы")
+                    (label == "ОТКРЫТЬ PORTAL GATE")
                 )
                 if (label.startsWith("Импортировать") || label == "Выбрать DOCX Quattro") {
                     child.visibility = if (show) View.VISIBLE else View.GONE
