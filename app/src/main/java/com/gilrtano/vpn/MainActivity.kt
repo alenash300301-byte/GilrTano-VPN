@@ -578,31 +578,6 @@ class MainActivity : Activity() {
         root.addView(View(this).apply {
             setBackgroundColor(Color.rgb(28, 28, 30))
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)))
-        root.addView(LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = android.view.Gravity.CENTER
-            setPadding(dp(8), dp(8), dp(8), dp(8))
-            setBackgroundColor(Color.rgb(5, 5, 6))
-            fun navItem(symbol: String, label: String, action: () -> Unit, selected: Boolean = false) {
-                addView(LinearLayout(this@MainActivity).apply {
-                    orientation = LinearLayout.VERTICAL
-                    gravity = android.view.Gravity.CENTER
-                    setPadding(dp(8), dp(4), dp(8), dp(4))
-                    addView(TextView(this@MainActivity).apply {
-                        text = symbol; textSize = 23f; gravity = android.view.Gravity.CENTER
-                        setTextColor(if (selected) Color.rgb(220, 32, 32) else Color.LTGRAY)
-                    })
-                    addView(TextView(this@MainActivity).apply {
-                        text = label; textSize = 11f; gravity = android.view.Gravity.CENTER
-                        setTextColor(if (selected) Color.rgb(220, 32, 32) else Color.LTGRAY)
-                    })
-                    setOnClickListener { action() }
-                }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-            }
-            navItem("⌂", "Главная", { scroll.smoothScrollTo(0, 0) }, true)
-            navItem("◎", "Серверы", { showServerPicker() })
-            navItem("⚙", "Настройки", { showSettingsDialog() })
-        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(66)))
         setContentView(root)
         trafficHandler.removeCallbacks(trafficSample)
         trafficHandler.post(trafficSample)
