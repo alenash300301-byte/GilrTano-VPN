@@ -82,9 +82,9 @@ class PortalMasqueVpnService : VpnService() {
                     throw IllegalStateException(response.optString("error", "libXray не запустился"))
                 }
                 if (stopping) return@Thread
-                sendStatus("Подключено · PORTAL")
+                sendStatus("Подключено · ${PortalMasqueConfig.endpoints[endpointIndex].name}")
                 getSystemService(NotificationManager::class.java)
-                    .notify(NOTIFICATION_ID, notification("Подключено · PORTAL MASQUE"))
+                    .notify(NOTIFICATION_ID, notification("Подключено · ${PortalMasqueConfig.endpoints[endpointIndex].name}"))
             } catch (e: Exception) {
                 Log.e(TAG, "PORTAL startup failed", e)
                 sendStatus("Ошибка PORTAL: ${e.message ?: "неизвестная ошибка"}")
