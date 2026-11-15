@@ -61,6 +61,8 @@ class MainActivity : Activity() {
     private lateinit var quattroTab: Button
     private lateinit var freeTab: Button
     private lateinit var autoTab: Button
+    private lateinit var portalTab: Button
+    private var pendingPortalStart = false
     private var autoMode = true
     private var activeMode: String = "auto"
     private lateinit var bestFreeButton: Button
@@ -94,7 +96,7 @@ class MainActivity : Activity() {
 
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            val message = intent?.getStringExtra(GilrTanoVpnService.EXTRA_STATUS) ?: "—"
+            val message = if (intent?.action == PortalMasqueVpnService.ACTION_STATUS) intent.getStringExtra(PortalMasqueVpnService.EXTRA_STATUS) ?: "—" else intent?.getStringExtra(GilrTanoVpnService.EXTRA_STATUS) ?: "—"
             status.text = when {
                 message.startsWith("Подключено") -> "●  Подключено"
                 message == "Отключено" -> "●  Отключено"
@@ -188,6 +190,10 @@ class MainActivity : Activity() {
             text = "АВТО"
             setOnClickListener { switchToAuto() }
         }
+        portalTab = Button(this).apply {
+            text = "PORTAL"
+            setOnClickListener { switchToPortal() }
+        }
 
         val importPrimary = Button(this).apply {
             text = "Импортировать Quattro"
@@ -211,6 +217,26 @@ class MainActivity : Activity() {
             text = "⏻\nПОДКЛЮЧИТЬ"
             setOnClickListener {
                 val currentStatus = status.text.toString()
+                if (activeMode == "portal") {
+                    val connectedOrBusy = currentStatus.contains("Подключено") ||
+                        currentStatus.startsWith("Подключаю") || currentStatus.startsWith("Запускаю") ||
+                        currentStatus.startsWith("Ошибка PORTAL")
+                    if (connectedOrBusy) {
+                        startService(Intent(this@MainActivity, PortalMasqueVpnService::class.java).setAction(PortalMasqueVpnService.ACTION_STOP))
+                        status.text = "Отключаю PORTAL…"
+                    } else {
+                        val credentials = runCatching { PortalCredentialStore.load(this@MainActivity) }.getOrNull()
+                        if (credentials == null) {
+                            showPortalCredentialsDialog()
+                            return@setOnClickListener
+                        }
+                        pendingPortalStart = true
+                        val permission = VpnService.prepare(this@MainActivity)
+                        if (permission != null) startActivityForResult(permission, requestCode)
+                        else startPortalVpn()
+                    }
+                    return@setOnClickListener
+                }
                 val isConnected = currentStatus.contains("Подключено")
                 val isConnecting = currentStatus.startsWith("Подключаю") ||
                     currentStatus.startsWith("Запускаю") || currentStatus.startsWith("Запуск Xray") || currentStatus.startsWith("Переключаю")
@@ -487,7 +513,8 @@ class MainActivity : Activity() {
                     gravity = android.view.Gravity.CENTER
                     addView(quattroTab, LinearLayout.LayoutParams(0, dp(44), 1f).apply { rightMargin = dp(6) })
                     addView(freeTab, LinearLayout.LayoutParams(0, dp(44), 1f).apply { leftMargin = dp(4); rightMargin = dp(4) })
-                    addView(autoTab, LinearLayout.LayoutParams(0, dp(44), 1f).apply { leftMargin = dp(4) })
+                    addView(autoTab, LinearLayout.LayoutParams(0, dp(44), 1f).apply { leftMargin = dp(4); rightMargin = dp(4) })
+                    addView(portalTab, LinearLayout.LayoutParams(0, dp(44), 1f).apply { leftMargin = dp(4) })
                     visibility = View.GONE
                 }
                 settingsHeader = TextView(this@MainActivity).apply {
@@ -789,6 +816,18 @@ class MainActivity : Activity() {
         Toast.makeText(this, "Автовыбор включён: Quattro в приоритете, бесплатный резерв", Toast.LENGTH_SHORT).show()
     }
 
+    private fun switchToPortal() {
+        val wasConnected = status.text.toString().contains("Подключено")
+        if (wasConnected && activeMode != "portal") {
+            startService(Intent(this, GilrTanoVpnService::class.java).setAction(GilrTanoVpnService.ACTION_STOP))
+        }
+        autoMode = false
+        activeMode = "portal"
+        prefs.edit().putString("connection_mode", "portal").apply()
+        refreshMode()
+        Toast.makeText(this, "Выбран PORTAL MASQUE", Toast.LENGTH_SHORT).show()
+    }
+
     private fun switchMode(free: Boolean) {
         autoMode = false
         activeMode = if (free) "free" else "quattro"
@@ -829,7 +868,10 @@ class MainActivity : Activity() {
     }
 
     private fun refreshMode() {
-        autoTab.isEnabled = !autoMode
+        val portalSelected = activeMode == "portal"
+        portalTab.isEnabled = !portalSelected
+        portalTab.alpha = if (portalSelected) 1f else 0.72f
+        autoTab.isEnabled = !autoMode && !portalSelected
         quattroTab.isEnabled = autoMode || activeFree
         freeTab.isEnabled = autoMode || !activeFree
         autoTab.alpha = if (autoMode) 1f else 0.72f
@@ -843,14 +885,17 @@ class MainActivity : Activity() {
         }
         quattroTab.background = modeBackground(!autoMode && !activeFree)
         freeTab.background = modeBackground(!autoMode && activeFree)
-        autoTab.background = modeBackground(autoMode)
+        autoTab.background = modeBackground(autoMode && !portalSelected)
+        portalTab.background = modeBackground(portalSelected)
         quattroTab.setTextColor(if (!autoMode && !activeFree) Color.WHITE else Color.LTGRAY)
         freeTab.setTextColor(if (!autoMode && activeFree) Color.WHITE else Color.LTGRAY)
-        autoTab.setTextColor(if (autoMode) Color.WHITE else Color.LTGRAY)
-        primarySource.visibility = if (activeFree) ViewGroup.GONE else ViewGroup.VISIBLE
-        freeSource.visibility = if (activeFree) ViewGroup.VISIBLE else ViewGroup.GONE
+        autoTab.setTextColor(if (autoMode && !portalSelected) Color.WHITE else Color.LTGRAY)
+        portalTab.setTextColor(if (portalSelected) Color.WHITE else Color.LTGRAY)
+        primarySource.visibility = if (activeFree || portalSelected) ViewGroup.GONE else ViewGroup.VISIBLE
+        freeSource.visibility = if (activeFree && !portalSelected) ViewGroup.VISIBLE else ViewGroup.GONE
         findImportButtonsVisibility()
-        val list = activeNodes
+        val list = if (portalSelected) emptyList() else activeNodes
+        servers.visibility = if (portalSelected) View.GONE else View.VISIBLE
         servers.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, list.map { it.name })
         val selectedKey = if (activeFree) "free_selected" else "quattro_selected"
         val selected = prefs.getInt(selectedKey, 0).coerceIn(0, (list.size - 1).coerceAtLeast(0))
@@ -1226,7 +1271,10 @@ class MainActivity : Activity() {
     @Deprecated("Deprecated by Android API")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == this.requestCode && resultCode == RESULT_OK) {
+        if (requestCode == this.requestCode && resultCode == RESULT_OK && pendingPortalStart) {
+            pendingPortalStart = false
+            startPortalVpn()
+        } else if (requestCode == this.requestCode && resultCode == RESULT_OK) {
             pendingConfig?.let {
                 startVpn(it, pendingFallbackConfig, pendingPreferredConfig, pendingAutomatic)
                 pendingConfig = null
