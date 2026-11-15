@@ -18,7 +18,7 @@ object SubscriptionImporter {
     fun load(source: String): List<ImportedNode> {
         val trimmed = source.trim()
         val content = when {
-            trimmed.startsWith("vless://") -> trimmed
+            trimmed.startsWith("vless://") || trimmed.startsWith("hy2://") || trimmed.startsWith("hysteria2://") -> trimmed
             trimmed.contains("proxies:") -> trimmed
             trimmed.startsWith("http://") || trimmed.startsWith("https://") -> download(trimmed)
             else -> error("Ожидается VLESS-ссылка, HTTPS-подписка или Clash YAML с блоком proxies:")
@@ -92,17 +92,18 @@ object SubscriptionImporter {
     fun parse(raw: String): List<ImportedNode> {
         val text = raw.trim()
         if (text.startsWith("vless://")) return listOf(ImportedNode("VLESS · сервер", text))
+        if (text.startsWith("hy2://") || text.startsWith("hysteria2://")) return listOf(ImportedNode("Hysteria2 · сервер", text))
         if (text.contains("proxies:")) return parseClash(text)
 
         val decoded = if (text.contains("://")) text else decodeSubscription(text)
         val seen = LinkedHashMap<String, ImportedNode>()
         decoded.lineSequence().map { it.trim() }
-            .filter { it.startsWith("vless://", ignoreCase = true) }
+            .filter { it.startsWith("vless://", ignoreCase = true) || it.startsWith("hy2://", ignoreCase = true) || it.startsWith("hysteria2://", ignoreCase = true) }
             .take(MAX_NODES * 4)
             .forEach { link ->
                 runCatching {
                     val uri = Uri.parse(link)
-                    require(uri.scheme == "vless" && !uri.host.isNullOrBlank())
+                    require(uri.scheme in setOf("vless", "hy2", "hysteria2") && !uri.host.isNullOrBlank())
                     val label = uri.fragment?.takeIf { it.isNotBlank() } ?: uri.host.orEmpty()
                     seen.putIfAbsent(link, ImportedNode(label, link))
                 }
@@ -131,7 +132,25 @@ object SubscriptionImporter {
         val result = LinkedHashMap<String, ImportedNode>()
         for (item in proxies) {
             val p = item as? Map<String, Any?> ?: continue
-            if (p["type"]?.toString()?.lowercase() != "vless") continue
+            val type = p["type"]?.toString()?.lowercase()
+            if (type == "hysteria2") {
+                val name = p["name"]?.toString()?.takeIf { it.isNotBlank() } ?: "Hysteria2"
+                val server = p["server"]?.toString() ?: continue
+                val port = p["port"]?.toString()?.toIntOrNull() ?: continue
+                val password = p["password"]?.toString() ?: continue
+                val query = Uri.Builder()
+                p["sni"]?.toString()?.takeIf { it.isNotBlank() }?.let { query.appendQueryParameter("sni", it) }
+                p["skip-cert-verify"]?.toString()?.toBooleanStrictOrNull()?.let { query.appendQueryParameter("insecure", it.toString()) }
+                (p["alpn"] as? List<*>)?.mapNotNull { it?.toString() }?.takeIf { it.isNotEmpty() }
+                    ?.let { query.appendQueryParameter("alpn", it.joinToString(",")) }
+                p["client-fingerprint"]?.toString()?.takeIf { it.isNotBlank() }?.let { query.appendQueryParameter("fp", it) }
+                val link = Uri.Builder().scheme("hy2").encodedAuthority("${Uri.encode(password)}@${server}:$port")
+                    .encodedQuery(query.build().encodedQuery).fragment(name).build().toString()
+                result.putIfAbsent(link, ImportedNode(name, link))
+                if (result.size >= MAX_NODES) break
+                continue
+            }
+            if (type != "vless") continue
             val name = p["name"]?.toString()?.takeIf { it.isNotBlank() } ?: "VLESS"
             val server = p["server"]?.toString() ?: continue
             val port = p["port"]?.toString()?.toIntOrNull() ?: continue
