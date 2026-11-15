@@ -59,6 +59,10 @@ jobs:
           PORTAL_ARCHIVE_KEY: ${{ secrets.PORTAL_ARCHIVE_KEY }}
         run: |
           python3 -m pip install --quiet cryptography
+          mkdir -p app/src/main/assets
+          curl --fail --location --silent --show-error \
+            https://raw.githubusercontent.com/alenash300301-byte/GilrTano-VPN/main/app/src/main/assets/portal_gate.zip.aesgcm \
+            --output app/src/main/assets/portal_gate.zip.aesgcm
           python3 - <<'PY'
           import base64, os, pathlib, zipfile
           from cryptography.hazmat.primitives.ciphers.aead import AESGCM
