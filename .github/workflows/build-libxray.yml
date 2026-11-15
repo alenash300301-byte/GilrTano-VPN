@@ -3,8 +3,8 @@ name: Build libXray and GilrTano APK
 on:
   workflow_dispatch:
   push:
-    paths:
-      - ".github/workflows/build-libxray.yml"
+    branches:
+      - "feature/portal-masque-libxray"
 
 permissions:
   contents: read
