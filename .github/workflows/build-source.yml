@@ -1,9 +1,11 @@
 name: Build GilrTano VPN APK
 
+# Pushes to the Aetris integration branch run the full native + Android APK validation. PR checks are enabled on the base branch.
+
 on:
   workflow_dispatch:
   push:
-    branches: [main, 'feature/portal-gate-awg-integration', 'feature/portal-auto-dual-protocol', 'feature/quattro-import-social-checks']
+    branches: [main, 'feature/portal-gate-awg-integration', 'feature/portal-auto-dual-protocol', 'feature/quattro-import-social-checks', 'feature/aetris-multiprotocol-import']
   pull_request:
     branches: [main, 'feature/portal-auto-dual-protocol', 'feature/quattro-import-social-checks']
 

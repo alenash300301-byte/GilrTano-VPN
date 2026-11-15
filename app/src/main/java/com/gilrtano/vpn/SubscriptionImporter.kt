@@ -17,11 +17,19 @@ object SubscriptionImporter {
 
     fun load(source: String): List<ImportedNode> {
         val trimmed = source.trim()
+        if (trimmed.contains("[Interface]", ignoreCase = true) && trimmed.contains("[Peer]", ignoreCase = true)) {
+            val profile = PortalGateImporter.parseConf(trimmed, "AmneziaWG.conf")
+            val encoded = Base64.encodeToString(trimmed.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
+            return listOf(ImportedNode(profile.name, "awgconf://$encoded"))
+        }
         val content = when {
-            trimmed.startsWith("vless://") || trimmed.startsWith("hy2://") || trimmed.startsWith("hysteria2://") -> trimmed
-            trimmed.contains("proxies:") -> trimmed
             trimmed.startsWith("http://") || trimmed.startsWith("https://") -> download(trimmed)
-            else -> error("Ожидается VLESS-ссылка, HTTPS-подписка или Clash YAML с блоком proxies:")
+            trimmed.startsWith("vless://") || trimmed.startsWith("vmess://") || trimmed.startsWith("ss://") ||
+                trimmed.startsWith("hy2://") || trimmed.startsWith("hysteria2://") ||
+                trimmed.contains("://") || trimmed.contains("proxies:") || trimmed.startsWith("#profile-") -> trimmed
+            trimmed.lineSequence().any { it.trim().startsWith("#profile-") || it.trim().startsWith("vless://") ||
+                it.trim().startsWith("vmess://") || it.trim().startsWith("ss://") } -> trimmed
+            else -> error("Вставь ссылку подписки, текст Aetris или Clash YAML")
         }
         return parse(content)
     }
@@ -90,21 +98,23 @@ object SubscriptionImporter {
     }
 
     fun parse(raw: String): List<ImportedNode> {
-        val text = raw.trim()
-        if (text.startsWith("vless://")) return listOf(ImportedNode("VLESS · сервер", text))
-        if (text.startsWith("hy2://") || text.startsWith("hysteria2://")) return listOf(ImportedNode("Hysteria2 · сервер", text))
-        if (text.contains("proxies:")) return parseClash(text)
-
-        val decoded = if (text.contains("://")) text else decodeSubscription(text)
+        val text = raw.trim().removePrefix("\uFEFF")
+        if (text.startsWith("proxies:")) return parseClash(text)
+        val supported = Regex("^(vless|vmess|ss|hy2|hysteria2)://", RegexOption.IGNORE_CASE)
+        val hasLinks = text.lineSequence().any { supported.containsMatchIn(it.trim()) }
+        val decoded = if (hasLinks) text else decodeSubscription(text)
         val seen = LinkedHashMap<String, ImportedNode>()
         decoded.lineSequence().map { it.trim() }
-            .filter { it.startsWith("vless://", ignoreCase = true) || it.startsWith("hy2://", ignoreCase = true) || it.startsWith("hysteria2://", ignoreCase = true) }
+            .filter { supported.containsMatchIn(it) }
             .take(MAX_NODES * 4)
             .forEach { link ->
                 runCatching {
+                    val scheme = link.substringBefore("://").lowercase()
                     val uri = Uri.parse(link)
-                    require(uri.scheme in setOf("vless", "hy2", "hysteria2") && !uri.host.isNullOrBlank())
-                    val label = uri.fragment?.takeIf { it.isNotBlank() } ?: uri.host.orEmpty()
+                    if (scheme != "vmess") require(!uri.host.isNullOrBlank())
+                    val label = uri.fragment?.takeIf { it.isNotBlank() }
+                        ?: uri.host?.takeIf { it.isNotBlank() }
+                        ?: when (scheme) { "ss" -> "Shadowsocks"; "vmess" -> "VMess"; else -> scheme.uppercase() }
                     seen.putIfAbsent(link, ImportedNode(label, link))
                 }
             }

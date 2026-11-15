@@ -85,8 +85,10 @@ class MainActivity : Activity() {
     private var settingsExpanded = false
     private var quattroNodes: List<ImportedNode> = emptyList()
     private var freeNodes: List<ImportedNode> = emptyList()
+    private var aetrisFallbackNodes: List<ImportedNode> = emptyList()
     private var pendingConfig: String? = null
     private var pendingFallbackConfig: String? = null
+    private var pendingFallbackChainJson: String? = null
     private var pendingPreferredConfig: String? = null
     private var pendingAutomatic = false
     private var pendingPortalAwg = false
@@ -155,6 +157,7 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         quattroNodes = restoreNodes("quattro_nodes")
         freeNodes = restoreNodes("free_nodes")
+        aetrisFallbackNodes = restoreNodes("aetris_fallback_nodes")
 
         status = TextView(this).apply { text = "Отключено"; textSize = 14f; maxLines = 2; gravity = android.view.Gravity.CENTER; setPadding(dp(18), dp(4), dp(18), dp(4)) }
         pingStatus = TextView(this).apply { text = "Пинг: —"; textSize = 15f }
@@ -162,7 +165,7 @@ class MainActivity : Activity() {
             hint = "Ссылка Quattro или Clash YAML"
             minLines = 2
             maxLines = 5
-            setText(prefs.getString("subscription_url", ""))
+            setText(prefs.getString("subscription_url", "https://raw.githubusercontent.com/flaafix/AetrisVPN-white-list-lite/refs/heads/main/AetrisVPN.txt"))
             inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
         }
         freeSource = EditText(this).apply {
@@ -943,9 +946,17 @@ class MainActivity : Activity() {
     }
 
     private fun configForNode(node: ImportedNode): Pair<String, Boolean> =
-        if (node.uri.startsWith("hy2://", true) || node.uri.startsWith("hysteria2://", true))
-            Hysteria2Config.fromUri(node.uri) to true
-        else GilrTanoVpnService.xrayConfigFromVless(node.uri) to false
+        when {
+            node.uri.startsWith("awgconf://", true) -> {
+                val encoded = node.uri.substringAfter("://")
+                val bytes = android.util.Base64.decode(encoded, android.util.Base64.DEFAULT)
+                val conf = String(bytes, Charsets.UTF_8)
+                PortalGateImporter.parseConf(conf, node.name).config to true
+            }
+            node.uri.startsWith("hy2://", true) || node.uri.startsWith("hysteria2://", true) ->
+                Hysteria2Config.fromUri(node.uri) to true
+            else -> ProtocolConfig.toXrayConfig(node.uri) to false
+        }
 
     private fun importFrom(source: String, isFree: Boolean) {
         if (source.isBlank()) {
@@ -955,10 +966,11 @@ class MainActivity : Activity() {
         status.text = if (isFree) "Загружаю резерв…" else "Загружаю Quattro…"
         Thread {
             try {
-                val imported = SubscriptionImporter.load(source)
+                val parsedNodes = SubscriptionImporter.load(source)
+                val imported = parsedNodes.filter { node -> runCatching { configForNode(node) }.isSuccess }
                 runOnUiThread {
                     if (imported.isEmpty()) {
-                        status.text = "Не найдено поддерживаемых VLESS/Hysteria2-серверов"
+                        status.text = "Не найдено пригодных серверов: проверь формат подписки и параметры доступа"
                         return@runOnUiThread
                     }
                     if (isFree) {
@@ -966,8 +978,14 @@ class MainActivity : Activity() {
                         prefs.edit().putString("free_subscription_url", source).apply()
                         saveNodes("free_nodes", freeNodes)
                     } else {
+                        val isAetris = source.contains("AetrisVPN", true) || source.contains("#profile-title", true)
+                        if (isAetris && quattroNodes.isNotEmpty()) {
+                            aetrisFallbackNodes = quattroNodes
+                            saveNodes("aetris_fallback_nodes", aetrisFallbackNodes)
+                        }
                         quattroNodes = imported
-                        prefs.edit().putString("subscription_url", source).apply()
+                        prefs.edit().putString("subscription_url", source).putBoolean("aetris_subscription", isAetris)
+                            .putLong("aetris_last_refresh_ms", if (isAetris) System.currentTimeMillis() else 0L).apply()
                         saveNodes("quattro_nodes", quattroNodes)
                     }
                     activeFree = isFree
@@ -976,7 +994,7 @@ class MainActivity : Activity() {
                     settingsExpanded = false
                     settingsHeader.text = "Настройки"
                     findImportButtonsVisibility()
-                    status.text = "Серверы добавлены"
+                    status.text = "Добавлено: ${imported.size} серверов из ${parsedNodes.size}; неподходящих: ${parsedNodes.size - imported.size}"
                     if (isFree) findBestFreeServers() else measureSelectedPing()
                 }
             } catch (e: Exception) {
@@ -1192,14 +1210,21 @@ class MainActivity : Activity() {
         val node = activeNodes.getOrNull(servers.selectedItemPosition) ?: return
         try {
             val (config, engineBox) = configForNode(node)
-            val fallbackNode = if (activeFree) freeNodes.getOrNull(1) else freeNodes.firstOrNull()
-            val fallback = fallbackNode
-                ?.let { runCatching { configForNode(it).first }.getOrNull() }
+            val fallbackNodes = (if (!activeFree && aetrisFallbackNodes.isNotEmpty()) aetrisFallbackNodes else
+                if (activeFree) freeNodes.drop(1) else freeNodes).distinctBy { it.uri }
+            val fallbackEntries = JSONArray()
+            fallbackNodes.forEach { fallbackNode ->
+                runCatching { configForNode(fallbackNode) }.getOrNull()?.let { pair ->
+                    fallbackEntries.put(JSONObject().put("config", pair.first).put("engineBox", pair.second).put("portal", false))
+                }
+            }
+            val fallback = fallbackEntries.optJSONObject(0)?.optString("config")
             pendingConfig = config
             pendingFallbackConfig = fallback
             pendingPreferredConfig = config
             pendingAutomatic = true
             pendingEngineBox = engineBox
+            pendingFallbackChainJson = fallbackEntries.toString()
             status.text = "Подключаю лучший доступный сервер…"
             val permission = VpnService.prepare(this)
             if (permission != null) startActivityForResult(permission, requestCode)
@@ -1260,7 +1285,7 @@ class MainActivity : Activity() {
     }
 
     private fun clearPendingPortalRequest() {
-        pendingConfig = null; pendingFallbackConfig = null; pendingPreferredConfig = null
+        pendingConfig = null; pendingFallbackConfig = null; pendingFallbackChainJson = null; pendingPreferredConfig = null
         pendingAutomatic = false; pendingPortalAwg = false; pendingPortalGenerate = false; pendingEngineBox = false
     }
 
@@ -1314,6 +1339,7 @@ class MainActivity : Activity() {
             .putExtra(GilrTanoVpnService.EXTRA_ENGINE_BOX, engineBox)
             .putExtra(GilrTanoVpnService.EXTRA_PREFERRED_ENGINE_BOX, engineBox)
         fallbackConfig?.let { intent.putExtra(GilrTanoVpnService.EXTRA_FALLBACK_CONFIG, it) }
+        pendingFallbackChainJson?.let { intent.putExtra(GilrTanoVpnService.EXTRA_FALLBACK_CHAIN, it) }
         preferredConfig?.let { intent.putExtra(GilrTanoVpnService.EXTRA_PREFERRED_CONFIG, it) }
         startForegroundService(intent)
         status.text = "Запускаю VPN…"
@@ -1366,6 +1392,19 @@ class MainActivity : Activity() {
         val filter = IntentFilter(GilrTanoVpnService.ACTION_STATUS)
         if (android.os.Build.VERSION.SDK_INT >= 33) registerReceiver(receiver, filter, RECEIVER_NOT_EXPORTED)
         else @Suppress("DEPRECATION") registerReceiver(receiver, filter)
+        refreshAetrisSubscriptionIfDue()
+    }
+
+    private fun refreshAetrisSubscriptionIfDue() {
+        val source = prefs.getString("subscription_url", null)
+            ?: "https://raw.githubusercontent.com/flaafix/AetrisVPN-white-list-lite/refs/heads/main/AetrisVPN.txt"
+        if (!source.contains("AetrisVPN-white-list-lite", ignoreCase = true)) return
+        val lastRefresh = prefs.getLong("aetris_last_refresh_ms", 0L)
+        // Android background scheduling is not reliable at one-minute intervals;
+        // refresh on foreground entry, with a conservative 15-minute minimum.
+        if (System.currentTimeMillis() - lastRefresh < 15 * 60 * 1000L) return
+        primarySource.setText(source)
+        importFrom(source, false)
     }
 
     override fun onStop() {
