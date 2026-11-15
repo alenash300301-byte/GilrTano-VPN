@@ -5,11 +5,11 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Builds the Xray WARP-over-MASQUE profile used by the isolated libXray migration.
+ * Builds Xray WARP-over-MASQUE profiles for the isolated libXray migration.
+ * Credentials are supplied at runtime and must never be committed to source control.
  *
- * Credentials are supplied at runtime and must never be stored in source control.
- * This generator intentionally does not claim parity with PORTAL's full Clash
- * rule-provider set; routing parity is a separate migration task.
+ * This is the endpoint-level generator only. It does not yet reproduce the
+ * original PORTAL Clash rule providers and category routing.
  */
 data class PortalWarpCredentials(
     val privateKey: String,
@@ -28,34 +28,24 @@ data class PortalMasqueEndpoint(
 
 object PortalMasqueConfig {
     val endpoints = listOf(
-        PortalMasqueEndpoint(
-            name = "КИБЕРПОРТАЛ",
-            address = "162.159.198.2",
-            serverName = "4pda.to"
-        ),
-        PortalMasqueEndpoint(
-            name = "КИБЕРПОРТАЛ 2",
-            address = "162.159.199.2",
-            serverName = "mail.ru"
-        )
+        PortalMasqueEndpoint("КИБЕРПОРТАЛ", "162.159.198.2", serverName = "4pda.to"),
+        PortalMasqueEndpoint("КИБЕРПОРТАЛ 2", "162.159.199.2", serverName = "mail.ru")
     )
 
     /**
-     * Builds a single-endpoint config. The Android VpnService TUN descriptor is
-     * handed directly to Xray through its documented root env field.
+     * Builds a single-endpoint config. Android VpnService's TUN descriptor is
+     * passed directly to Xray through the documented root env field.
      */
     fun build(
         endpoint: PortalMasqueEndpoint,
         credentials: PortalWarpCredentials,
-        tunFd: Int,
-        mtu: Int = 1280
+        tunFd: Int
     ): String {
         require(tunFd >= 0) { "Некорректный TUN file descriptor" }
         require(endpoint.port in 1..65535) { "Некорректный порт MASQUE" }
         require(endpoint.address.isNotBlank()) { "Не указан MASQUE endpoint" }
         require(endpoint.serverName.isNotBlank()) { "Не указан TLS SNI" }
         require(endpoint.alpn.isNotEmpty()) { "Не указан ALPN" }
-        require(mtu in 576..9000) { "Некорректный MTU" }
 
         val privateKey = credentials.privateKey.trim()
         val publicKey = credentials.publicKey.trim()
@@ -65,8 +55,7 @@ object PortalMasqueConfig {
             "Не заданы адреса WARP IPv4/IPv6"
         }
         // Catch common copy/paste errors without logging or exposing key material.
-        val encoded = privateKey
-            .lineSequence()
+        val encoded = privateKey.lineSequence()
             .filterNot { it.startsWith("-----") }
             .joinToString("")
             .trim()
@@ -81,7 +70,7 @@ object PortalMasqueConfig {
                 .put(if (credentials.ipv4.contains("/")) credentials.ipv4 else "${credentials.ipv4}/32")
                 .put(if (credentials.ipv6.contains("/")) credentials.ipv6 else "${credentials.ipv6}/128"))
 
-        val outbound = JSONObject()
+        val masqueOutbound = JSONObject()
             .put("tag", "portal-warp")
             .put("protocol", "masque")
             .put("settings", JSONObject()
@@ -95,24 +84,15 @@ object PortalMasqueConfig {
                     .put("alpn", JSONArray(endpoint.alpn)))
                 .put("masqueSettings", JSONObject().put("warp", warp)))
 
-        val direct = JSONObject()
-            .put("tag", "direct")
-            .put("protocol", "freedom")
-            .put("settings", JSONObject())
-
-        val block = JSONObject()
-            .put("tag", "block")
-            .put("protocol", "blackhole")
-            .put("settings", JSONObject())
-
         return JSONObject()
             .put("log", JSONObject().put("loglevel", "warning"))
             .put("env", JSONObject().put("xray.tun.fd", tunFd.toString()))
             .put("inbounds", JSONArray())
-            .put("outbounds", JSONArray().put(outbound).put(direct).put(block))
-            .put("routing", JSONObject()
-                .put("domainStrategy", "AsIs")
-                .put("rules", JSONArray()))
+            .put("outbounds", JSONArray()
+                .put(masqueOutbound)
+                .put(JSONObject().put("tag", "direct").put("protocol", "freedom").put("settings", JSONObject()))
+                .put(JSONObject().put("tag", "block").put("protocol", "blackhole").put("settings", JSONObject())))
+            .put("routing", JSONObject().put("domainStrategy", "AsIs").put("rules", JSONArray()))
             .toString(2)
     }
 }
