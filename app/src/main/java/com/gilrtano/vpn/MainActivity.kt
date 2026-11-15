@@ -347,25 +347,8 @@ class MainActivity : Activity() {
                     setLayerType(View.LAYER_TYPE_SOFTWARE, null)
                 }
                 powerOrb.setOnClickListener { connectButton.performClick() }
-                powerOrb.setOnTouchListener { _, event ->
-                    if (event.actionMasked == MotionEvent.ACTION_DOWN &&
-                        !status.text.toString().contains("Подключено")) {
-                        tigerFlames.setActive(true)
-                        if (fireAnimator?.isRunning != true) {
-                            fireAnimator = ValueAnimator.ofFloat(0f, (Math.PI * 2).toFloat()).apply {
-                                duration = 900L
-                                repeatCount = ValueAnimator.INFINITE
-                                addUpdateListener {
-                                    val phase = it.animatedValue as Float
-                                    powerOrbDrawable.setPhase(phase)
-                                    tigerFlames.setPhase(phase)
-                                }
-                                start()
-                            }
-                        }
-                    }
-                    false
-                }
+                // Keep the transparent hit target passive: no infinite animator on touch.
+                powerOrb.isClickable = true
                 powerOrb.contentDescription = "Кнопка питания VPN"
                 tigerScene.addView(powerOrb, FrameLayout.LayoutParams(dp(132), dp(132)).apply {
                     gravity = android.view.Gravity.TOP or android.view.Gravity.CENTER_HORIZONTAL
@@ -471,8 +454,8 @@ class MainActivity : Activity() {
             importFree.visibility = View.GONE
         }
         setContentView(root)
+        // Traffic widgets were removed from Home; do not poll TrafficStats every second.
         trafficHandler.removeCallbacks(trafficSample)
-        trafficHandler.post(trafficSample)
         styleDarkInterface()
         installButtonFeedback()
         setPowerButtonLabel("ПОДКЛЮЧИТЬ")
@@ -501,7 +484,6 @@ class MainActivity : Activity() {
                 val phase = it.animatedValue as Float
                 fireDrawable.setPhase(phase)
                 powerOrbDrawable.setPhase(phase)
-                if (::tigerFlames.isInitialized) tigerFlames.setPhase(phase)
             }
                                 start()
                             }
@@ -615,8 +597,7 @@ class MainActivity : Activity() {
                 val phase = it.animatedValue as Float
                 fireDrawable.setPhase(phase)
                 powerOrbDrawable.setPhase(phase)
-                if (::tigerFlames.isInitialized) tigerFlames.setPhase(phase)
-            }
+                }
             start()
         }
         connectButton.elevation = dp(16).toFloat()
