@@ -66,7 +66,11 @@ class GilrTanoVpnService : VpnService() {
         return START_NOT_STICKY
     }
 
-    private fun switchTunnel(config: String, nextBoxMode: Boolean = boxMode) {
+    private fun switchTunnel(
+        config: String,
+        nextBoxMode: Boolean = boxMode,
+        nextPortalMode: Boolean = portalMode
+    ) {
         stopping = true
         broadcastStatus("Переключаю протокол / сервер…")
         Thread({
@@ -78,6 +82,9 @@ class GilrTanoVpnService : VpnService() {
                 tun = null
             }
             boxMode = nextBoxMode
+            // PORTAL labels and verification policy belong to the selected engine.
+            // A Quattro/Xray fallback must leave PORTAL mode so its checks run normally.
+            portalMode = nextPortalMode
             stopping = false
             startTunnel(config)
         }, "GilrTano-VPN-switch").start()
@@ -119,7 +126,7 @@ class GilrTanoVpnService : VpnService() {
                                 usingFallback = true
                                 lastAutomaticSwitchAt = System.currentTimeMillis()
                                 broadcastStatus("Quattro недоступен. Запускаю бесплатный резерв…")
-                                switchTunnel(fallbackConfig!!, fallbackBoxMode)
+                                switchTunnel(fallbackConfig!!, fallbackBoxMode, false)
                             } else {
                                 broadcastStatus("Ошибка ${if (boxMode) "PORTAL GATE" else "Quattro"}: $message")
                                 stopTunnel()
@@ -249,7 +256,7 @@ class GilrTanoVpnService : VpnService() {
                             lastAutomaticSwitchAt = System.currentTimeMillis()
                             consecutiveProbeFailures = 0
                             broadcastStatus("Связь ухудшилась. Переключаю на бесплатный резерв…")
-                            switchTunnel(target, fallbackBoxMode)
+                            switchTunnel(target, fallbackBoxMode, false)
                         } else if (usingFallback && !preferredConfig.isNullOrBlank() &&
                             System.currentTimeMillis() - lastAutomaticSwitchAt >= RECOVERY_INTERVAL_MS) {
                             val target = preferredConfig!!
@@ -257,7 +264,7 @@ class GilrTanoVpnService : VpnService() {
                             lastAutomaticSwitchAt = System.currentTimeMillis()
                             consecutiveProbeFailures = 0
                             broadcastStatus("Проверяю восстановление Quattro…")
-                            switchTunnel(target, preferredBoxMode)
+                            switchTunnel(target, preferredBoxMode, false)
                         }
                     }
 
@@ -269,7 +276,7 @@ class GilrTanoVpnService : VpnService() {
                         lastAutomaticSwitchAt = System.currentTimeMillis()
                         usingFallback = false
                         broadcastStatus("Проверяю, восстановился ли Quattro…")
-                        switchTunnel(preferredConfig!!, preferredBoxMode)
+                        switchTunnel(preferredConfig!!, preferredBoxMode, false)
                     }
                 } catch (e: InterruptedException) {
                     break
