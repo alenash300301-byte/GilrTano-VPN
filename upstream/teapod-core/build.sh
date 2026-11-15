@@ -107,6 +107,9 @@ build() {
     local box_version
     box_version=$(cd "$SCRIPT_DIR" && go list -m -f '{{.Version}}' github.com/sagernet/sing-box)
 
+    # gomobile resolves tool dependencies from the current Go module.
+    cd "$SCRIPT_DIR"
+
     for entry in "${ARCHS[@]}"; do
         local target="${entry%%:*}"
         local abi="${entry#*:}"
