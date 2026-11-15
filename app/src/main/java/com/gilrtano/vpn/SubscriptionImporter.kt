@@ -18,10 +18,13 @@ object SubscriptionImporter {
     fun load(source: String): List<ImportedNode> {
         val trimmed = source.trim()
         val content = when {
-            trimmed.startsWith("vless://") || trimmed.startsWith("vmess://") || trimmed.startsWith("ss://") || trimmed.startsWith("hy2://") || trimmed.startsWith("hysteria2://") -> trimmed
-            trimmed.contains("proxies:") -> trimmed
             trimmed.startsWith("http://") || trimmed.startsWith("https://") -> download(trimmed)
-            else -> error("Ожидается VLESS-ссылка, HTTPS-подписка или Clash YAML с блоком proxies:")
+            trimmed.startsWith("vless://") || trimmed.startsWith("vmess://") || trimmed.startsWith("ss://") ||
+                trimmed.startsWith("hy2://") || trimmed.startsWith("hysteria2://") ||
+                trimmed.contains("://") || trimmed.contains("proxies:") || trimmed.startsWith("#profile-") -> trimmed
+            trimmed.lineSequence().any { it.trim().startsWith("#profile-") || it.trim().startsWith("vless://") ||
+                it.trim().startsWith("vmess://") || it.trim().startsWith("ss://") } -> trimmed
+            else -> error("Вставь ссылку подписки, текст Aetris или Clash YAML")
         }
         return parse(content)
     }
