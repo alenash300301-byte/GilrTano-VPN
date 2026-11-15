@@ -113,7 +113,8 @@ object PortalGateImporter {
             .put("endpoints", JSONArray().put(endpointJson))
             .put("route", JSONObject().put("final", "proxy").put("auto_detect_interface", true))
             .toString()
-        val country = fileName.substringBefore('_').substringBefore('-').ifBlank { "PORTAL GATE" }
+        val countryCode = fileName.substringAfter("PORTAL-", "").substringBefore('_').uppercase(Locale.ROOT)
+        val country = mapOf("CA" to "Канада", "US" to "США", "NL" to "Нидерланды", "JP" to "Япония", "SG" to "Сингапур", "MX" to "Мексика", "RO" to "Румыния", "CH" to "Швейцария", "NO" to "Норвегия", "PL" to "Польша")[countryCode] ?: "PORTAL GATE"
         return PortalGateProfile(fileName, country, "$host:$port", config)
     }
 }
