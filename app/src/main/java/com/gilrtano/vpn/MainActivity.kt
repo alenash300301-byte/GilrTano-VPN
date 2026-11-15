@@ -274,7 +274,7 @@ class MainActivity : Activity() {
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.rgb(5, 5, 7))
+            setBackgroundColor(Color.rgb(24, 25, 29))
         }
         val scroll = android.widget.ScrollView(this).apply {
             isFillViewport = true
@@ -393,8 +393,8 @@ class MainActivity : Activity() {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = android.view.Gravity.CENTER_VERTICAL
                     background = GradientDrawable().apply {
-                        setColor(Color.rgb(10, 10, 12)); cornerRadius = dp(28).toFloat()
-                        setStroke(dp(1), Color.rgb(45, 45, 48))
+                        setColor(Color.rgb(31, 33, 39)); cornerRadius = dp(28).toFloat()
+                        setStroke(dp(1), Color.rgb(65, 70, 88))
                     }
                     setPadding(dp(16), dp(10), dp(14), dp(10))
                     setOnClickListener { showServerPicker() }
@@ -438,9 +438,9 @@ class MainActivity : Activity() {
                             orientation = LinearLayout.VERTICAL
                             gravity = android.view.Gravity.CENTER
                             background = GradientDrawable().apply {
-                                setColor(Color.rgb(12, 12, 15))
+                                setColor(Color.rgb(34, 36, 43))
                                 cornerRadius = dp(16).toFloat()
-                                setStroke(dp(1), Color.rgb(48, 48, 52))
+                                setStroke(dp(1), Color.rgb(65, 70, 88))
                             }
                             addView(TextView(this@MainActivity).apply {
                                 text = title; textSize = 11f
@@ -490,8 +490,8 @@ class MainActivity : Activity() {
                     typeface = android.graphics.Typeface.DEFAULT_BOLD
                     setTextColor(Color.WHITE); setPadding(dp(16), dp(14), dp(12), dp(12))
                     background = GradientDrawable().apply {
-                        setColor(Color.rgb(14, 8, 9)); cornerRadius = dp(18).toFloat()
-                        setStroke(dp(1), Color.rgb(150, 24, 24))
+                        setColor(Color.rgb(35, 39, 51)); cornerRadius = dp(18).toFloat()
+                        setStroke(dp(1), Color.rgb(76, 132, 235))
                     }
                     visibility = View.GONE
                     setOnClickListener {
@@ -518,8 +518,8 @@ class MainActivity : Activity() {
         }
         // Respect Android system bars so the brand header and bottom navigation
         // never sit underneath the clock or gesture handle.
-        window.statusBarColor = Color.rgb(5, 5, 7)
-        window.navigationBarColor = Color.rgb(5, 5, 6)
+        window.statusBarColor = Color.rgb(24, 25, 29)
+        window.navigationBarColor = Color.rgb(24, 25, 29)
         root.setOnApplyWindowInsetsListener { view, insets ->
             val bars = if (android.os.Build.VERSION.SDK_INT >= 30) {
                 insets.getInsets(android.view.WindowInsets.Type.systemBars())
@@ -674,7 +674,7 @@ class MainActivity : Activity() {
         val full = "⏻   $label"
         val styled = SpannableString(full)
         styled.setSpan(
-            ForegroundColorSpan(Color.rgb(220, 32, 32)),
+            ForegroundColorSpan(Color.rgb(95, 150, 255)),
             0, 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
         )
         connectButton.text = styled
@@ -751,7 +751,7 @@ class MainActivity : Activity() {
 
     private fun styleDarkInterface() {
         val root = findViewById<ViewGroup>(android.R.id.content).getChildAt(0) as? LinearLayout ?: return
-        root.setBackgroundColor(Color.rgb(8, 8, 10))
+        root.setBackgroundColor(Color.rgb(24, 25, 29))
         fun style(view: android.view.View) {
             when (view) {
                 is Button -> {
@@ -759,9 +759,9 @@ class MainActivity : Activity() {
                     view.textSize = 13f
                     view.isAllCaps = false
                     view.background = GradientDrawable().apply {
-                        setColor(Color.rgb(14, 8, 9))
+                        setColor(Color.rgb(35, 39, 51))
                         cornerRadius = 18f
-                        setStroke(2, Color.rgb(150, 24, 24))
+                        setStroke(2, Color.rgb(76, 132, 235))
                     }
                     view.setPadding(16, 10, 16, 10)
                     val lp = view.layoutParams
@@ -773,16 +773,16 @@ class MainActivity : Activity() {
                     view.textSize = 14f
                     view.setPadding(14, 10, 14, 10)
                     view.background = GradientDrawable().apply {
-                        setColor(Color.rgb(18, 12, 10))
+                        setColor(Color.rgb(34, 37, 46))
                         cornerRadius = 14f
-                        setStroke(1, Color.rgb(120, 48, 18))
+                        setStroke(1, Color.rgb(75, 110, 190))
                     }
                 }
                 is TextView -> {
                     if (view.currentTextColor != Color.WHITE) view.setTextColor(Color.LTGRAY)
                 }
                 is Spinner -> {
-                    view.setBackgroundColor(Color.rgb(24, 25, 28))
+                    view.setBackgroundColor(Color.rgb(40, 43, 53))
                 }
                 is ViewGroup -> for (i in 0 until view.childCount) style(view.getChildAt(i))
             }
@@ -847,10 +847,10 @@ class MainActivity : Activity() {
         quattroTab.alpha = if (!autoMode && !activeFree) 1f else 0.72f
         freeTab.alpha = if (!autoMode && activeFree) 1f else 0.72f
         fun modeBackground(selected: Boolean) = GradientDrawable().apply {
-            setColor(if (selected) Color.rgb(54, 24, 12) else Color.rgb(13, 13, 15))
+            setColor(if (selected) Color.rgb(39, 70, 130) else Color.rgb(32, 34, 42))
             cornerRadius = dp(14).toFloat()
             setStroke(dp(if (selected) 2 else 1),
-                if (selected) Color.rgb(220, 32, 32) else Color.rgb(58, 58, 62))
+                if (selected) Color.rgb(95, 150, 255) else Color.rgb(75, 82, 105))
         }
         quattroTab.background = modeBackground(!autoMode && !activeFree)
         freeTab.background = modeBackground(!autoMode && activeFree)
@@ -879,7 +879,7 @@ class MainActivity : Activity() {
         val page = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(22), dp(18), dp(22), dp(18))
-            setBackgroundColor(Color.rgb(7, 7, 9))
+            setBackgroundColor(Color.rgb(24, 25, 29))
         }
         val header = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -911,7 +911,7 @@ class MainActivity : Activity() {
                 textSize = 12f
                 letterSpacing = 0.12f
                 typeface = android.graphics.Typeface.DEFAULT_BOLD
-                setTextColor(Color.rgb(220, 75, 75))
+                setTextColor(Color.rgb(115, 155, 245))
                 setPadding(dp(2), dp(20), 0, dp(9))
             })
         }
@@ -923,9 +923,9 @@ class MainActivity : Activity() {
                 setPadding(dp(16), 0, dp(16), 0)
                 setTextColor(if (primary) Color.WHITE else Color.rgb(225, 225, 230))
                 background = GradientDrawable().apply {
-                    setColor(if (primary) Color.rgb(105, 18, 24) else Color.rgb(20, 20, 24))
+                    setColor(if (primary) Color.rgb(42, 91, 170) else Color.rgb(35, 38, 47))
                     cornerRadius = dp(14).toFloat()
-                    setStroke(dp(1), if (primary) Color.rgb(160, 38, 45) else Color.rgb(48, 48, 54))
+                    setStroke(dp(1), if (primary) Color.rgb(90, 145, 245) else Color.rgb(65, 70, 88))
                 }
                 setOnClickListener { callback() }
             }
@@ -944,9 +944,9 @@ class MainActivity : Activity() {
                 setHintTextColor(Color.GRAY)
                 setPadding(dp(14), dp(10), dp(14), dp(10))
                 background = GradientDrawable().apply {
-                    setColor(Color.rgb(17, 17, 21))
+                    setColor(Color.rgb(34, 37, 46))
                     cornerRadius = dp(13).toFloat()
-                    setStroke(dp(1), Color.rgb(55, 55, 62))
+                    setStroke(dp(1), Color.rgb(75, 82, 105))
                 }
                 inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
             }
