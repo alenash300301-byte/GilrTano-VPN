@@ -1,6 +1,5 @@
 package com.gilrtano.vpn
 
-import android.net.Uri
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
@@ -65,7 +64,6 @@ object PortalGateImporter {
         val privateKey = required(iface, "privatekey")
         val publicKey = required(peer, "publickey")
         val endpoint = required(peer, "endpoint")
-        val endpointUri = Uri.parse("udp://$endpoint")
         val host = endpoint.substringAfterLast('@').let {
             if (it.startsWith("[")) it.substringAfter('[').substringBefore(']') else it.substringBeforeLast(':')
         }
