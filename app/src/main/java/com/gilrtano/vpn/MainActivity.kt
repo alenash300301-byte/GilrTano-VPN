@@ -812,21 +812,25 @@ class MainActivity : Activity() {
     }
 
     private fun switchMode(free: Boolean) {
-        autoMode = false
-        activeMode = if (free) "free" else "quattro"
-        prefs.edit().putString("connection_mode", activeMode).apply()
-        if (activeFree == free) { refreshMode(); return }
         val targetNodes = if (free) freeNodes else quattroNodes
         if (targetNodes.isEmpty()) {
             Toast.makeText(
                 this,
-                if (free) "Сначала найди бесплатные серверы" else "Сначала импортируй Quattro",
+                if (free) "Сначала импортируй бесплатные серверы" else "Сначала импортируй Quattro",
                 Toast.LENGTH_LONG
             ).show()
             return
         }
 
         val wasConnected = status.text.toString().contains("Подключено")
+        if (wasConnected && activeMode == "portal") {
+            startService(Intent(this, PortalMasqueVpnService::class.java)
+                .setAction(PortalMasqueVpnService.ACTION_STOP))
+        }
+        autoMode = false
+        activeMode = if (free) "free" else "quattro"
+        prefs.edit().putString("connection_mode", activeMode).apply()
+        if (activeFree == free && !wasConnected) { refreshMode(); return }
         activeFree = free
         prefs.edit().putBoolean("active_free_mode", free).apply()
         refreshMode()
