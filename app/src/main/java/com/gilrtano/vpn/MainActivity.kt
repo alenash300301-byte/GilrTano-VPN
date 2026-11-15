@@ -890,9 +890,12 @@ class MainActivity : Activity() {
             })
         }
         fun addSetting(view: View, height: Int = ViewGroup.LayoutParams.WRAP_CONTENT) {
+            (view.parent as? ViewGroup)?.removeView(view)
+            view.visibility = View.VISIBLE
             content.addView(view, LinearLayout.LayoutParams.MATCH_PARENT, height)
         }
         section("РЕЖИМЫ ПОДКЛЮЧЕНИЯ")
+        modeSelectorRow.visibility = View.VISIBLE
         addSetting(modeSelectorRow, dp(48))
         section("ВЫБОР СЕРВЕРА")
         addSetting(servers, dp(50))
