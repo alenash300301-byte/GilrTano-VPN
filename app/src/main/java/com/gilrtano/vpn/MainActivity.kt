@@ -1549,17 +1549,10 @@ class MainActivity : Activity() {
         pendingPortalStart = false
         val credentials = runCatching { PortalCredentialStore.load(this) }.getOrNull()
         if (credentials == null) { ensurePortalCredentials(); return }
-        AlertDialog.Builder(this)
-            .setTitle("Выбор сервера PORTAL")
-            .setSingleChoiceItems(arrayOf("КИБЕРПОРТАЛ", "КИБЕРПОРТАЛ 2"), 0) { dialog, which ->
-                dialog.dismiss()
-                startForegroundService(Intent(this, PortalMasqueVpnService::class.java)
-                    .setAction(PortalMasqueVpnService.ACTION_START)
-                    .putExtra(PortalMasqueVpnService.EXTRA_ENDPOINT, which))
-                status.text = "Запускаю ${PortalMasqueConfig.endpoints[which].name}…"
-            }
-            .setNegativeButton("Отмена", null)
-            .show()
+        startForegroundService(Intent(this, PortalMasqueVpnService::class.java)
+            .setAction(PortalMasqueVpnService.ACTION_START)
+            .putExtra(PortalMasqueVpnService.EXTRA_ENDPOINT, PortalMasqueVpnService.AUTO_ENDPOINT))
+        status.text = "Подбираю рабочий узел PORTAL…"
     }
 
     private fun ensurePortalCredentials() {
