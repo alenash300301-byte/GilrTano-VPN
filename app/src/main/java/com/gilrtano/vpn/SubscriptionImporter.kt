@@ -17,6 +17,11 @@ object SubscriptionImporter {
 
     fun load(source: String): List<ImportedNode> {
         val trimmed = source.trim()
+        if (trimmed.contains("[Interface]", ignoreCase = true) && trimmed.contains("[Peer]", ignoreCase = true)) {
+            val profile = PortalGateImporter.parseConf(trimmed, "AmneziaWG.conf")
+            val encoded = Base64.encodeToString(trimmed.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
+            return listOf(ImportedNode(profile.name, "awgconf://$encoded"))
+        }
         val content = when {
             trimmed.startsWith("http://") || trimmed.startsWith("https://") -> download(trimmed)
             trimmed.startsWith("vless://") || trimmed.startsWith("vmess://") || trimmed.startsWith("ss://") ||
