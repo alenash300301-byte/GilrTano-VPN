@@ -304,15 +304,6 @@ class MainActivity : Activity() {
                 addView(LinearLayout(this@MainActivity).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = android.view.Gravity.CENTER_VERTICAL
-                    addView(TextView(this@MainActivity).apply {
-                        text = "☰"; textSize = 27f; setTextColor(Color.WHITE)
-                        setPadding(dp(4), 0, dp(10), 0)
-                        setOnClickListener {
-                            settingsExpanded = !settingsExpanded
-                            settingsHeader.visibility = if (settingsExpanded) View.VISIBLE else View.GONE
-                            findImportButtonsVisibility()
-                        }
-                    })
                     addView(LinearLayout(this@MainActivity).apply {
                         orientation = LinearLayout.HORIZONTAL
                         gravity = android.view.Gravity.CENTER
