@@ -449,28 +449,36 @@ class MainActivity : Activity() {
                 val pingCard = LinearLayout(this@MainActivity).apply {
                     orientation = LinearLayout.VERTICAL
                     gravity = android.view.Gravity.CENTER
+                    setPadding(dp(20), dp(12), dp(20), dp(12))
                     background = GradientDrawable().apply {
                         setColor(Color.rgb(12, 12, 15))
-                        cornerRadius = dp(18).toFloat()
+                        cornerRadius = dp(20).toFloat()
                         setStroke(dp(1), Color.rgb(48, 48, 52))
                     }
                     addView(TextView(this@MainActivity).apply {
                         text = "Пинг"
-                        textSize = 15f
+                        textSize = 16f
                         setTextColor(Color.LTGRAY)
+                        gravity = android.view.Gravity.CENTER
                     })
                     addView(TextView(this@MainActivity).apply {
                         text = "— мс"
-                        textSize = 24f
+                        textSize = 26f
                         typeface = android.graphics.Typeface.DEFAULT_BOLD
                         setTextColor(Color.rgb(30, 238, 65))
-                        setPadding(0, dp(4), 0, 0)
+                        gravity = android.view.Gravity.CENTER
+                        setPadding(0, dp(5), 0, 0)
                         pingMetric = this
                     })
                 }
                 addView(pingCard, LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, dp(82)
-                ).apply { topMargin = dp(10); bottomMargin = dp(10) })
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(94)
+                ).apply {
+                    leftMargin = dp(8)
+                    rightMargin = dp(8)
+                    topMargin = dp(12)
+                    bottomMargin = dp(12)
+                })
                 addView(servers, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)))
                 servers.visibility = View.GONE
                 addView(pingStatus.apply { gravity = android.view.Gravity.CENTER_VERTICAL }, LinearLayout.LayoutParams.MATCH_PARENT, dp(1))
