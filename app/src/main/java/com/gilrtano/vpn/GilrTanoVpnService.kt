@@ -39,6 +39,17 @@ class GilrTanoVpnService : VpnService() {
     @Volatile private var boxMode = false
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // Android 12+ requires a foreground service started with
+        // startForegroundService() to promote itself immediately. Do this on
+        // the service main thread before parsing profiles or dispatching work.
+        try {
+            enterForeground("Подготовка VPN…")
+        } catch (error: Exception) {
+            Log.e(TAG, "Could not promote VPN service to foreground", error)
+            stopSelf(startId)
+            return START_NOT_STICKY
+        }
+
         when (intent?.action) {
             ACTION_STOP -> stopTunnel()
             ACTION_START, ACTION_SWITCH, ACTION_START_PORTAL -> {
@@ -81,6 +92,10 @@ class GilrTanoVpnService : VpnService() {
                     consecutiveProbeFailures = 0
                     startTunnel(config)
                 }
+            }
+            else -> {
+                broadcastStatus("Команда VPN-службы не распознана")
+                stopTunnel()
             }
         }
         return START_NOT_STICKY
@@ -132,14 +147,13 @@ class GilrTanoVpnService : VpnService() {
     private fun startTunnel(config: String) {
         stopping = false
         activeConfig = config
-        createNotificationChannel()
         val startupLabel = when {
             portalMode && boxMode -> "Запуск PORTAL AmneziaWG…"
             portalMode -> "Запуск PORTAL MASQUE…"
             boxMode -> "Запуск sing-box (Hysteria2)…"
             else -> "Запуск Quattro…"
         }
-        startForeground(NOTIFICATION_ID, notification(startupLabel))
+        updateNotification(startupLabel)
         // Native core initialization/start can block; never run it on Android's service main thread.
         Thread({
             try {
@@ -431,6 +445,11 @@ class GilrTanoVpnService : VpnService() {
 
     private fun broadcastStatus(value: String) {
         sendBroadcast(Intent(ACTION_STATUS).setPackage(packageName).putExtra(EXTRA_STATUS, value))
+    }
+
+    private fun enterForeground(label: String) {
+        createNotificationChannel()
+        startForeground(NOTIFICATION_ID, notification(label))
     }
 
     private fun createNotificationChannel() {
