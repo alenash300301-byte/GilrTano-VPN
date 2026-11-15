@@ -30,4 +30,6 @@ android {
 dependencies {
     implementation("org.yaml:snakeyaml:2.4")
     implementation(files("libs/teapod-core-1.7.7.aar"))
+    // Loaded only by PortalMasqueVpnService in the dedicated :portal process.
+    implementation(files("libs/libXray.aar"))
 }
