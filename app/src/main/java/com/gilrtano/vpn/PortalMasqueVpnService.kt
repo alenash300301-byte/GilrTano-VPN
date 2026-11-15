@@ -57,8 +57,11 @@ class PortalMasqueVpnService : VpnService() {
                     .setSession("GilrTano PORTAL")
                     .setMtu(1280)
                     .addAddress("10.77.0.1", 30)
+                    .addAddress("fd00:77::1", 126)
                     .addRoute("0.0.0.0", 0)
+                    .addRoute("::", 0)
                     .addDnsServer("1.1.1.1")
+                    .addDnsServer("2606:4700:4700::1111")
                     .establish() ?: throw IllegalStateException("Android не создал VPN-интерфейс")
                 tunnel = pfd
                 if (stopping) return@Thread
