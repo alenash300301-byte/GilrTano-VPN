@@ -3,6 +3,8 @@ package com.gilrtano.vpn
 import org.json.JSONArray
 import org.json.JSONObject
 import org.yaml.snakeyaml.Yaml
+import org.yaml.snakeyaml.LoaderOptions
+import org.yaml.snakeyaml.constructor.SafeConstructor
 import java.io.InputStream
 import java.util.Locale
 
@@ -14,7 +16,7 @@ import java.util.Locale
 object PortalGateMasqueImporter {
     @Suppress("UNCHECKED_CAST")
     fun parseYaml(input: InputStream): List<PortalGateProfile> {
-        val root = Yaml().load<Any?>(input) as? Map<String, Any?>
+        val root = Yaml(SafeConstructor(LoaderOptions())).load<Any?>(input) as? Map<String, Any?>
             ?: error("Некорректный YAML PORTAL GATE")
         val proxies = root["proxies"] as? List<*>
             ?: error("В YAML не найден список proxies")
