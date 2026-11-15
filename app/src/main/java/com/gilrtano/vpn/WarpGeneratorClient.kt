@@ -22,7 +22,7 @@ object WarpGeneratorClient {
             .put("selectedServices", org.json.JSONArray())
             .put("siteMode", "all")
             .put("deviceType", "awg15")
-            .put("endpoint", "162.159.195.1:500")
+            .put("endpoint", "engage.cloudflareclient.com:2408")
 
         val failures = mutableListOf<String>()
         for (apiUrl in API_URLS) {

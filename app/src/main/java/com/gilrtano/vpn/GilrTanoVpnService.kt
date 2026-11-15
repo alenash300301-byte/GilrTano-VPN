@@ -25,7 +25,7 @@ class GilrTanoVpnService : VpnService() {
     @Volatile private var coreInitialized = false
     @Volatile private var activeConfig: String? = null
     @Volatile private var fallbackConfig: String? = null
-    @Volatile private var fallbackChain: List<Pair<String, Boolean>> = emptyList()
+    @Volatile private var fallbackChain: List<Triple<String, Boolean, Boolean>> = emptyList()
     @Volatile private var fallbackIndex = -1
     @Volatile private var preferredConfig: String? = null
     @Volatile private var automaticMode = false
@@ -39,39 +39,57 @@ class GilrTanoVpnService : VpnService() {
     @Volatile private var boxMode = false
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // Android 12+ requires a foreground service started with
+        // startForegroundService() to promote itself immediately. Do this on
+        // the service main thread before parsing profiles or dispatching work.
+        try {
+            enterForeground("Подготовка VPN…")
+        } catch (error: Exception) {
+            Log.e(TAG, "Could not promote VPN service to foreground", error)
+            stopSelf(startId)
+            return START_NOT_STICKY
+        }
+
         when (intent?.action) {
             ACTION_STOP -> stopTunnel()
             ACTION_START, ACTION_SWITCH, ACTION_START_PORTAL -> {
-                val config = intent.getStringExtra(EXTRA_CONFIG)
+                val requestedConfig = intent.getStringExtra(EXTRA_CONFIG)
+                // The sentinel asks the service to choose the first valid profile from
+                // the APK's bundled PORTAL archive. Profile data stays inside this process
+                // and is never sent through Binder as a large Intent payload.
+                val bundledProfiles = if (intent.action == ACTION_START_PORTAL) {
+                    runCatching {
+                        assets.open("portal_gate.zip").use { input -> PortalGateImporter.parseZip(input) }
+                    }.onFailure { error ->
+                        Log.e(TAG, "Could not load bundled PORTAL GATE archive", error)
+                    }.getOrDefault(emptyList())
+                } else emptyList()
+                val useBundledPrimary = intent.action == ACTION_START_PORTAL &&
+                    requestedConfig == BUNDLED_PORTAL_CONFIG
+                val config = if (useBundledPrimary) bundledProfiles.firstOrNull()?.config else requestedConfig
                 if (config.isNullOrBlank()) {
-                    broadcastStatus("Добавьте профиль Quattro или PORTAL GATE")
+                    broadcastStatus(
+                        if (intent.action == ACTION_START_PORTAL) "Встроенный архив PORTAL GATE пуст или не читается"
+                        else "Добавьте профиль Quattro или PORTAL GATE"
+                    )
                     stopSelf()
                 } else if (intent.action == ACTION_SWITCH) {
                     automaticMode = false
                     portalMode = false
-                    boxMode = false
-                    switchTunnel(config, false)
+                    boxMode = intent.getBooleanExtra(EXTRA_ENGINE_BOX, false)
+                    switchTunnel(config, boxMode)
                 } else {
-                    boxMode = intent.action == ACTION_START_PORTAL || intent.getBooleanExtra(EXTRA_ENGINE_BOX, false)
+                    boxMode = if (intent.action == ACTION_START_PORTAL) usesBoxEngine(config) else intent.getBooleanExtra(EXTRA_ENGINE_BOX, false)
                     portalMode = intent.getBooleanExtra(EXTRA_PORTAL, intent.action == ACTION_START_PORTAL)
                     automaticMode = intent.getBooleanExtra(EXTRA_AUTO, false)
                     fallbackConfig = intent.getStringExtra(EXTRA_FALLBACK_CONFIG)
-                    // Never send the 121-profile archive through an Intent extra:
-                    // Binder has a small transaction limit and the aggregate configs can
-                    // exceed it, crashing the app before the generated WARP is attempted.
-                    // Load the bundled archive inside this service process instead.
-                    fallbackChain = emptyList()
-                    if (intent.action == ACTION_START_PORTAL) {
-                        fallbackChain = runCatching {
-                            assets.open("portal_gate.zip").use { input ->
-                                PortalGateImporter.parseZip(input).map { it.config to true }
-                            }
-                        }.onFailure { error ->
-                            Log.e(TAG, "Could not load bundled PORTAL GATE archive", error)
-                        }.getOrDefault(emptyList())
-                    }
+                    // Keep the bundled profiles as an ordered failover chain. When the
+                    // first bundled profile is the primary, exclude it from the fallback list.
+                    fallbackChain = if (intent.action == ACTION_START_PORTAL) {
+                        bundledProfiles.filter { it.config != config }.map { Triple(it.config, usesBoxEngine(it.config), true) }
+                    } else emptyList()
                     if (!fallbackConfig.isNullOrBlank()) {
-                        fallbackChain = fallbackChain + (fallbackConfig!! to false)
+                        fallbackChain = fallbackChain + Triple(fallbackConfig!!, intent.getBooleanExtra(EXTRA_FALLBACK_ENGINE_BOX, false), false)
                     }
                     fallbackIndex = -1
                     fallbackBoxMode = intent.getBooleanExtra(EXTRA_FALLBACK_ENGINE_BOX, false)
@@ -81,6 +99,10 @@ class GilrTanoVpnService : VpnService() {
                     consecutiveProbeFailures = 0
                     startTunnel(config)
                 }
+            }
+            else -> {
+                broadcastStatus("Команда VPN-службы не распознана")
+                stopTunnel()
             }
         }
         return START_NOT_STICKY
@@ -123,23 +145,28 @@ class GilrTanoVpnService : VpnService() {
         usingFallback = true
         lastAutomaticSwitchAt = System.currentTimeMillis()
         consecutiveProbeFailures = 0
-        val (config, isBox) = fallbackChain[next]
-        val label = if (isBox) "PORTAL AmneziaWG ${next + 1}/${fallbackChain.size}" else "Quattro"
+        val (config, isBox, isPortal) = fallbackChain[next]
+        val label = when { isPortal && isBox -> "PORTAL AmneziaWG ${next + 1}/${fallbackChain.size}"; isPortal -> "PORTAL MASQUE ${next + 1}/${fallbackChain.size}"; else -> "Quattro" }
         broadcastStatus("$reason. Переключаюсь на $label…")
-        switchTunnel(config, isBox, isBox)
+        switchTunnel(config, isBox, isPortal)
         return true
     }
+    // AmneziaWG profiles use sing-box JSON (endpoints); MASQUE profiles use
+    // Xray JSON (outbounds). Select the native engine from the actual schema.
+    private fun usesBoxEngine(config: String): Boolean = runCatching {
+        JSONObject(config).has("endpoints")
+    }.getOrDefault(false)
+
     private fun startTunnel(config: String) {
         stopping = false
         activeConfig = config
-        createNotificationChannel()
         val startupLabel = when {
             portalMode && boxMode -> "Запуск PORTAL AmneziaWG…"
             portalMode -> "Запуск PORTAL MASQUE…"
-            boxMode -> "Запуск PORTAL GATE…"
+            boxMode -> "Запуск sing-box (Hysteria2)…"
             else -> "Запуск Quattro…"
         }
-        startForeground(NOTIFICATION_ID, notification(startupLabel))
+        updateNotification(startupLabel)
         // Native core initialization/start can block; never run it on Android's service main thread.
         Thread({
             try {
@@ -158,28 +185,48 @@ class GilrTanoVpnService : VpnService() {
                 if (stopping) return@Thread
                 val callback = object : XrayCallback {
                     override fun onStatus(status: Long, message: String) {
-                        Log.i(TAG, "${when { portalMode && boxMode -> "PORTAL AmneziaWG"; portalMode -> "PORTAL MASQUE"; boxMode -> "PORTAL GATE"; else -> "Quattro" }} status=$status $message")
+                        Log.i(TAG, "${when { portalMode && boxMode -> "PORTAL AmneziaWG"; portalMode -> "PORTAL MASQUE"; boxMode -> "sing-box/Hysteria2"; else -> "Quattro" }} status=$status $message")
                         if (status == 0L && !stopping) establishTun()
                         else if (status < 0L && !stopping) {
                             if (automaticMode && advanceFallback("Основной протокол недоступен")) {
                                 return
                             } else {
-                                broadcastStatus("Ошибка ${if (boxMode) "PORTAL GATE" else "Quattro"}: $message")
-                                stopTunnel()
+                                val failure = "Ошибка ${when { portalMode && boxMode -> "PORTAL AmneziaWG"; portalMode -> "PORTAL MASQUE"; boxMode -> "sing-box/Hysteria2"; else -> "Quattro" }}: $message"
+                                Log.e(TAG, failure)
+                                stopTunnel(failure)
                             }
                         }
                     }
                 }
                 if (boxMode) Teapodcore.startBox(config, filesDir.absolutePath, callback)
                 else Teapodcore.startXray(config, callback)
+
+                // Some native-core startup failures do not emit a negative callback.
+                // Without a watchdog PORTAL can remain on "connecting" forever and
+                // never try the next bundled profile. Advance the ordered PORTAL chain
+                // if this exact profile has not established a TUN after the deadline.
+                if (portalMode && automaticMode) {
+                    Thread({
+                        try {
+                            Thread.sleep(PORTAL_START_TIMEOUT_MS)
+                            if (!stopping && tun == null && activeConfig == config) {
+                                Log.w(TAG, "PORTAL profile startup timed out; trying next bundled profile")
+                                advanceFallback("Профиль PORTAL не ответил вовремя")
+                            }
+                        } catch (_: InterruptedException) {
+                            // The tunnel was stopped or the watchdog was cancelled.
+                        }
+                    }, "GilrTano-PORTAL-start-watchdog").apply { isDaemon = true }.start()
+                }
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to start ${if (boxMode) "PORTAL GATE" else "Quattro"}", e)
+                Log.e(TAG, "Failed to start ${when { portalMode && boxMode -> "PORTAL AmneziaWG"; portalMode -> "PORTAL MASQUE"; boxMode -> "sing-box/Hysteria2"; else -> "Quattro" }}", e)
                 if (!stopping) {
                     if (automaticMode && advanceFallback("Не удалось запустить основной протокол")) {
                         return@Thread
                     } else {
-                        broadcastStatus("Ошибка запуска: ${e.message}")
-                        stopTunnel()
+                        val failure = "Ошибка запуска: ${e.message}"
+                        Log.e(TAG, failure, e)
+                        stopTunnel(failure)
                     }
                 }
             }
@@ -242,7 +289,7 @@ class GilrTanoVpnService : VpnService() {
                 when {
                     portalMode && boxMode -> "Подключено · PORTAL / AmneziaWG"
                     portalMode -> "Подключено · PORTAL / MASQUE"
-                    boxMode -> "Подключено · PORTAL GATE / AmneziaWG"
+                    boxMode -> "Подключено · Quattro / Hysteria2"
                     automaticMode && usingFallback -> "Подключено · резервный сервер"
                     automaticMode -> "Подключено · Quattro"
                     else -> "Подключено · Quattro / Xray"
@@ -255,8 +302,9 @@ class GilrTanoVpnService : VpnService() {
             if (automaticMode && !stopping && advanceFallback("У сервера нет доступа в интернет")) {
                 return
             } else {
-                broadcastStatus("Не удалось подключиться: ${e.message}")
-                stopTunnel()
+                val failure = "Не удалось подключиться: ${e.message}"
+                Log.e(TAG, failure, e)
+                stopTunnel(failure)
             }
         }
     }
@@ -319,10 +367,17 @@ class GilrTanoVpnService : VpnService() {
     private fun probeTunnel(): Long = probeTunnelHost("www.gstatic.com", "/generate_204", 204)
 
     private fun verifyRequiredServices(): Boolean {
+        // Lightweight HTTPS reachability checks for the requested services.
+        // These verify reachability through the tunnel, not full in-app playback/login.
         val hosts = listOf(
             "www.youtube.com",
+            "i.ytimg.com",
             "www.instagram.com",
-            "api.telegram.org"
+            "i.instagram.com",
+            "api.telegram.org",
+            "telegram.org",
+            "api.vk.com",
+            "vk.com"
         )
         val pool = java.util.concurrent.Executors.newFixedThreadPool(hosts.size)
         return try {
@@ -400,7 +455,7 @@ class GilrTanoVpnService : VpnService() {
         }
     }
 
-    private fun stopTunnel() {
+    private fun stopTunnel(finalStatus: String = "Отключено") {
         stopping = true
         monitorRunning = false
         automaticMode = false
@@ -417,13 +472,18 @@ class GilrTanoVpnService : VpnService() {
                 tun = null
             }
             if (Build.VERSION.SDK_INT >= 24) stopForeground(STOP_FOREGROUND_REMOVE) else @Suppress("DEPRECATION") stopForeground(true)
-            broadcastStatus("Отключено")
+            broadcastStatus(finalStatus)
             stopSelf()
         }, "GilrTano-VPN-stop").start()
     }
 
     private fun broadcastStatus(value: String) {
         sendBroadcast(Intent(ACTION_STATUS).setPackage(packageName).putExtra(EXTRA_STATUS, value))
+    }
+
+    private fun enterForeground(label: String) {
+        createNotificationChannel()
+        startForeground(NOTIFICATION_ID, notification(label))
     }
 
     private fun createNotificationChannel() {
@@ -476,6 +536,7 @@ class GilrTanoVpnService : VpnService() {
         const val ACTION_SWITCH = "com.gilrtano.vpn.SWITCH"
         const val ACTION_STOP = "com.gilrtano.vpn.STOP"
         const val ACTION_START_PORTAL = "com.gilrtano.vpn.START_PORTAL"
+        const val BUNDLED_PORTAL_CONFIG = "__GILRTANO_BUNDLED_PORTAL__"
         const val ACTION_STATUS = "com.gilrtano.vpn.STATUS"
         const val EXTRA_CONFIG = "xray_config"
         const val EXTRA_ENGINE_BOX = "engine_box"
@@ -491,6 +552,7 @@ class GilrTanoVpnService : VpnService() {
         private const val CHANNEL_ID = "gilrtano_vpn"
         private const val NOTIFICATION_ID = 76
         private const val SOCKS_PORT = 10808
+        private const val PORTAL_START_TIMEOUT_MS = 25_000L
         private const val MONITOR_INTERVAL_MS = 15_000L
         private const val PROBE_TIMEOUT_MS = 3_500
         private const val POOR_LATENCY_MS = 500L

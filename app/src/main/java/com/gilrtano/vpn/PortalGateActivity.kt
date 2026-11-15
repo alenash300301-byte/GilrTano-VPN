@@ -118,6 +118,12 @@ class PortalGateActivity : Activity() {
             prefs.getString("archive_uri", null)
         ).distinct()
         val restored = mutableListOf<PortalGateProfile>()
+        // The APK ships with the base PORTAL AmneziaWG archive. Load it first so
+        // PORTAL is ready immediately after installation, without a manual import.
+        runCatching {
+            assets.open("portal_gate.zip").use { PortalGateImporter.parseZip(it) }
+        }.onSuccess { restored += it }
+            .onFailure { status.text = "Не удалось открыть встроенный архив PORTAL: ${it.message}" }
         savedUris.forEach { saved ->
             runCatching { loadProfiles(Uri.parse(saved)) }
                 .onSuccess { restored += it }

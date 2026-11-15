@@ -27,8 +27,7 @@ class TigerFlameOverlayView(context: Context) : View(context) {
     private val duration = movie.duration().takeIf { it > 0 } ?: 2240
 
     fun setPhase(value: Float) {
-        // Kept for compatibility with MainActivity's shared animation clock.
-        invalidate()
+        // The GIF has its own frame clock; avoid redundant invalidations.
     }
 
     fun setActive(value: Boolean) {
