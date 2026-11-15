@@ -54,18 +54,42 @@ jobs:
           ./scripts/build-native-aar.sh
           test -s app/libs/teapod-core-1.7.7.aar
 
-      - name: Verify bundled PORTALGATE profiles
+      - name: Decrypt and verify bundled PORTALGATE profiles
+        env:
+          PORTAL_ARCHIVE_KEY: ${{ secrets.PORTAL_ARCHIVE_KEY }}
         run: |
-          test -s app/src/main/assets/portal_gate.zip || {
-            echo "Missing app/src/main/assets/portal_gate.zip. Add the profile archive to the source tree; no GitHub secrets or phone-side import are used."
-            exit 1
-          }
-          unzip -t app/src/main/assets/portal_gate.zip
-          count=$(unzip -Z1 app/src/main/assets/portal_gate.zip | grep -Ec '[.]conf$' || true)
-          test "$count" -eq 121 || {
-            echo "Expected 121 PORTALGATE .conf profiles, found $count"
-            exit 1
-          }
+          python3 -m pip install --quiet cryptography
+          python3 - <<'PY'
+          import base64, os, pathlib, zipfile
+          from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+          source = pathlib.Path("app/src/main/assets/portal_gate.zip.aesgcm")
+          target = pathlib.Path("app/src/main/assets/portal_gate.zip")
+          if not source.is_file() or source.stat().st_size == 0:
+              raise SystemExit("Missing encrypted archive: app/src/main/assets/portal_gate.zip.aesgcm")
+          key_text = os.environ.get("PORTAL_ARCHIVE_KEY", "").strip()
+          if not key_text:
+              raise SystemExit("Missing GitHub Actions secret PORTAL_ARCHIVE_KEY")
+          try:
+              key = base64.urlsafe_b64decode(key_text + "=" * (-len(key_text) % 4))
+          except Exception as exc:
+              raise SystemExit(f"PORTAL_ARCHIVE_KEY is not valid base64url: {exc}")
+          if len(key) != 32:
+              raise SystemExit(f"PORTAL_ARCHIVE_KEY must decode to 32 bytes; got {len(key)}")
+          blob = source.read_bytes()
+          if len(blob) < 34 or blob[:5] != b"GTPG1":
+              raise SystemExit("Invalid PORTALGATE encrypted archive header")
+          plaintext = AESGCM(key).decrypt(blob[5:17], blob[17:], b"GTPG1")
+          target.write_bytes(plaintext)
+          with zipfile.ZipFile(target) as archive:
+              bad = archive.testzip()
+              if bad:
+                  raise SystemExit(f"Corrupt ZIP member: {bad}")
+              count = sum(1 for name in archive.namelist() if name.lower().endswith(".conf"))
+          if count != 121:
+              raise SystemExit(f"Expected 121 PORTALGATE .conf profiles, found {count}")
+          print(f"Decrypted and verified {count} PORTALGATE profiles")
+          PY
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
