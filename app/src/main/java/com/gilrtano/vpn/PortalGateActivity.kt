@@ -22,7 +22,7 @@ class PortalGateActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var picker: Spinner
     private val requestCode = 7314
-    private var pendingConfig: String? = null
+    private var pendingVpnIntent: Intent? = null
     private var receiverRegistered = false
     private val statusReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -44,7 +44,7 @@ class PortalGateActivity : Activity() {
             typeface = android.graphics.Typeface.DEFAULT_BOLD
         })
         root.addView(TextView(this).apply {
-            text = "AmneziaWG / MASQUE · импорт ZIP или YAML"
+            text = "Единый режим AmneziaWG + MASQUE"
             textSize = 13f
             setTextColor(0xffaaaaaa.toInt())
             setPadding(0, 8, 0, 20)
@@ -70,10 +70,14 @@ class PortalGateActivity : Activity() {
         picker = Spinner(this)
         root.addView(picker)
         val connect = Button(this).apply {
-            text = "ПОДКЛЮЧИТЬ PORTAL GATE"
+            text = "ПОДКЛЮЧИТЬ ВЫБРАННЫЙ СЕРВЕР"
             setOnClickListener { connectSelected() }
         }
         root.addView(connect)
+        root.addView(Button(this).apply {
+            text = "АВТОПОДКЛЮЧЕНИЕ · AWG / MASQUE"
+            setOnClickListener { connectAutomatically() }
+        })
         root.addView(Button(this).apply {
             text = "НАЗАД"
             setOnClickListener { finish() }
@@ -107,23 +111,36 @@ class PortalGateActivity : Activity() {
 
 
     private fun restoreArchive() {
-        val saved = getSharedPreferences("portal_gate", MODE_PRIVATE).getString("archive_uri", null) ?: return
-        val savedUri = Uri.parse(saved)
-        val displayName = runCatching {
-            contentResolver.query(savedUri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)
-                ?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else "" } ?: ""
-        }.getOrDefault("")
-        runCatching {
-            contentResolver.openInputStream(savedUri)?.use { stream ->
-                when {
-                    displayName.endsWith(".yaml", true) || displayName.endsWith(".yml", true) ->
-                        PortalGateMasqueImporter.parseYaml(stream)
-                    else -> PortalGateImporter.parseZip(stream)
-                }
-            } ?: error("Файл PORTAL GATE недоступен")
-        }.onSuccess { PortalGateSession.profiles = it }
-            .onFailure { status.text = "Повторно выбери файл PORTAL GATE: ${it.message}" }
+        val prefs = getSharedPreferences("portal_gate", MODE_PRIVATE)
+        val savedUris = listOfNotNull(
+            prefs.getString("awg_archive_uri", null),
+            prefs.getString("masque_archive_uri", null),
+            prefs.getString("archive_uri", null)
+        ).distinct()
+        val restored = mutableListOf<PortalGateProfile>()
+        savedUris.forEach { saved ->
+            runCatching { loadProfiles(Uri.parse(saved)) }
+                .onSuccess { restored += it }
+                .onFailure { status.text = "Не удалось восстановить источник PORTAL: ${it.message}" }
+        }
+        PortalGateSession.profiles = restored.distinctBy { it.config }
     }
+
+    private fun loadProfiles(uri: Uri): List<PortalGateProfile> {
+        val displayName = contentResolver.query(
+            uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null
+        )?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else "" }.orEmpty()
+        return contentResolver.openInputStream(uri)?.use { stream ->
+            if (displayName.endsWith(".yaml", true) || displayName.endsWith(".yml", true)) {
+                PortalGateMasqueImporter.parseYaml(stream)
+            } else {
+                PortalGateImporter.parseZip(stream)
+            }
+        } ?: error("Файл PORTAL недоступен")
+    }
+
+    private fun isMasque(config: String): Boolean =
+        config.contains("\\\"protocol\\\":\\\"masque\\\"")
 
     private fun refreshProfiles() {
         val profiles = PortalGateSession.profiles
@@ -142,50 +159,108 @@ class PortalGateActivity : Activity() {
                     ?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else "" } ?: ""
             }.getOrDefault("")
             runCatching {
+                val isYaml = displayName.endsWith(".yaml", true) || displayName.endsWith(".yml", true)
+                if (!isYaml && !displayName.endsWith(".zip", true) && displayName.isNotBlank()) {
+                    error("Поддерживаются ZIP с AmneziaWG и YAML с MASQUE")
+                }
                 contentResolver.openInputStream(uri)?.use { stream ->
-                    when {
-                        displayName.endsWith(".yaml", true) || displayName.endsWith(".yml", true) ->
-                            PortalGateMasqueImporter.parseYaml(stream)
-                        displayName.endsWith(".zip", true) || displayName.isBlank() ->
-                            PortalGateImporter.parseZip(stream)
-                        else -> error("Поддерживаются ZIP с AmneziaWG и YAML с MASQUE")
-                    }
+                    if (isYaml) PortalGateMasqueImporter.parseYaml(stream)
+                    else PortalGateImporter.parseZip(stream)
                 } ?: error("Не удалось открыть файл")
-            }.onSuccess {
+            }.onSuccess { imported ->
                 runCatching { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
-                getSharedPreferences("portal_gate", MODE_PRIVATE).edit().putString("archive_uri", uri.toString()).apply()
-                PortalGateSession.profiles = it
+                val key = if (displayName.endsWith(".yaml", true) || displayName.endsWith(".yml", true)) {
+                    "masque_archive_uri"
+                } else {
+                    "awg_archive_uri"
+                }
+                getSharedPreferences("portal_gate", MODE_PRIVATE).edit()
+                    .putString(key, uri.toString())
+                    .remove("archive_uri")
+                    .apply()
+                val keepOtherProtocol = PortalGateSession.profiles.filter {
+                    isMasque(it.config) != key.startsWith("masque")
+                }
+                PortalGateSession.profiles = (keepOtherProtocol + imported).distinctBy { it.config }
                 refreshProfiles()
-                Toast.makeText(this, "Импортировано серверов: ${it.size}", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "Добавлено серверов: ${imported.size}", Toast.LENGTH_LONG).show()
             }.onFailure {
                 status.text = "Ошибка импорта: ${it.message}"
             }
         } else if (requestCode == this.requestCode && resultCode == RESULT_OK) {
-            pendingConfig?.let { startPortal(it) }
-            pendingConfig = null
+            startPendingVpn()
         }
     }
 
     private fun connectSelected() {
         val profile = PortalGateSession.profiles.getOrNull(picker.selectedItemPosition)
         if (profile == null) {
-            Toast.makeText(this, "Сначала импортируй ZIP-архив PORTAL GATE", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Сначала добавь источник серверов PORTAL", Toast.LENGTH_LONG).show()
             return
         }
-        pendingConfig = profile.config
-        val permission = VpnService.prepare(this)
-        if (permission != null) startActivityForResult(permission, this.requestCode)
-        else startPortal(profile.config)
+        requestVpnPermissionOrStart(buildPortalIntent(profile.config, automatic = false))
     }
 
-    private fun startPortal(config: String) {
-        val isMasque = config.contains("\"protocol\":\"masque\"")
-        val action = if (isMasque) GilrTanoVpnService.ACTION_START else GilrTanoVpnService.ACTION_START_PORTAL
-        startForegroundService(Intent(this, GilrTanoVpnService::class.java)
-            .setAction(action)
-            .putExtra(GilrTanoVpnService.EXTRA_CONFIG, config))
-        status.text = if (isMasque) "Запускаю PORTAL MASQUE…" else "Запускаю PORTAL GATE…"
-        Toast.makeText(this, if (isMasque) "Запуск PORTAL MASQUE" else "Запуск PORTAL GATE", Toast.LENGTH_SHORT).show()
+    private fun connectAutomatically() {
+        val profiles = PortalGateSession.profiles
+        if (profiles.isEmpty()) {
+            Toast.makeText(this, "Источники серверов PORTAL ещё не загружены", Toast.LENGTH_LONG).show()
+            return
+        }
+        val awg = profiles.firstOrNull { !isMasque(it.config) }
+        val masque = profiles.firstOrNull { isMasque(it.config) }
+        val primary = awg ?: masque ?: profiles.first()
+        val fallback = if (awg != null && masque != null) masque else null
+        val preferred = if (fallback != null) awg else null
+        requestVpnPermissionOrStart(
+            buildPortalIntent(
+                primary.config,
+                automatic = true,
+                fallbackConfig = fallback?.config,
+                fallbackBoxMode = false,
+                preferredConfig = preferred?.config,
+                preferredBoxMode = true
+            )
+        )
+        status.text = when {
+            awg != null && masque != null -> "Автовыбор: AmneziaWG с резервом MASQUE"
+            awg != null -> "Автовыбор: AmneziaWG"
+            else -> "Автовыбор: MASQUE"
+        }
+    }
+
+    private fun buildPortalIntent(
+        config: String,
+        automatic: Boolean,
+        fallbackConfig: String? = null,
+        fallbackBoxMode: Boolean = false,
+        preferredConfig: String? = null,
+        preferredBoxMode: Boolean = false
+    ): Intent {
+        val useBox = !isMasque(config)
+        return Intent(this, GilrTanoVpnService::class.java)
+            .setAction(GilrTanoVpnService.ACTION_START)
+            .putExtra(GilrTanoVpnService.EXTRA_CONFIG, config)
+            .putExtra(GilrTanoVpnService.EXTRA_ENGINE_BOX, useBox)
+            .putExtra(GilrTanoVpnService.EXTRA_PORTAL, true)
+            .putExtra(GilrTanoVpnService.EXTRA_AUTO, automatic)
+            .putExtra(GilrTanoVpnService.EXTRA_FALLBACK_CONFIG, fallbackConfig)
+            .putExtra(GilrTanoVpnService.EXTRA_FALLBACK_ENGINE_BOX, fallbackBoxMode)
+            .putExtra(GilrTanoVpnService.EXTRA_PREFERRED_CONFIG, preferredConfig)
+            .putExtra(GilrTanoVpnService.EXTRA_PREFERRED_ENGINE_BOX, preferredBoxMode)
+    }
+
+    private fun requestVpnPermissionOrStart(intent: Intent) {
+        pendingVpnIntent = intent
+        val permission = VpnService.prepare(this)
+        if (permission != null) startActivityForResult(permission, this.requestCode)
+        else startPendingVpn()
+    }
+
+    private fun startPendingVpn() {
+        val intent = pendingVpnIntent ?: return
+        pendingVpnIntent = null
+        startForegroundService(intent)
     }
 
     companion object { private const val IMPORT_REQUEST = 7313 }
