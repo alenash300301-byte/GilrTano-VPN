@@ -83,23 +83,4 @@ jobs:
           Path("app/src/main/assets/portal_gate.zip").write_bytes(plaintext)
           PY
           unzip -t app/src/main/assets/portal_gate.zip
-          test "$(unzip -Z1 app/src/main/assets/portal_gate.zip | grep -Ec '[.]conf$')" -eq 121
-
-      - name: Build APK
-        run: gradle --no-daemon assembleDebug
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: GilrTano-VPN-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
-)" -eq 121
-
-      - name: Build APK
-        run: gradle --no-daemon assembleDebug
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: GilrTano-VPN-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
+          test "$(unzip -Z1 app/src/main/assets/portal_gate.zip | grep -Ec '[.]conf$'
