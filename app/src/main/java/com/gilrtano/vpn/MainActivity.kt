@@ -325,10 +325,13 @@ class MainActivity : Activity() {
                     addView(TextView(this@MainActivity).apply {
                         text = "⚙"; textSize = 25f; setTextColor(Color.WHITE)
                         setOnClickListener {
-                            settingsExpanded = true
-                            settingsHeader.visibility = View.VISIBLE
+                            settingsExpanded = !settingsExpanded
                             findImportButtonsVisibility()
-                            root.post { (root.parent as? android.widget.ScrollView)?.smoothScrollTo(0, root.height) }
+                            root.post {
+                                (root.parent as? android.widget.ScrollView)?.smoothScrollTo(
+                                    0, if (settingsExpanded) root.height else 0
+                                )
+                            }
                         }
                     })
                 })
@@ -470,7 +473,7 @@ class MainActivity : Activity() {
                         findImportButtonsVisibility()
                     }
                 }
-                addView(settingsHeader)
+                // Settings are opened only by the gear icon; no separate heading row.
                 addView(modeSelectorRow, LinearLayout.LayoutParams.MATCH_PARENT, dp(48))
                 addView(primarySource, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
                 addView(importPrimary)
