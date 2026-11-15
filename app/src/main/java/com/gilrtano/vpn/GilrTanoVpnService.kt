@@ -136,7 +136,7 @@ class GilrTanoVpnService : VpnService() {
         val startupLabel = when {
             portalMode && boxMode -> "Запуск PORTAL AmneziaWG…"
             portalMode -> "Запуск PORTAL MASQUE…"
-            boxMode -> "Запуск PORTAL GATE…"
+            boxMode -> "Запуск sing-box (Hysteria2)…"
             else -> "Запуск Quattro…"
         }
         startForeground(NOTIFICATION_ID, notification(startupLabel))
@@ -158,13 +158,13 @@ class GilrTanoVpnService : VpnService() {
                 if (stopping) return@Thread
                 val callback = object : XrayCallback {
                     override fun onStatus(status: Long, message: String) {
-                        Log.i(TAG, "${when { portalMode && boxMode -> "PORTAL AmneziaWG"; portalMode -> "PORTAL MASQUE"; boxMode -> "PORTAL GATE"; else -> "Quattro" }} status=$status $message")
+                        Log.i(TAG, "${when { portalMode && boxMode -> "PORTAL AmneziaWG"; portalMode -> "PORTAL MASQUE"; boxMode -> "sing-box/Hysteria2"; else -> "Quattro" }} status=$status $message")
                         if (status == 0L && !stopping) establishTun()
                         else if (status < 0L && !stopping) {
                             if (automaticMode && advanceFallback("Основной протокол недоступен")) {
                                 return
                             } else {
-                                broadcastStatus("Ошибка ${if (boxMode) "PORTAL GATE" else "Quattro"}: $message")
+                                broadcastStatus("Ошибка ${if (boxMode) "sing-box/Hysteria2" else "Quattro"}: $message")
                                 stopTunnel()
                             }
                         }
@@ -173,7 +173,7 @@ class GilrTanoVpnService : VpnService() {
                 if (boxMode) Teapodcore.startBox(config, filesDir.absolutePath, callback)
                 else Teapodcore.startXray(config, callback)
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to start ${if (boxMode) "PORTAL GATE" else "Quattro"}", e)
+                Log.e(TAG, "Failed to start ${if (boxMode) "sing-box/Hysteria2" else "Quattro"}", e)
                 if (!stopping) {
                     if (automaticMode && advanceFallback("Не удалось запустить основной протокол")) {
                         return@Thread
@@ -242,7 +242,7 @@ class GilrTanoVpnService : VpnService() {
                 when {
                     portalMode && boxMode -> "Подключено · PORTAL / AmneziaWG"
                     portalMode -> "Подключено · PORTAL / MASQUE"
-                    boxMode -> "Подключено · PORTAL GATE / AmneziaWG"
+                    boxMode -> "Подключено · Quattro / Hysteria2"
                     automaticMode && usingFallback -> "Подключено · резервный сервер"
                     automaticMode -> "Подключено · Quattro"
                     else -> "Подключено · Quattro / Xray"
