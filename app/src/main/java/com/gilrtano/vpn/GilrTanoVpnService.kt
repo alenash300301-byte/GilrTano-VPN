@@ -199,6 +199,24 @@ class GilrTanoVpnService : VpnService() {
                 }
                 if (boxMode) Teapodcore.startBox(config, filesDir.absolutePath, callback)
                 else Teapodcore.startXray(config, callback)
+
+                // Some native-core startup failures do not emit a negative callback.
+                // Without a watchdog PORTAL can remain on "connecting" forever and
+                // never try the next bundled profile. Advance the ordered PORTAL chain
+                // if this exact profile has not established a TUN after the deadline.
+                if (portalMode && automaticMode) {
+                    Thread({
+                        try {
+                            Thread.sleep(PORTAL_START_TIMEOUT_MS)
+                            if (!stopping && tun == null && activeConfig == config) {
+                                Log.w(TAG, "PORTAL profile startup timed out; trying next bundled profile")
+                                advanceFallback("Профиль PORTAL не ответил вовремя")
+                            }
+                        } catch (_: InterruptedException) {
+                            // The tunnel was stopped or the watchdog was cancelled.
+                        }
+                    }, "GilrTano-PORTAL-start-watchdog").apply { isDaemon = true }.start()
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to start ${when { portalMode && boxMode -> "PORTAL AmneziaWG"; portalMode -> "PORTAL MASQUE"; boxMode -> "sing-box/Hysteria2"; else -> "Quattro" }}", e)
                 if (!stopping) {
@@ -531,6 +549,7 @@ class GilrTanoVpnService : VpnService() {
         private const val CHANNEL_ID = "gilrtano_vpn"
         private const val NOTIFICATION_ID = 76
         private const val SOCKS_PORT = 10808
+        private const val PORTAL_START_TIMEOUT_MS = 25_000L
         private const val MONITOR_INTERVAL_MS = 15_000L
         private const val PROBE_TIMEOUT_MS = 3_500
         private const val POOR_LATENCY_MS = 500L
