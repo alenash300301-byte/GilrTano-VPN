@@ -289,6 +289,18 @@ class MainActivity : Activity() {
         }
         checkPing = Button(this).apply {
             text = "Проверить пинг"
+            textSize = 13f
+            isAllCaps = false
+            minHeight = 0
+            minimumHeight = 0
+            minWidth = 0
+            setPadding(dp(18), 0, dp(18), 0)
+            setTextColor(Color.LTGRAY)
+            background = GradientDrawable().apply {
+                setColor(Color.rgb(14, 14, 17))
+                cornerRadius = dp(14).toFloat()
+                setStroke(dp(1), Color.rgb(65, 45, 45))
+            }
             setOnClickListener { measureSelectedPing() }
         }
 
@@ -448,7 +460,13 @@ class MainActivity : Activity() {
                 pingStatus.visibility = View.GONE
                 addView(bestFreeButton, LinearLayout.LayoutParams.MATCH_PARENT, dp(1))
                 bestFreeButton.visibility = View.GONE
-                addView(checkPing, LinearLayout.LayoutParams.MATCH_PARENT, dp(1))
+                addView(checkPing, LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, dp(38)
+                ).apply {
+                    gravity = android.view.Gravity.CENTER_HORIZONTAL
+                    topMargin = dp(6)
+                    bottomMargin = dp(6)
+                })
                 checkPing.visibility = View.GONE
                 modeSelectorRow = LinearLayout(this@MainActivity).apply {
                     orientation = LinearLayout.HORIZONTAL
