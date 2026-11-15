@@ -39,7 +39,7 @@ class GilrTanoVpnService : VpnService() {
             ACTION_START, ACTION_SWITCH, ACTION_START_PORTAL -> {
                 val config = intent.getStringExtra(EXTRA_CONFIG)
                 if (config.isNullOrBlank()) {
-                    broadcastStatus("Добавьте VLESS-ссылку")
+                    broadcastStatus("Добавьте профиль Quattro или PORTAL GATE")
                     stopSelf()
                 } else if (intent.action == ACTION_SWITCH) {
                     automaticMode = false
@@ -71,7 +71,7 @@ class GilrTanoVpnService : VpnService() {
             }
             stopping = false
             startTunnel(config)
-        }, "GilrTano-Xray-switch").start()
+        }, "GilrTano-VPN-switch").start()
     }
 
     private fun startTunnel(config: String) {
@@ -97,7 +97,7 @@ class GilrTanoVpnService : VpnService() {
                 if (stopping) return@Thread
                 val callback = object : XrayCallback {
                     override fun onStatus(status: Long, message: String) {
-                        Log.i(TAG, "Xray status=$status $message")
+                        Log.i(TAG, "${if (boxMode) "PORTAL GATE" else "Quattro"} status=$status $message")
                         if (status == 0L && !stopping) establishTun()
                         else if (status < 0L && !stopping) {
                             if (automaticMode && !usingFallback && !fallbackConfig.isNullOrBlank()) {
@@ -128,7 +128,7 @@ class GilrTanoVpnService : VpnService() {
                     }
                 }
             }
-        }, "GilrTano-Xray-start").start()
+        }, if (boxMode) "GilrTano-PORTAL-start" else "GilrTano-Xray-start").start()
     }
 
     @Synchronized private fun establishTun() {
@@ -181,9 +181,12 @@ class GilrTanoVpnService : VpnService() {
             }
 
             broadcastStatus(
-                if (automaticMode) {
-                    if (usingFallback) "Подключено · бесплатный резерв" else "Подключено · Quattro"
-                } else "Подключено · Xray и TUN работают"
+                when {
+                    boxMode -> "Подключено · PORTAL GATE / AmneziaWG"
+                    automaticMode && usingFallback -> "Подключено · резервный сервер"
+                    automaticMode -> "Подключено · Quattro"
+                    else -> "Подключено · Quattro / Xray"
+                }
             )
             updateNotification("Подключено · защищённый трафик")
             startConnectionMonitor()
@@ -359,7 +362,7 @@ class GilrTanoVpnService : VpnService() {
             if (Build.VERSION.SDK_INT >= 24) stopForeground(STOP_FOREGROUND_REMOVE) else @Suppress("DEPRECATION") stopForeground(true)
             broadcastStatus("Отключено")
             stopSelf()
-        }, "GilrTano-Xray-stop").start()
+        }, "GilrTano-VPN-stop").start()
     }
 
     private fun broadcastStatus(value: String) {
