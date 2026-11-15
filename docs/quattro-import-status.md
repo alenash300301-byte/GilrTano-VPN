@@ -1,17 +1,21 @@
 # Quattro profile import status
 
-The supplied DOCX configuration was inspected locally for protocol inventory. It contains 544 `type: vless` entries (373 TCP and 171 gRPC transports) and 19 `type: hysteria2` entries. The document also contains access credentials and server parameters, so its raw contents must not be committed to this public repository.
+The supplied DOCX was inspected locally. Its Clash YAML contains 544 `type: vless` profiles and 19 `type: hysteria2` profiles (563 profiles total). The source also contains credentials; the raw DOCX and credentials must not be committed to this public repository.
 
-## Current app behavior
+## Import and engine routing
 
-- The Android app already has a DOCX picker and extracts `word/document.xml` locally on-device.
-- `SubscriptionImporter` converts supported VLESS entries from Clash YAML into VLESS share links and persists imported profiles in app-private preferences.
-- The service's VLESS-to-Xray builder accepts `grpc` transport and emits `grpcSettings`; VLESS TCP and gRPC can therefore use the existing Xray path.
-- Hysteria2 entries are currently skipped by `SubscriptionImporter`; the current import/connect path does not yet route Hysteria2 through the sing-box engine. Do not report those 19 entries as imported or working.
-- Importing profiles does not transfer ownership of Quattro servers or guarantee that their credentials remain valid.
+- The Android DOCX picker extracts `word/document.xml` locally and passes the YAML to `SubscriptionImporter`.
+- The importer now accepts VLESS and Hysteria2 share links and Clash YAML entries for both protocols. Imported profiles are saved in app-private preferences.
+- VLESS profiles continue through the Xray configuration path.
+- Hysteria2 profiles are converted to sing-box outbound JSON and started through the existing `Teapodcore.startBox` path. The service's server-switch action now carries the engine selection, and automatic recovery retains the preferred engine flag.
+- The Hysteria2 configuration maps server, port, password, SNI, ALPN and `skip-cert-verify` to sing-box fields. The source Quattro Hysteria2 entries inspected contain those fields; no Hysteria2 obfuscation settings were present in those entries.
 
-## Required service checks
+## Verification status and limitations
 
-The tunnel's lightweight reachability checks cover YouTube, Instagram, Telegram, and VK hostnames. These checks only establish HTTPS reachability through the local SOCKS tunnel; they do not prove app login, video playback, uploads, or long-duration stability. Those require testing on a physical Android device and a currently authorized server profile.
-
-UDP/443 remains enabled in the TUN-to-SOCKS bridge so QUIC is not intentionally blocked. Actual QUIC behavior still needs device testing.
+- The source YAML was parsed independently: 544 VLESS + 19 Hysteria2 entries.
+- No profile credentials were copied into this repository.
+- This change has not yet been validated by an Android Gradle build or on a physical device. Successful import does not prove that every remote endpoint is online or that its credentials are still authorized.
+- sing-box documents Hysteria2 as an outbound with required server, port, password and TLS configuration: https://sing-box.sagernet.org/configuration/outbound/hysteria2/
+- The tunnel's HTTPS probes cover YouTube, Instagram, Telegram and VK host reachability only; they do not prove app login, playback, uploads or long-duration stability.
+- UDP/443 remains enabled in the TUN bridge. Physical-device testing is still required for UDP/QUIC, DNS, IPv6, reconnect and failover behavior.
+- Importing profiles does not transfer ownership of Quattro servers or guarantee that credentials remain valid.
