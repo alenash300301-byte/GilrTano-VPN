@@ -21,8 +21,8 @@ data class PortalGateProfile(
 )
 
 object PortalGateImporter {
-    private val sectionPattern = Regex("^\\s*\\[([^]]+)]\\s*$")
-    private val pairPattern = Regex("^\\s*([A-Za-z0-9_]+)\\s*=\\s*(.*?)\\s*$")
+    private val sectionPattern = Regex("^\\\\s*\\\\[([^]]+)]\\\\s*$")
+    private val pairPattern = Regex("^\\\\s*([A-Za-z0-9_]+)\\\\s*=\\\\s*(.*?)\\\\s*$")
 
     fun parseZip(input: InputStream): List<PortalGateProfile> {
         val result = mutableListOf<PortalGateProfile>()
@@ -89,15 +89,15 @@ object PortalGateImporter {
             lines += "Endpoint = $server:$port"
             field("allowed-ips", "allowed_ips")?.let { lines += "AllowedIPs = $it" }
             field("persistent-keepalive", "persistent_keepalive")?.let { lines += "PersistentKeepalive = $it" }
-            return listOf(parseConf(lines.joinToString("\n"), fileName))
+            return listOf(parseConf(lines.joinToString("\\n"), fileName))
         }
-        return PortalGateMasqueImporter.parseYaml(ByteArrayInputStream(bytes), fileName)
+        return PortalGateMasqueImporter.parseYaml(ByteArrayInputStream(bytes))
     }
 
     fun parseConf(text: String, fileName: String): PortalGateProfile {
         val sections = linkedMapOf<String, MutableMap<String, String>>()
         var section = ""
-        text.removePrefix("\uFEFF").lineSequence().forEach { raw ->
+        text.removePrefix("\\uFEFF").lineSequence().forEach { raw ->
             val line = raw.substringBefore('#').substringBefore(';').trim()
             if (line.isEmpty()) return@forEach
             val header = sectionPattern.matchEntire(line)
