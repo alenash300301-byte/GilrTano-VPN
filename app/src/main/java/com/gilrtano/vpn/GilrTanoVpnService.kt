@@ -191,8 +191,9 @@ class GilrTanoVpnService : VpnService() {
                             if (automaticMode && advanceFallback("Основной протокол недоступен")) {
                                 return
                             } else {
-                                broadcastStatus("Ошибка ${when { portalMode && boxMode -> "PORTAL AmneziaWG"; portalMode -> "PORTAL MASQUE"; boxMode -> "sing-box/Hysteria2"; else -> "Quattro" }}: $message")
-                                stopTunnel()
+                                val failure = "Ошибка ${when { portalMode && boxMode -> "PORTAL AmneziaWG"; portalMode -> "PORTAL MASQUE"; boxMode -> "sing-box/Hysteria2"; else -> "Quattro" }}: $message"
+                                Log.e(TAG, failure)
+                                stopTunnel(failure)
                             }
                         }
                     }
@@ -223,8 +224,9 @@ class GilrTanoVpnService : VpnService() {
                     if (automaticMode && advanceFallback("Не удалось запустить основной протокол")) {
                         return@Thread
                     } else {
-                        broadcastStatus("Ошибка запуска: ${e.message}")
-                        stopTunnel()
+                        val failure = "Ошибка запуска: ${e.message}"
+                        Log.e(TAG, failure, e)
+                        stopTunnel(failure)
                     }
                 }
             }
@@ -300,8 +302,9 @@ class GilrTanoVpnService : VpnService() {
             if (automaticMode && !stopping && advanceFallback("У сервера нет доступа в интернет")) {
                 return
             } else {
-                broadcastStatus("Не удалось подключиться: ${e.message}")
-                stopTunnel()
+                val failure = "Не удалось подключиться: ${e.message}"
+                Log.e(TAG, failure, e)
+                stopTunnel(failure)
             }
         }
     }
@@ -452,7 +455,7 @@ class GilrTanoVpnService : VpnService() {
         }
     }
 
-    private fun stopTunnel() {
+    private fun stopTunnel(finalStatus: String = "Отключено") {
         stopping = true
         monitorRunning = false
         automaticMode = false
@@ -469,7 +472,7 @@ class GilrTanoVpnService : VpnService() {
                 tun = null
             }
             if (Build.VERSION.SDK_INT >= 24) stopForeground(STOP_FOREGROUND_REMOVE) else @Suppress("DEPRECATION") stopForeground(true)
-            broadcastStatus("Отключено")
+            broadcastStatus(finalStatus)
             stopSelf()
         }, "GilrTano-VPN-stop").start()
     }
