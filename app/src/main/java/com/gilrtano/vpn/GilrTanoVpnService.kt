@@ -56,19 +56,22 @@ class GilrTanoVpnService : VpnService() {
                     portalMode = intent.getBooleanExtra(EXTRA_PORTAL, intent.action == ACTION_START_PORTAL)
                     automaticMode = intent.getBooleanExtra(EXTRA_AUTO, false)
                     fallbackConfig = intent.getStringExtra(EXTRA_FALLBACK_CONFIG)
-                    fallbackChain = runCatching {
-                        val raw = intent.getStringExtra(EXTRA_FALLBACK_CHAIN)
-                        if (raw.isNullOrBlank()) emptyList() else {
-                            val array = org.json.JSONArray(raw)
-                            (0 until array.length()).mapNotNull { i ->
-                                val item = array.optJSONObject(i) ?: return@mapNotNull null
-                                val cfg = item.optString("config")
-                                if (cfg.isBlank()) null else cfg to item.optBoolean("box", true)
+                    // Never send the 121-profile archive through an Intent extra:
+                    // Binder has a small transaction limit and the aggregate configs can
+                    // exceed it, crashing the app before the generated WARP is attempted.
+                    // Load the bundled archive inside this service process instead.
+                    fallbackChain = emptyList()
+                    if (intent.action == ACTION_START_PORTAL) {
+                        fallbackChain = runCatching {
+                            assets.open("portal_gate.zip").use { input ->
+                                PortalGateImporter.parseZip(input).map { it.config to true }
                             }
-                        }
-                    }.getOrDefault(emptyList())
-                    if (fallbackChain.isEmpty() && !fallbackConfig.isNullOrBlank()) {
-                        fallbackChain = listOf(fallbackConfig!! to intent.getBooleanExtra(EXTRA_FALLBACK_ENGINE_BOX, false))
+                        }.onFailure { error ->
+                            Log.e(TAG, "Could not load bundled PORTAL GATE archive", error)
+                        }.getOrDefault(emptyList())
+                    }
+                    if (!fallbackConfig.isNullOrBlank()) {
+                        fallbackChain = fallbackChain + (fallbackConfig!! to false)
                     }
                     fallbackIndex = -1
                     fallbackBoxMode = intent.getBooleanExtra(EXTRA_FALLBACK_ENGINE_BOX, false)
