@@ -64,14 +64,8 @@ jobs:
           PORTAL_ARCHIVE_URL: ${{ secrets.PORTAL_ARCHIVE_URL }}
           PORTAL_ARCHIVE_KEY: ${{ secrets.PORTAL_ARCHIVE_KEY }}
         run: |
-          test -n "$PORTAL_ARCHIVE_URL" || {
-            echo "Missing Actions secret PORTAL_ARCHIVE_URL (direct URL to encrypted .aesgcm archive)."
-            exit 1
-          }
-          test -n "$PORTAL_ARCHIVE_KEY" || {
-            echo "Missing Actions secret PORTAL_ARCHIVE_KEY (URL-safe base64 AES-256 key)."
-            exit 1
-          }
+          test -n "$PORTAL_ARCHIVE_URL" || { echo "Missing PORTAL_ARCHIVE_URL"; exit 1; }
+          test -n "$PORTAL_ARCHIVE_KEY" || { echo "Missing PORTAL_ARCHIVE_KEY"; exit 1; }
           mkdir -p app/src/main/assets
           curl --fail --location --retry 3 "$PORTAL_ARCHIVE_URL" -o /tmp/portal_gate.zip.aesgcm
           python3 -m pip install --quiet cryptography
@@ -79,19 +73,18 @@ jobs:
           import base64, os
           from pathlib import Path
           from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-
           raw = Path("/tmp/portal_gate.zip.aesgcm").read_bytes()
           if len(raw) < 33 or raw[:5] != b"GTPG1":
-              raise SystemExit("Invalid encrypted PORTAL archive header")
+              raise SystemExit("Invalid encrypted PORTAL archive")
           key = base64.urlsafe_b64decode(os.environ["PORTAL_ARCHIVE_KEY"] + "===")
           if len(key) != 32:
-              raise SystemExit("PORTAL_ARCHIVE_KEY must decode to exactly 32 bytes")
-          nonce, ciphertext = raw[5:17], raw[17:]
-          plaintext = AESGCM(key).decrypt(nonce, ciphertext, b"GTPG1")
+              raise SystemExit("PORTAL_ARCHIVE_KEY must decode to 32 bytes")
+          plaintext = AESGCM(key).decrypt(raw[5:17], raw[17:], raw[:5])
           Path("app/src/main/assets/portal_gate.zip").write_bytes(plaintext)
           PY
           unzip -t app/src/main/assets/portal_gate.zip
-          test "$(unzip -Z1 app/src/main/assets/portal_gate.zip | grep -ci '\\.conf
+          test "$(unzip -Z1 app/src/main/assets/portal_gate.zip | grep -Ec '[.]conf$')" -eq 121
+
       - name: Build APK
         run: gradle --no-daemon assembleDebug
 
