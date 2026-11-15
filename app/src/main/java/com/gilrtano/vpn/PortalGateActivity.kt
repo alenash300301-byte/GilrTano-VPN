@@ -105,11 +105,21 @@ class PortalGateActivity : Activity() {
 
     private fun restoreArchive() {
         val saved = getSharedPreferences("portal_gate", MODE_PRIVATE).getString("archive_uri", null) ?: return
+        val savedUri = Uri.parse(saved)
+        val displayName = runCatching {
+            contentResolver.query(savedUri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)
+                ?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else "" } ?: ""
+        }.getOrDefault("")
         runCatching {
-            contentResolver.openInputStream(Uri.parse(saved))?.use { PortalGateImporter.parseZip(it) }
-                ?: error("Архив PORTAL GATE недоступен")
+            contentResolver.openInputStream(savedUri)?.use { stream ->
+                when {
+                    displayName.endsWith(".yaml", true) || displayName.endsWith(".yml", true) ->
+                        PortalGateMasqueImporter.parseYaml(stream)
+                    else -> PortalGateImporter.parseZip(stream)
+                }
+            } ?: error("Файл PORTAL GATE недоступен")
         }.onSuccess { PortalGateSession.profiles = it }
-            .onFailure { status.text = "Повторно выбери архив PORTAL GATE: ${it.message}" }
+            .onFailure { status.text = "Повторно выбери файл PORTAL GATE: ${it.message}" }
     }
 
     private fun refreshProfiles() {
