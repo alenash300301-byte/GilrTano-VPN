@@ -179,7 +179,7 @@ class GilrTanoVpnService : VpnService() {
             if (!internetReady) {
                 throw IllegalStateException("Сервер ответил, но интернет через VPN не проходит")
             }
-            if (!verifyRequiredServices()) {
+            if (!boxMode && !verifyRequiredServices()) {
                 throw IllegalStateException("Не все обязательные сервисы доступны через VPN")
             }
 
