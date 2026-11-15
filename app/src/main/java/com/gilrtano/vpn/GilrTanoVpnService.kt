@@ -287,9 +287,7 @@ class GilrTanoVpnService : VpnService() {
             if (!internetReady) {
                 throw IllegalStateException("Сервер ответил, но интернет через VPN не проходит")
             }
-            if (!portalMode && !boxMode && !verifyRequiredServices()) {
-                throw IllegalStateException("Не все обязательные сервисы доступны через VPN")
-            }
+
 
             broadcastStatus(
                 when {
@@ -573,7 +571,9 @@ class GilrTanoVpnService : VpnService() {
             val port = if (parsed.port > 0) parsed.port else 443
             val q = parsed
             val security = q.getQueryParameter("security") ?: "none"
-            val network = q.getQueryParameter("type") ?: "tcp"
+            val networkRaw = q.getQueryParameter("type") ?: "tcp"
+            // Some Xray subscriptions call the TCP transport "raw".
+            val network = if (networkRaw.equals("raw", ignoreCase = true)) "tcp" else networkRaw
             // Xray supports VLESS with TLS, REALITY, and plaintext transport.
             // Public free lists often contain security=none; rejecting it here
             // discarded otherwise valid VLESS profiles before Xray could test them.
