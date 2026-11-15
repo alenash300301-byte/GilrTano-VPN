@@ -74,6 +74,9 @@ jobs:
 
       - name: Build legacy teapod-core AAR
         run: |
+          # Materialize the local patched xray-core replacement before any Go command
+          # resolves the module graph (go.mod replaces xray-core with ./.xray-core).
+          bash upstream/teapod-core/build.sh prepare
           # Go 1.27 requires gomobile's gobind tool to be declared in the module.
           # Pin it to the x/mobile version already selected by teapod-core/go.mod.
           cd upstream/teapod-core
