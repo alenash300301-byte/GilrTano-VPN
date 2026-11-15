@@ -405,46 +405,6 @@ class MainActivity : Activity() {
                 // duplicate pill from the visual layout to match the approved reference.
                 connectButton.visibility = View.GONE
                 addView(connectButton, LinearLayout.LayoutParams(1, 1))
-                addView(LinearLayout(this@MainActivity).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = android.view.Gravity.CENTER_VERTICAL
-                    background = GradientDrawable().apply {
-                        setColor(Color.rgb(10, 10, 12)); cornerRadius = dp(28).toFloat()
-                        setStroke(dp(1), Color.rgb(45, 45, 48))
-                    }
-                    setPadding(dp(16), dp(10), dp(14), dp(10))
-                    setOnClickListener { showServerPicker() }
-                    addView(TextView(this@MainActivity).apply {
-                        text = "🌐"; textSize = 25f; setTextColor(Color.WHITE)
-                        setPadding(0, 0, dp(14), 0)
-                    })
-                    addView(LinearLayout(this@MainActivity).apply {
-                        orientation = LinearLayout.VERTICAL
-                        serverCardTitle = TextView(this@MainActivity).apply {
-                            text = "Автоматический сервер"; textSize = 16f
-                            setTextColor(Color.WHITE)
-                        }
-                        serverCardSubtitle = TextView(this@MainActivity).apply {
-                            text = "Автовыбор"; textSize = 12f
-                            setTextColor(Color.LTGRAY)
-                        }
-                        addView(serverCardTitle)
-                        addView(serverCardSubtitle)
-                    }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-                    addView(LinearLayout(this@MainActivity).apply {
-                        orientation = LinearLayout.HORIZONTAL
-                        gravity = android.view.Gravity.CENTER_VERTICAL
-                        serverCardPing = TextView(this@MainActivity).apply {
-                            text = ""; textSize = 13f; setTextColor(Color.rgb(0, 230, 55))
-                        }
-                        addView(serverCardPing)
-                        addView(TextView(this@MainActivity).apply {
-                            text = "  ›"; textSize = 27f; setTextColor(Color.WHITE)
-                        })
-                    })
-                }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(70)).apply {
-                    topMargin = dp(8); bottomMargin = dp(14)
-                })
                 // Single full-width live ping metric.
                 val pingCard = LinearLayout(this@MainActivity).apply {
                     orientation = LinearLayout.VERTICAL
