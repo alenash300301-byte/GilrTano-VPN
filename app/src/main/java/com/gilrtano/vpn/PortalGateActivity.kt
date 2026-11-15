@@ -139,8 +139,10 @@ class PortalGateActivity : Activity() {
         } ?: error("Файл PORTAL недоступен")
     }
 
-    private fun isMasque(config: String): Boolean =
-        config.contains("\\\"protocol\\\":\\\"masque\\\"")
+    private fun isMasque(config: String): Boolean = runCatching {
+        org.json.JSONObject(config).optJSONArray("outbounds")
+            ?.optJSONObject(0)?.optString("protocol") == "masque"
+    }.getOrDefault(false)
 
     private fun refreshProfiles() {
         val profiles = PortalGateSession.profiles
