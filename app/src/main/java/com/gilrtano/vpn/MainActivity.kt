@@ -484,7 +484,6 @@ class MainActivity : Activity() {
                     gravity = android.view.Gravity.CENTER
                     addView(quattroTab, LinearLayout.LayoutParams(0, dp(44), 1f).apply { rightMargin = dp(6) })
                     addView(freeTab, LinearLayout.LayoutParams(0, dp(44), 1f).apply { leftMargin = dp(4) })
-                    visibility = View.GONE
                 }
                 settingsHeader = TextView(this@MainActivity).apply {
                     text = "Настройки и импорт  ›"; textSize = 20f
