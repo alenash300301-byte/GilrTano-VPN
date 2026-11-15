@@ -41,7 +41,7 @@ object PortalGateImporter {
                             entryName.endsWith(".yml", ignoreCase = true) -> {
                             val bytes = zip.readBytes()
                             runCatching {
-                                PortalGateMasqueImporter.parseYaml(ByteArrayInputStream(bytes), entryName)
+                                parseYamlArchive(ByteArrayInputStream(bytes), entryName.substringBeforeLast('.'))
                             }.onSuccess { result += it }
                         }
                     }
@@ -51,6 +51,47 @@ object PortalGateImporter {
         }
         require(result.isNotEmpty()) { "В архиве не найдены поддерживаемые профили PORTAL GATE (.conf / AmneziaWG YAML / MASQUE YAML)" }
         return result.distinctBy { it.config }
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun parseYamlArchive(input: InputStream, fileName: String): List<PortalGateProfile> {
+        val bytes = input.readBytes()
+        val root = org.yaml.snakeyaml.Yaml(
+            org.yaml.snakeyaml.constructor.SafeConstructor(org.yaml.snakeyaml.LoaderOptions())
+        ).load<Any?>(ByteArrayInputStream(bytes)) as? Map<String, Any?>
+            ?: error("$fileName: некорректный YAML")
+        if (root["portal"] is Map<*, *>) {
+            val proxies = root["proxies"] as? List<*> ?: error("$fileName: отсутствует proxies")
+            val proxy = proxies.firstOrNull() as? Map<String, Any?> ?: error("$fileName: отсутствует профиль")
+            val merged = LinkedHashMap<String, Any?>().apply {
+                putAll(root["portal"] as Map<String, Any?>)
+                putAll(proxy)
+            }
+            fun field(vararg keys: String): String? =
+                keys.firstNotNullOfOrNull { key -> merged[key]?.toString()?.trim()?.takeIf(String::isNotEmpty) }
+            val privateKey = field("private-key", "private_key") ?: error("$fileName: отсутствует private-key")
+            val publicKey = field("public-key", "public_key") ?: error("$fileName: отсутствует public-key")
+            val server = field("server") ?: error("$fileName: отсутствует server")
+            val port = field("port")?.toIntOrNull()?.takeIf { it in 1..65535 }
+                ?: error("$fileName: некорректный port")
+            val address = listOfNotNull(field("ip"), field("ipv6")).joinToString(", ")
+                .ifBlank { field("address") ?: error("$fileName: отсутствует IP") }
+            val lines = mutableListOf("[Interface]", "PrivateKey = $privateKey", "Address = $address")
+            (merged["dns"] as? List<*>)?.mapNotNull { it?.toString()?.trim() }
+                ?.filter(String::isNotEmpty)?.takeIf { it.isNotEmpty() }
+                ?.let { lines += "DNS = \${it.joinToString(", ")}" }
+            field("mtu")?.let { lines += "MTU = $it" }
+            (merged["amnezia-wg-option"] as? Map<*, *>)?.forEach { (key, value) ->
+                if (key != null && value != null) lines += "\${key.toString().replace('-', '_')} = $value"
+            }
+            lines += "[Peer]"
+            lines += "PublicKey = $publicKey"
+            lines += "Endpoint = $server:$port"
+            field("allowed-ips", "allowed_ips")?.let { lines += "AllowedIPs = $it" }
+            field("persistent-keepalive", "persistent_keepalive")?.let { lines += "PersistentKeepalive = $it" }
+            return listOf(parseConf(lines.joinToString("\n"), fileName))
+        }
+        return PortalGateMasqueImporter.parseYaml(ByteArrayInputStream(bytes), fileName)
     }
 
     fun parseConf(text: String, fileName: String): PortalGateProfile {
