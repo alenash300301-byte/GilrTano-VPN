@@ -31,11 +31,12 @@ class GilrTanoVpnService : VpnService() {
     @Volatile private var consecutiveProbeFailures = 0
     @Volatile private var lastAutomaticSwitchAt = 0L
     @Volatile private var usingFallback = false
+    @Volatile private var boxMode = false
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> stopTunnel()
-            ACTION_START, ACTION_SWITCH -> {
+            ACTION_START, ACTION_SWITCH, ACTION_START_PORTAL -> {
                 val config = intent.getStringExtra(EXTRA_CONFIG)
                 if (config.isNullOrBlank()) {
                     broadcastStatus("Добавьте VLESS-ссылку")
@@ -44,7 +45,8 @@ class GilrTanoVpnService : VpnService() {
                     automaticMode = false
                     switchTunnel(config)
                 } else {
-                    automaticMode = intent.getBooleanExtra(EXTRA_AUTO, false)
+                    boxMode = intent.action == ACTION_START_PORTAL || intent.getBooleanExtra(EXTRA_ENGINE_BOX, false)
+                    automaticMode = if (boxMode) false else intent.getBooleanExtra(EXTRA_AUTO, false)
                     fallbackConfig = intent.getStringExtra(EXTRA_FALLBACK_CONFIG)
                     preferredConfig = intent.getStringExtra(EXTRA_PREFERRED_CONFIG)
                     usingFallback = false
@@ -63,6 +65,7 @@ class GilrTanoVpnService : VpnService() {
             synchronized(this) {
                 runCatching { Teapodcore.stopTun2Socks() }
                 runCatching { Teapodcore.stopXray() }
+                runCatching { Teapodcore.stopBox() }
                 runCatching { tun?.close() }
                 tun = null
             }
@@ -75,7 +78,7 @@ class GilrTanoVpnService : VpnService() {
         stopping = false
         activeConfig = config
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, notification("Запуск Xray…"))
+        startForeground(NOTIFICATION_ID, notification(if (boxMode) "Запуск PORTAL GATE…" else "Запуск Quattro…"))
         // Native core initialization/start can block; never run it on Android's service main thread.
         Thread({
             try {
@@ -92,7 +95,7 @@ class GilrTanoVpnService : VpnService() {
                     }
                 }
                 if (stopping) return@Thread
-                Teapodcore.startXray(config, object : XrayCallback {
+                val callback = object : XrayCallback {
                     override fun onStatus(status: Long, message: String) {
                         Log.i(TAG, "Xray status=$status $message")
                         if (status == 0L && !stopping) establishTun()
@@ -108,7 +111,9 @@ class GilrTanoVpnService : VpnService() {
                             }
                         }
                     }
-                })
+                }
+                if (boxMode) Teapodcore.startBox(config, filesDir.absolutePath, callback)
+                else Teapodcore.startXray(config, callback)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to start Xray", e)
                 if (!stopping) {
@@ -347,6 +352,7 @@ class GilrTanoVpnService : VpnService() {
             synchronized(this) {
                 runCatching { Teapodcore.stopTun2Socks() }
                 runCatching { Teapodcore.stopXray() }
+                runCatching { Teapodcore.stopBox() }
                 runCatching { tun?.close() }
                 tun = null
             }
@@ -409,8 +415,10 @@ class GilrTanoVpnService : VpnService() {
         const val ACTION_START = "com.gilrtano.vpn.START"
         const val ACTION_SWITCH = "com.gilrtano.vpn.SWITCH"
         const val ACTION_STOP = "com.gilrtano.vpn.STOP"
+        const val ACTION_START_PORTAL = "com.gilrtano.vpn.START_PORTAL"
         const val ACTION_STATUS = "com.gilrtano.vpn.STATUS"
         const val EXTRA_CONFIG = "xray_config"
+        const val EXTRA_ENGINE_BOX = "engine_box"
         const val EXTRA_STATUS = "status"
         const val EXTRA_AUTO = "automatic_mode"
         const val EXTRA_FALLBACK_CONFIG = "fallback_config"
