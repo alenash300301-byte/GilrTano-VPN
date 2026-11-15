@@ -21,8 +21,8 @@ data class PortalGateProfile(
 )
 
 object PortalGateImporter {
-    private val sectionPattern = Regex("^\\\\s*\\\\[([^]]+)]\\\\s*$")
-    private val pairPattern = Regex("^\\\\s*([A-Za-z0-9_]+)\\\\s*=\\\\s*(.*?)\\\\s*$")
+    private val sectionPattern = Regex("^\\s*\\[([^]]+)]\\s*$")
+    private val pairPattern = Regex("^\\s*([A-Za-z0-9_]+)\\s*=\\s*(.*?)\\s*$")
 
     fun parseZip(input: InputStream): List<PortalGateProfile> {
         val result = mutableListOf<PortalGateProfile>()
