@@ -54,33 +54,33 @@ jobs:
           ./scripts/build-native-aar.sh
           test -s app/libs/teapod-core-1.7.7.aar
 
+      - name: Verify bundled PORTALGATE profiles
+        run: |
+          test -s app/src/main/assets/portal_gate.zip || {
+            echo "Missing app/src/main/assets/portal_gate.zip. Add the profile archive to the source tree; no GitHub secrets or phone-side import are used."
+            exit 1
+          }
+          unzip -t app/src/main/assets/portal_gate.zip
+          count=$(unzip -Z1 app/src/main/assets/portal_gate.zip | grep -Ec '[.]conf$' || true)
+          test "$count" -eq 121 || {
+            echo "Expected 121 PORTALGATE .conf profiles, found $count"
+            exit 1
+          }
+
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
 
-      - name: Download and decrypt PORTAL profile archive
-        env:
-          PORTAL_ARCHIVE_URL: ${{ secrets.PORTAL_ARCHIVE_URL }}
-          PORTAL_ARCHIVE_KEY: ${{ secrets.PORTAL_ARCHIVE_KEY }}
+      - name: Build APK
         run: |
-          test -n "$PORTAL_ARCHIVE_URL" || { echo "Missing PORTAL_ARCHIVE_URL"; exit 1; }
-          test -n "$PORTAL_ARCHIVE_KEY" || { echo "Missing PORTAL_ARCHIVE_KEY"; exit 1; }
-          mkdir -p app/src/main/assets
-          curl --fail --location --retry 3 "$PORTAL_ARCHIVE_URL" -o /tmp/portal_gate.zip.aesgcm
-          python3 -m pip install --quiet cryptography
-          python3 - <<'PY'
-          import base64, os
-          from pathlib import Path
-          from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-          raw = Path("/tmp/portal_gate.zip.aesgcm").read_bytes()
-          if len(raw) < 33 or raw[:5] != b"GTPG1":
-              raise SystemExit("Invalid encrypted PORTAL archive")
-          key = base64.urlsafe_b64decode(os.environ["PORTAL_ARCHIVE_KEY"] + "===")
-          if len(key) != 32:
-              raise SystemExit("PORTAL_ARCHIVE_KEY must decode to 32 bytes")
-          plaintext = AESGCM(key).decrypt(raw[5:17], raw[17:], raw[:5])
-          Path("app/src/main/assets/portal_gate.zip").write_bytes(plaintext)
-          PY
-          unzip -t app/src/main/assets/portal_gate.zip
-          test "$(unzip -Z1 app/src/main/assets/portal_gate.zip | grep -Ec '[.]conf$'
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: GilrTano-VPN-debug
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
