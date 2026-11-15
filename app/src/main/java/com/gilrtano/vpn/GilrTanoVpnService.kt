@@ -43,6 +43,7 @@ class GilrTanoVpnService : VpnService() {
                     stopSelf()
                 } else if (intent.action == ACTION_SWITCH) {
                     automaticMode = false
+                    boxMode = false
                     switchTunnel(config)
                 } else {
                     boxMode = intent.action == ACTION_START_PORTAL || intent.getBooleanExtra(EXTRA_ENGINE_BOX, false)
@@ -352,6 +353,7 @@ class GilrTanoVpnService : VpnService() {
         stopping = true
         monitorRunning = false
         automaticMode = false
+        boxMode = false
         broadcastStatus("Отменяю подключение…")
         // Native shutdown may block; run it away from Android's main thread.
         Thread({
