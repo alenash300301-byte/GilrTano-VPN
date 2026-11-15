@@ -979,31 +979,70 @@ class MainActivity : Activity() {
             page.addView(row)
         }
         addDivider()
-        val currentModeLabel = when (activeMode) {
-            "portal" -> "PORTAL"
-            "free" -> "БЕСПЛАТНЫЙ"
-            "auto" -> "АВТО"
-            else -> "QUATTRO"
+        page.addView(TextView(this).apply {
+            text = "Режим подключения"
+            textSize = 20f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(Color.WHITE)
+            setPadding(dp(4), dp(4), 0, dp(12))
+        })
+        val modeStrip = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER
+            background = GradientDrawable().apply {
+                setColor(Color.rgb(5, 5, 7))
+                cornerRadius = dp(28).toFloat()
+                setStroke(dp(1), Color.LTGRAY)
+            }
+            setPadding(dp(3), dp(3), dp(3), dp(3))
         }
-        addRow("Режим подключения", currentModeLabel) {
-            val modeItems = arrayOf("QUATTRO", "БЕСПЛАТНЫЙ", "PORTAL")
-            AlertDialog.Builder(this)
-                .setTitle("Выбрать режим")
-                .setSingleChoiceItems(modeItems, when (activeMode) {
-                    "portal" -> 2
-                    "free" -> 1
-                    else -> 0
-                }) { picker, which ->
-                    picker.dismiss()
-                    when (which) {
-                        0 -> switchMode(false)
-                        1 -> switchMode(true)
-                        2 -> switchToPortal()
-                    }
-                    dialog.dismiss()
+        fun modeChip(label: String, selected: Boolean, action: () -> Unit): TextView =
+            TextView(this).apply {
+                text = label
+                textSize = 15f
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                gravity = android.view.Gravity.CENTER
+                setPadding(dp(8), dp(13), dp(8), dp(13))
+                setTextColor(if (selected) Color.BLACK else Color.WHITE)
+                background = GradientDrawable().apply {
+                    setColor(if (selected) Color.rgb(30, 238, 65) else Color.TRANSPARENT)
+                    cornerRadius = dp(24).toFloat()
+                    if (selected) setStroke(dp(1), Color.rgb(120, 255, 140))
                 }
-                .setNegativeButton("Отмена", null)
-                .show()
+                setOnClickListener { action() }
+            }
+        val quattroChip = modeChip("QUATTRO", activeMode != "portal" && activeMode != "free", ::apply {
+            switchMode(false)
+            dialog.dismiss()
+        })
+        val portalChip = modeChip("PORTAL", activeMode == "portal", ::apply {
+            switchToPortal()
+            dialog.dismiss()
+        })
+        val freeChip = modeChip("FREE", activeMode == "free", ::apply {
+            switchMode(true)
+            dialog.dismiss()
+        })
+        modeStrip.addView(quattroChip, LinearLayout.LayoutParams(0, dp(48), 1f))
+        modeStrip.addView(portalChip, LinearLayout.LayoutParams(0, dp(48), 1f))
+        modeStrip.addView(freeChip, LinearLayout.LayoutParams(0, dp(48), 1f))
+        page.addView(modeStrip, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ))
+        if (activeMode == "portal") {
+            page.addView(TextView(this).apply {
+                text = "ⓘ  PORTAL — автоматическое подключение через Cloudflare WARP."
+                textSize = 14f
+                setTextColor(Color.WHITE)
+                setPadding(dp(14), dp(12), dp(14), dp(12))
+                background = GradientDrawable().apply {
+                    setColor(Color.rgb(5, 12, 7))
+                    cornerRadius = dp(16).toFloat()
+                    setStroke(dp(1), Color.rgb(30, 180, 65))
+                }
+            }, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(12) })
         }
         addDivider()
         addRow("Протокол", prefs.getString("selected_protocol", "Авто") ?: "Авто") {
