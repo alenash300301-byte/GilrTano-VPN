@@ -189,6 +189,10 @@ class MainActivity : Activity() {
             setOnClickListener { switchToAuto() }
         }
 
+        val portalGateButton = Button(this).apply {
+            text = "ОТКРЫТЬ PORTAL GATE"
+            setOnClickListener { startActivity(Intent(this@MainActivity, PortalGateActivity::class.java)) }
+        }
         val importPrimary = Button(this).apply {
             text = "Импортировать Quattro"
             setOnClickListener { importFrom(primarySource.text.toString().trim(), false) }
@@ -506,6 +510,7 @@ class MainActivity : Activity() {
                     }
                 }
                 addView(settingsHeader)
+                addView(portalGateButton)
                 addView(modeSelectorRow, LinearLayout.LayoutParams.MATCH_PARENT, dp(48))
                 addView(primarySource, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
                 addView(importPrimary)
