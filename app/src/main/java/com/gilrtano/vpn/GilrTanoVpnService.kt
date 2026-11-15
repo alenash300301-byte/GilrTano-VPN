@@ -277,13 +277,9 @@ class GilrTanoVpnService : VpnService() {
 
                     if (consecutiveProbeFailures >= FAILURE_LIMIT &&
                         System.currentTimeMillis() - lastAutomaticSwitchAt > SWITCH_COOLDOWN_MS) {
-                        if (!usingFallback && !fallbackConfig.isNullOrBlank()) {
-                            val target = fallbackConfig!!
-                            usingFallback = true
-                            lastAutomaticSwitchAt = System.currentTimeMillis()
-                            consecutiveProbeFailures = 0
-                            broadcastStatus("Связь ухудшилась. Переключаю на резервный сервер…")
-                            switchTunnel(target, fallbackBoxMode, false)
+                        if (advanceFallback("Связь ухудшилась")) {
+                            // The ordered chain starts with the first PORTAL profile
+                            // and ends with Quattro; never skip directly to Quattro.
                         } else if (usingFallback && fallbackIndex + 1 in fallbackChain.indices) {
                             advanceFallback("Резервный сервер потерял связь")
                         } else if (usingFallback && !preferredConfig.isNullOrBlank() &&
