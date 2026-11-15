@@ -92,7 +92,10 @@ class MainActivity : Activity() {
 
     private val prefs by lazy { getPreferences(MODE_PRIVATE) }
     private val activeNodes: List<ImportedNode>
-        get() = if (activeFree) freeNodes else quattroNodes
+        get() = if (activeFree) freeNodes else {
+            val selectedRegion = prefs.getString("selected_region", "Европа") ?: "Европа"
+            quattroNodes.filter { ServerRegionClassifier.region(it) == selectedRegion }
+        }
 
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -426,6 +429,16 @@ class MainActivity : Activity() {
                                 val selected = regionLabels[which]
                                 prefs.edit().putString(regionKey, selected).apply()
                                 text = "◎  $selected  ⌄"
+                                if (activeMode != "portal" && !activeFree) {
+                                    refreshMode()
+                                    val count = activeNodes.size
+                                    Toast.makeText(
+                                        this@MainActivity,
+                                        if (count > 0) "Найдено серверов: $count · $selected"
+                                        else "В подписке нет серверов с определённым регионом: $selected",
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                }
                             }
                             .setNegativeButton("Отмена", null)
                             .show()
@@ -608,6 +621,11 @@ class MainActivity : Activity() {
     private fun showServerPicker() {
         val nodes = activeNodes
         if (nodes.isEmpty()) {
+            if (!activeFree && activeMode != "portal") {
+                val selectedRegion = prefs.getString("selected_region", "Европа") ?: "Европа"
+                Toast.makeText(this, "В подписке нет серверов для региона: $selectedRegion", Toast.LENGTH_LONG).show()
+                return
+            }
             settingsExpanded = true
             findImportButtonsVisibility()
             val content = findViewById<ViewGroup>(android.R.id.content)
@@ -1593,5 +1611,49 @@ class MainActivity : Activity() {
     override fun onStop() {
         runCatching { unregisterReceiver(receiver) }
         super.onStop()
+    }
+}
+
+/**
+ * Classifies imported Quattro nodes using explicit location hints in their
+ * display name or hostname. Unknown locations are intentionally excluded
+ * rather than being shown under a region they may not belong to.
+ */
+private object ServerRegionClassifier {
+    private val groups = mapOf(
+        "Азия" to listOf(
+            "asia", "japan", "jp", "tokyo", "osaka", "singapore", "sg", "hong kong",
+            "hongkong", "hk", "taiwan", "tw", "korea", "kr", "seoul", "india", "in",
+            "mumbai", "delhi", "thailand", "bangkok", "th", "indonesia", "jakarta",
+            "id", "malaysia", "my", "vietnam", "vn", "philippines", "ph"
+        ),
+        "Европа" to listOf(
+            "europe", "eu", "germany", "de", "frankfurt", "berlin", "france", "fr",
+            "paris", "netherlands", "nl", "amsterdam", "uk", "united kingdom", "london",
+            "britain", "england", "poland", "pl", "warsaw", "sweden", "se", "stockholm",
+            "finland", "fi", "helsinki", "switzerland", "ch", "zurich", "austria", "at",
+            "vienna", "italy", "it", "milan", "spain", "es", "madrid", "portugal", "pt",
+            "norway", "no", "denmark", "dk", "czech", "cz", "romania", "ro", "belgium", "be"
+        ),
+        "США" to listOf(
+            "usa", "united states", "america", "us", "🇺🇸", "new york", "los angeles",
+            "chicago", "seattle", "san jose", "san francisco", "dallas", "miami",
+            "atlanta", "ashburn", "virginia", "california", "texas"
+        )
+    )
+
+    fun region(node: ImportedNode): String? {
+        val host = android.net.Uri.parse(node.uri).host.orEmpty()
+        val source = "${node.name} ${host}".lowercase()
+            .replace('_', ' ').replace('-', ' ').replace('.', ' ')
+        val padded = " $source "
+        val matches = groups.filterValues { terms ->
+            terms.any { term ->
+                if (term.length <= 3 && term.all { it.isLetter() }) {
+                    Regex("(?<![a-z0-9])" + Regex.escape(term) + "(?![a-z0-9])").containsMatchIn(source)
+                } else padded.contains(" $term ")
+            }
+        }.keys
+        return matches.singleOrNull()
     }
 }
