@@ -1,0 +1,57 @@
+name: Build libXray Android AAR
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/build-libxray.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-libxray:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout GilrTano VPN
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned libXray
+        uses: actions/checkout@v4
+        with:
+          repository: XTLS/libXray
+          ref: v26.11.9
+          path: .build/libXray
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Build Android AAR
+        working-directory: .build/libXray
+        env:
+          LIBXRAY_ANDROID_API: "29"
+        run: |
+          python3 build/main.py android
+          test -s libXray.aar
+
+      - name: Upload libXray AAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: libXray-android-v26.11.9
+          path: .build/libXray/libXray.aar
+          if-no-files-found: error
+          retention-days: 14
