@@ -901,33 +901,52 @@ class MainActivity : Activity() {
         val settingsScroll = android.widget.ScrollView(this).apply { addView(content) }
         fun section(label: String) {
             content.addView(TextView(this).apply {
-                text = label; textSize = 16f; setTextColor(Color.rgb(235, 65, 65))
+                text = label; textSize = 13f
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                setTextColor(Color.rgb(235, 65, 65))
                 setPadding(0, dp(18), 0, dp(8))
             })
         }
-        fun addSetting(view: View, height: Int = ViewGroup.LayoutParams.WRAP_CONTENT) {
-            (view.parent as? ViewGroup)?.removeView(view)
-            view.visibility = View.VISIBLE
-            content.addView(view, LinearLayout.LayoutParams.MATCH_PARENT, height)
+        fun action(label: String, callback: () -> Unit) {
+            content.addView(Button(this).apply {
+                text = label
+                isAllCaps = false
+                setOnClickListener { callback() }
+            }, LinearLayout.LayoutParams.MATCH_PARENT, dp(48))
         }
-        section("РЕЖИМЫ ПОДКЛЮЧЕНИЯ")
-        modeSelectorRow.visibility = View.VISIBLE
-        addSetting(modeSelectorRow, dp(48))
-        section("ВЫБОР СЕРВЕРА")
-        addSetting(servers, dp(50))
-        addSetting(checkPing, dp(48))
-        addSetting(pingStatus, dp(36))
-        section("QUATTRO — ССЫЛКА ИЛИ YAML")
-        addSetting(primarySource)
-        addSetting(importPrimary, dp(48))
-        addSetting(importDocx, dp(48))
-        section("PORTAL GATE / БЕСПЛАТНЫЙ РЕЗЕРВ")
-        addSetting(portalGateButton, dp(48))
-        addSetting(freeSource)
-        addSetting(importFree, dp(48))
-        addSetting(bestFreeButton, dp(48))
+        section("QUATTRO")
+        val quattroLink = EditText(this).apply {
+            hint = "Ссылка Quattro или Clash YAML"
+            setText(prefs.getString("subscription_url", ""))
+            minLines = 1
+            maxLines = 3
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
+        }
+        content.addView(quattroLink, LinearLayout.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        action("Импортировать ссылку / YAML") {
+            val value = quattroLink.text.toString().trim()
+            prefs.edit().putString("subscription_url", value).apply()
+            importFrom(value, false)
+            dialog.dismiss()
+        }
+        action("Импортировать DOCX") {
+            val pick = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            }
+            startActivityForResult(pick, docxRequestCode)
+            dialog.dismiss()
+        }
+        section("СЕРВЕРЫ")
+        action("Выбрать сервер") { showServerPicker(); dialog.dismiss() }
+        action("Проверить пинг") { measureSelectedPing() }
+        section("PORTAL GATE")
+        action("Открыть Portal Gate") {
+            startActivity(Intent(this, PortalGateActivity::class.java))
+            dialog.dismiss()
+        }
         content.addView(TextView(this).apply {
-            text = "Серверы и ссылки хранятся локально на устройстве."
+            text = "Настройки подключения и импорт профилей."
             textSize = 11f; setTextColor(Color.GRAY); setPadding(0, dp(14), 0, dp(8))
         })
         page.addView(settingsScroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
