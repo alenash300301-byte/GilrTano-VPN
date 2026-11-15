@@ -74,6 +74,11 @@ jobs:
 
       - name: Build legacy teapod-core AAR
         run: |
+          # Go 1.27 requires gomobile's gobind tool to be declared in the module.
+          # Pin it to the x/mobile version already selected by teapod-core/go.mod.
+          cd upstream/teapod-core
+          go get -tool golang.org/x/mobile/cmd/gobind@v0.0.0-20260410095206-2cfb76559b7b
+          cd ../..
           go install golang.org/x/mobile/cmd/gomobile@latest
           "${HOME}/go/bin/gomobile" init
           bash upstream/teapod-core/build.sh build
