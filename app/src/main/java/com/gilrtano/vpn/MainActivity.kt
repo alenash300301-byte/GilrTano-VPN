@@ -87,6 +87,7 @@ class MainActivity : Activity() {
     private var pendingPreferredConfig: String? = null
     private var pendingAutomatic = false
     private var pendingPortalAwg = false
+    private var pendingEngineBox = false
     private val requestCode = 4101
     private val docxRequestCode = 4102
 
@@ -236,7 +237,7 @@ class MainActivity : Activity() {
                         val generated = WarpGeneratorClient.generateAmneziaProfile()
                         val profile = PortalGateImporter.parseConf(generated, "WARP-Cyberportal")
                         val quattro = quattroNodes.firstOrNull()
-                            ?.let { runCatching { GilrTanoVpnService.xrayConfigFromVless(it.uri) }.getOrNull() }
+                            ?.let { runCatching { configForNode(it).first }.getOrNull() }
                         runOnUiThread {
                             pendingConfig = profile.config
                             pendingFallbackConfig = quattro
@@ -814,7 +815,7 @@ class MainActivity : Activity() {
             val index = prefs.getInt(selectedKey, 0).coerceIn(0, targetNodes.lastIndex)
             servers.setSelection(index)
             val node = targetNodes[index]
-            val config = runCatching { GilrTanoVpnService.xrayConfigFromVless(node.uri) }.getOrElse {
+            val config = runCatching { configForNode(node).first }.getOrElse {
                 Toast.makeText(this, "Не удалось подготовить сервер: ${it.message}", Toast.LENGTH_LONG).show()
                 return
             }
@@ -909,6 +910,11 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun configForNode(node: ImportedNode): Pair<String, Boolean> =
+        if (node.uri.startsWith("hy2://", true) || node.uri.startsWith("hysteria2://", true))
+            Hysteria2Config.fromUri(node.uri) to true
+        else GilrTanoVpnService.xrayConfigFromVless(node.uri) to false
+
     private fun importFrom(source: String, isFree: Boolean) {
         if (source.isBlank()) {
             Toast.makeText(this, "Укажи ссылку или конфигурацию", Toast.LENGTH_LONG).show()
@@ -920,7 +926,7 @@ class MainActivity : Activity() {
                 val imported = SubscriptionImporter.load(source)
                 runOnUiThread {
                     if (imported.isEmpty()) {
-                        status.text = "Не найдено поддерживаемых VLESS-серверов"
+                        status.text = "Не найдено поддерживаемых VLESS/Hysteria2-серверов"
                         return@runOnUiThread
                     }
                     if (isFree) {
@@ -1068,7 +1074,7 @@ class MainActivity : Activity() {
             try {
                 candidates.forEach { node ->
                     completion.submit(Callable<Pair<ImportedNode, Long>?> {
-                        val config = runCatching { GilrTanoVpnService.xrayConfigFromVless(node.uri) }
+                        val config = runCatching { configForNode(node).first }
                             .getOrNull() ?: return@Callable null
                         runCatching {
                             val delayMs = teapodcore.Teapodcore.measureOutboundDelay(
@@ -1153,18 +1159,19 @@ class MainActivity : Activity() {
     private fun connectAutomaticallySelected() {
         val node = activeNodes.getOrNull(servers.selectedItemPosition) ?: return
         try {
-            val config = GilrTanoVpnService.xrayConfigFromVless(node.uri)
+            val (config, engineBox) = configForNode(node)
             val fallbackNode = if (activeFree) freeNodes.getOrNull(1) else freeNodes.firstOrNull()
             val fallback = fallbackNode
-                ?.let { runCatching { GilrTanoVpnService.xrayConfigFromVless(it.uri) }.getOrNull() }
+                ?.let { runCatching { configForNode(it).first }.getOrNull() }
             pendingConfig = config
             pendingFallbackConfig = fallback
             pendingPreferredConfig = config
             pendingAutomatic = true
+            pendingEngineBox = engineBox
             status.text = "Подключаю лучший доступный сервер…"
             val permission = VpnService.prepare(this)
             if (permission != null) startActivityForResult(permission, requestCode)
-            else startVpn(config, fallback, config, true)
+            else startVpn(config, fallback, config, true, engineBox)
         } catch (e: Exception) {
             status.text = "Не удалось подготовить сервер: ${e.message}"
         }
@@ -1223,13 +1230,15 @@ class MainActivity : Activity() {
         config: String,
         fallbackConfig: String? = null,
         preferredConfig: String? = null,
-        automatic: Boolean = false
+        automatic: Boolean = false,
+        engineBox: Boolean = false
     ) {
         connectButton.isEnabled = true
         val intent = Intent(this, GilrTanoVpnService::class.java)
             .setAction(GilrTanoVpnService.ACTION_START)
             .putExtra(GilrTanoVpnService.EXTRA_CONFIG, config)
             .putExtra(GilrTanoVpnService.EXTRA_AUTO, automatic)
+            .putExtra(GilrTanoVpnService.EXTRA_ENGINE_BOX, engineBox)
         fallbackConfig?.let { intent.putExtra(GilrTanoVpnService.EXTRA_FALLBACK_CONFIG, it) }
         preferredConfig?.let { intent.putExtra(GilrTanoVpnService.EXTRA_PREFERRED_CONFIG, it) }
         startForegroundService(intent)
@@ -1242,18 +1251,20 @@ class MainActivity : Activity() {
         if (requestCode == this.requestCode && resultCode == RESULT_OK) {
             pendingConfig?.let {
                 if (pendingPortalAwg) startWarpVpn(it, pendingFallbackConfig)
-                else startVpn(it, pendingFallbackConfig, pendingPreferredConfig, pendingAutomatic)
+                else startVpn(it, pendingFallbackConfig, pendingPreferredConfig, pendingAutomatic, pendingEngineBox)
                 pendingConfig = null
                 pendingFallbackConfig = null
                 pendingPreferredConfig = null
                 pendingAutomatic = false
                 pendingPortalAwg = false
+                pendingEngineBox = false
             } ?: run { status.text = "Подключение отменено" }
         } else if (requestCode == this.requestCode) {
             pendingConfig = null
             pendingFallbackConfig = null
             pendingPreferredConfig = null
             pendingPortalAwg = false
+            pendingEngineBox = false
             connectButton.isEnabled = true
             status.text = "Разрешение VPN не предоставлено"
         } else if (requestCode == docxRequestCode && resultCode == RESULT_OK) {
@@ -1265,14 +1276,14 @@ class MainActivity : Activity() {
                     val imported = SubscriptionImporter.parse(yaml)
                     runOnUiThread {
                         if (imported.isEmpty()) {
-                            status.text = "В DOCX не найдены поддерживаемые VLESS-профили"
+                            status.text = "В DOCX не найдены поддерживаемые VLESS/Hysteria2-профили"
                         } else {
                             quattroNodes = imported
                             saveNodes("quattro_nodes", quattroNodes)
                             activeFree = false
                             prefs.edit().putBoolean("active_free_mode", false).apply()
                             refreshMode()
-                            status.text = "Quattro сохранён: ${imported.size} серверов. Импортировать снова не нужно."
+                            status.text = "Quattro сохранён: ${imported.size} серверов VLESS/Hysteria2. Импортировать снова не нужно."
                             measureSelectedPing()
                         }
                     }
