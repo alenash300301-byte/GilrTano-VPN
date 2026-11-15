@@ -171,7 +171,8 @@ class MainActivity : Activity() {
                 override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: android.view.View?, position: Int, id: Long) {
                     val key = if (activeFree) "free_selected" else "quattro_selected"
                     prefs.edit().putInt(key, position).apply()
-                    pingStatus.text = "Пинг: —"
+                    pingStatus.text = "Пинг: проверяю…"
+                    servers.post { measureSelectedPing() }
                 }
                 override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
             }
@@ -444,48 +445,32 @@ class MainActivity : Activity() {
                 }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(70)).apply {
                     topMargin = dp(8); bottomMargin = dp(14)
                 })
-                // Three compact live-metric cards and the neon traffic trace from the approved reference.
-                addView(LinearLayout(this@MainActivity).apply {
-                    orientation = LinearLayout.HORIZONTAL
+                // Single full-width live ping metric.
+                val pingCard = LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.VERTICAL
                     gravity = android.view.Gravity.CENTER
-                    fun metric(title: String, value: String, unit: String = ""): LinearLayout {
-                        return LinearLayout(this@MainActivity).apply {
-                            orientation = LinearLayout.VERTICAL
-                            gravity = android.view.Gravity.CENTER
-                            background = GradientDrawable().apply {
-                                setColor(Color.rgb(12, 12, 15))
-                                cornerRadius = dp(16).toFloat()
-                                setStroke(dp(1), Color.rgb(48, 48, 52))
-                            }
-                            addView(TextView(this@MainActivity).apply {
-                                text = title; textSize = 11f
-                                setTextColor(Color.LTGRAY)
-                            })
-                            addView(TextView(this@MainActivity).apply {
-                                text = value + unit; textSize = 14f
-                                typeface = android.graphics.Typeface.DEFAULT_BOLD
-                                setTextColor(Color.rgb(30, 238, 65))
-                                setPadding(0, dp(3), 0, 0)
-                                if (title == "Пинг") pingMetric = this
-                                if (title == "Входящий") downloadMetric = this
-                                if (title == "Исходящий") uploadMetric = this
-                            })
-                        }
+                    background = GradientDrawable().apply {
+                        setColor(Color.rgb(12, 12, 15))
+                        cornerRadius = dp(18).toFloat()
+                        setStroke(dp(1), Color.rgb(48, 48, 52))
                     }
-                    addView(metric("Пинг", "—", " мс"), LinearLayout.LayoutParams(0, dp(62), 1f).apply { rightMargin = dp(6) })
-                    addView(metric("Входящий", "—", " Мбит/с"), LinearLayout.LayoutParams(0, dp(62), 1f).apply { leftMargin = dp(3); rightMargin = dp(3) })
-                    addView(metric("Исходящий", "—", " Мбит/с"), LinearLayout.LayoutParams(0, dp(62), 1f).apply { leftMargin = dp(6) })
-                }, LinearLayout.LayoutParams.MATCH_PARENT, dp(62))
-                addView(TextView(this@MainActivity).apply {
-                    text = "Скорость сети"
-                    textSize = 10f
-                    setTextColor(Color.GRAY)
-                    gravity = android.view.Gravity.CENTER
-                    setPadding(0, dp(3), 0, 0)
-                }, LinearLayout.LayoutParams.MATCH_PARENT, dp(20))
-                addView(TrafficWaveView(this@MainActivity), LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, dp(58)
-                ).apply { topMargin = dp(8); bottomMargin = dp(8) })
+                    addView(TextView(this@MainActivity).apply {
+                        text = "Пинг"
+                        textSize = 15f
+                        setTextColor(Color.LTGRAY)
+                    })
+                    addView(TextView(this@MainActivity).apply {
+                        text = "— мс"
+                        textSize = 24f
+                        typeface = android.graphics.Typeface.DEFAULT_BOLD
+                        setTextColor(Color.rgb(30, 238, 65))
+                        setPadding(0, dp(4), 0, 0)
+                        pingMetric = this
+                    })
+                }
+                addView(pingCard, LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(82)
+                ).apply { topMargin = dp(10); bottomMargin = dp(10) })
                 addView(servers, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)))
                 servers.visibility = View.GONE
                 addView(pingStatus.apply { gravity = android.view.Gravity.CENTER_VERTICAL }, LinearLayout.LayoutParams.MATCH_PARENT, dp(1))
