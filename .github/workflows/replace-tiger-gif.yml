@@ -1,11 +1,16 @@
 name: Replace tiger GIF and build APK
 
 on:
+  push:
+    branches:
+      - feature/portal-masque-libxray
+    paths:
+      - .github/workflows/replace-tiger-gif.yml
   workflow_dispatch:
     inputs:
       gif_url:
         description: "Public direct HTTPS URL to the replacement GIF"
-        required: true
+        required: false
         type: string
 
 permissions:
@@ -29,7 +34,7 @@ jobs:
 
       - name: Download and validate GIF
         env:
-          GIF_URL: ${{ inputs.gif_url }}
+          GIF_URL: ${{ inputs.gif_url || 'https://github.com/alenash300301-byte/GilrTano-VPN/releases/download/tiger-flame-v1/gilrtano_fire_integrated.2.gif' }}
         run: |
           python3 - <<'PY'
           import os
