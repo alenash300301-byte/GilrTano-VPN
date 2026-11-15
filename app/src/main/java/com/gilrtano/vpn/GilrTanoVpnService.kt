@@ -31,20 +31,23 @@ class GilrTanoVpnService : VpnService() {
     @Volatile private var consecutiveProbeFailures = 0
     @Volatile private var lastAutomaticSwitchAt = 0L
     @Volatile private var usingFallback = false
+    @Volatile private var boxMode = false
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> stopTunnel()
-            ACTION_START, ACTION_SWITCH -> {
+            ACTION_START, ACTION_SWITCH, ACTION_START_PORTAL -> {
                 val config = intent.getStringExtra(EXTRA_CONFIG)
                 if (config.isNullOrBlank()) {
-                    broadcastStatus("Добавьте VLESS-ссылку")
+                    broadcastStatus("Добавьте профиль Quattro или PORTAL GATE")
                     stopSelf()
                 } else if (intent.action == ACTION_SWITCH) {
                     automaticMode = false
+                    boxMode = false
                     switchTunnel(config)
                 } else {
-                    automaticMode = intent.getBooleanExtra(EXTRA_AUTO, false)
+                    boxMode = intent.action == ACTION_START_PORTAL || intent.getBooleanExtra(EXTRA_ENGINE_BOX, false)
+                    automaticMode = if (boxMode) false else intent.getBooleanExtra(EXTRA_AUTO, false)
                     fallbackConfig = intent.getStringExtra(EXTRA_FALLBACK_CONFIG)
                     preferredConfig = intent.getStringExtra(EXTRA_PREFERRED_CONFIG)
                     usingFallback = false
@@ -63,19 +66,20 @@ class GilrTanoVpnService : VpnService() {
             synchronized(this) {
                 runCatching { Teapodcore.stopTun2Socks() }
                 runCatching { Teapodcore.stopXray() }
+                runCatching { Teapodcore.stopBox() }
                 runCatching { tun?.close() }
                 tun = null
             }
             stopping = false
             startTunnel(config)
-        }, "GilrTano-Xray-switch").start()
+        }, "GilrTano-VPN-switch").start()
     }
 
     private fun startTunnel(config: String) {
         stopping = false
         activeConfig = config
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, notification("Запуск Xray…"))
+        startForeground(NOTIFICATION_ID, notification(if (boxMode) "Запуск PORTAL GATE…" else "Запуск Quattro…"))
         // Native core initialization/start can block; never run it on Android's service main thread.
         Thread({
             try {
@@ -92,9 +96,9 @@ class GilrTanoVpnService : VpnService() {
                     }
                 }
                 if (stopping) return@Thread
-                Teapodcore.startXray(config, object : XrayCallback {
+                val callback = object : XrayCallback {
                     override fun onStatus(status: Long, message: String) {
-                        Log.i(TAG, "Xray status=$status $message")
+                        Log.i(TAG, "${if (boxMode) "PORTAL GATE" else "Quattro"} status=$status $message")
                         if (status == 0L && !stopping) establishTun()
                         else if (status < 0L && !stopping) {
                             if (automaticMode && !usingFallback && !fallbackConfig.isNullOrBlank()) {
@@ -103,14 +107,16 @@ class GilrTanoVpnService : VpnService() {
                                 broadcastStatus("Quattro недоступен. Запускаю бесплатный резерв…")
                                 switchTunnel(fallbackConfig!!)
                             } else {
-                                broadcastStatus("Ошибка Xray: $message")
+                                broadcastStatus("Ошибка ${if (boxMode) "PORTAL GATE" else "Quattro"}: $message")
                                 stopTunnel()
                             }
                         }
                     }
-                })
+                }
+                if (boxMode) Teapodcore.startBox(config, filesDir.absolutePath, callback)
+                else Teapodcore.startXray(config, callback)
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to start Xray", e)
+                Log.e(TAG, "Failed to start ${if (boxMode) "PORTAL GATE" else "Quattro"}", e)
                 if (!stopping) {
                     if (automaticMode && !usingFallback && !fallbackConfig.isNullOrBlank()) {
                         usingFallback = true
@@ -123,7 +129,7 @@ class GilrTanoVpnService : VpnService() {
                     }
                 }
             }
-        }, "GilrTano-Xray-start").start()
+        }, if (boxMode) "GilrTano-PORTAL-start" else "GilrTano-Xray-start").start()
     }
 
     @Synchronized private fun establishTun() {
@@ -134,8 +140,11 @@ class GilrTanoVpnService : VpnService() {
                 .setMtu(1280)
                 .addAddress("10.77.0.2", 32)
                 .addRoute("0.0.0.0", 0)
+                .addAddress("fd00:77::2", 128)
+                .addRoute("::", 0)
                 .addDnsServer("1.1.1.1")
                 .addDnsServer("8.8.8.8")
+                .addDnsServer("2606:4700:4700::1111")
                 .establish() ?: throw IllegalStateException("Android не создал VPN-интерфейс")
             tun = pfd
             // Force HTTP/3 apps to fall back to HTTPS/TCP because many public
@@ -171,14 +180,17 @@ class GilrTanoVpnService : VpnService() {
             if (!internetReady) {
                 throw IllegalStateException("Сервер ответил, но интернет через VPN не проходит")
             }
-            if (!verifyRequiredServices()) {
+            if (!boxMode && !verifyRequiredServices()) {
                 throw IllegalStateException("Не все обязательные сервисы доступны через VPN")
             }
 
             broadcastStatus(
-                if (automaticMode) {
-                    if (usingFallback) "Подключено · бесплатный резерв" else "Подключено · Quattro"
-                } else "Подключено · Xray и TUN работают"
+                when {
+                    boxMode -> "Подключено · PORTAL GATE / AmneziaWG"
+                    automaticMode && usingFallback -> "Подключено · резервный сервер"
+                    automaticMode -> "Подключено · Quattro"
+                    else -> "Подключено · Quattro / Xray"
+                }
             )
             updateNotification("Подключено · защищённый трафик")
             startConnectionMonitor()
@@ -341,19 +353,21 @@ class GilrTanoVpnService : VpnService() {
         stopping = true
         monitorRunning = false
         automaticMode = false
+        boxMode = false
         broadcastStatus("Отменяю подключение…")
         // Native shutdown may block; run it away from Android's main thread.
         Thread({
             synchronized(this) {
                 runCatching { Teapodcore.stopTun2Socks() }
                 runCatching { Teapodcore.stopXray() }
+                runCatching { Teapodcore.stopBox() }
                 runCatching { tun?.close() }
                 tun = null
             }
             if (Build.VERSION.SDK_INT >= 24) stopForeground(STOP_FOREGROUND_REMOVE) else @Suppress("DEPRECATION") stopForeground(true)
             broadcastStatus("Отключено")
             stopSelf()
-        }, "GilrTano-Xray-stop").start()
+        }, "GilrTano-VPN-stop").start()
     }
 
     private fun broadcastStatus(value: String) {
@@ -409,8 +423,10 @@ class GilrTanoVpnService : VpnService() {
         const val ACTION_START = "com.gilrtano.vpn.START"
         const val ACTION_SWITCH = "com.gilrtano.vpn.SWITCH"
         const val ACTION_STOP = "com.gilrtano.vpn.STOP"
+        const val ACTION_START_PORTAL = "com.gilrtano.vpn.START_PORTAL"
         const val ACTION_STATUS = "com.gilrtano.vpn.STATUS"
         const val EXTRA_CONFIG = "xray_config"
+        const val EXTRA_ENGINE_BOX = "engine_box"
         const val EXTRA_STATUS = "status"
         const val EXTRA_AUTO = "automatic_mode"
         const val EXTRA_FALLBACK_CONFIG = "fallback_config"

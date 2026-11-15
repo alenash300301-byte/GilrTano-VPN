@@ -1,0 +1,118 @@
+package com.gilrtano.vpn
+
+import org.json.JSONArray
+import org.json.JSONObject
+import java.io.BufferedReader
+import java.io.InputStream
+import java.io.InputStreamReader
+import java.util.Locale
+import java.util.zip.ZipInputStream
+
+/**
+ * Importer for PORTAL GATE AmneziaWG quick-config archives.
+ * Private keys are kept only in the imported profile/config and are never logged.
+ */
+data class PortalGateProfile(
+    val name: String,
+    val country: String,
+    val endpoint: String,
+    val config: String
+)
+
+object PortalGateImporter {
+    private val sectionPattern = Regex("^\\s*\\[([^]]+)]\\s*$")
+    private val pairPattern = Regex("^\\s*([A-Za-z0-9_]+)\\s*=\\s*(.*?)\\s*$")
+
+    fun parseZip(input: InputStream): List<PortalGateProfile> {
+        val result = mutableListOf<PortalGateProfile>()
+        ZipInputStream(input).use { zip ->
+            while (true) {
+                val entry = zip.nextEntry ?: break
+                if (!entry.isDirectory && entry.name.endsWith(".conf", ignoreCase = true)) {
+                    val text = BufferedReader(InputStreamReader(zip, Charsets.UTF_8)).readText()
+                    runCatching { parseConf(text, entry.name.substringAfterLast('/').substringBeforeLast('.')) }
+                        .onSuccess { result += it }
+                    zip.closeEntry()
+                }
+            }
+        }
+        require(result.isNotEmpty()) { "В архиве не найдены корректные .conf профили PORTAL GATE" }
+        return result.distinctBy { it.config }
+    }
+
+    fun parseConf(text: String, fileName: String): PortalGateProfile {
+        val sections = linkedMapOf<String, MutableMap<String, String>>()
+        var section = ""
+        text.removePrefix("\uFEFF").lineSequence().forEach { raw ->
+            val line = raw.substringBefore('#').substringBefore(';').trim()
+            if (line.isEmpty()) return@forEach
+            val header = sectionPattern.matchEntire(line)
+            if (header != null) {
+                section = header.groupValues[1].trim().lowercase(Locale.ROOT)
+                sections.getOrPut(section) { linkedMapOf() }
+            } else {
+                val pair = pairPattern.matchEntire(line)
+                if (pair != null && section.isNotEmpty()) {
+                    sections.getOrPut(section) { linkedMapOf() }[pair.groupValues[1].lowercase(Locale.ROOT)] = pair.groupValues[2].trim()
+                }
+            }
+        }
+        val iface = sections["interface"] ?: error("В $fileName отсутствует [Interface]")
+        val peer = sections["peer"] ?: error("В $fileName отсутствует [Peer]")
+        fun required(map: Map<String, String>, key: String): String =
+            map[key]?.takeIf { it.isNotBlank() } ?: error("В $fileName отсутствует $key")
+        val privateKey = required(iface, "privatekey")
+        val publicKey = required(peer, "publickey")
+        val endpoint = required(peer, "endpoint")
+        val host = endpoint.substringAfterLast('@').let {
+            if (it.startsWith("[")) it.substringAfter('[').substringBefore(']') else it.substringBeforeLast(':')
+        }
+        val port = endpoint.substringAfterLast(':').substringBefore(']').toIntOrNull()
+            ?: error("Некорректный Endpoint в $fileName")
+        require(host.isNotBlank() && port in 1..65535) { "Некорректный Endpoint в $fileName" }
+        val addresses = required(iface, "address").split(',').map { it.trim() }.filter { it.isNotEmpty() }
+        require(addresses.isNotEmpty()) { "В $fileName отсутствует Address" }
+        val allowed = (peer["allowedips"] ?: "0.0.0.0/0, ::/0")
+            .split(',').map { it.trim() }.filter { it.isNotEmpty() }
+        val amnezia = JSONObject()
+        val intKeys = setOf("jc", "jmin", "jmax", "s1", "s2", "s3", "s4")
+        val stringKeys = setOf("h1", "h2", "h3", "h4", "i1", "i2", "i3", "i4", "i5",
+            "header_protection_key", "content_padding_addition", "rekey_after_time", "rekey_timeout",
+            "reject_after_time", "keepalive_timeout", "max_handshake_attempts")
+        val boolKeys = setOf("random_trailers", "disable_cookies")
+        (iface + peer).forEach { (key, value) ->
+            when {
+                key in intKeys -> value.toIntOrNull()?.let { amnezia.put(key, it) }
+                key in stringKeys && value.isNotBlank() -> amnezia.put(key, value)
+                key in boolKeys -> amnezia.put(key, value.equals("true", true))
+            }
+        }
+        val peerJson = JSONObject()
+            .put("address", host)
+            .put("port", port)
+            .put("public_key", publicKey)
+            .put("allowed_ips", JSONArray(allowed))
+        peer["presharedkey"]?.takeIf { it.isNotBlank() }?.let { peerJson.put("pre_shared_key", it) }
+        peer["persistentkeepalive"]?.toIntOrNull()?.let { peerJson.put("persistent_keepalive_interval", it) }
+        val endpointJson = JSONObject()
+            .put("type", "awg")
+            .put("tag", "proxy")
+            .put("system", false)
+            .put("private_key", privateKey)
+            .put("address", JSONArray(addresses))
+            .put("peers", JSONArray().put(peerJson))
+            .put("amnezia", amnezia)
+        iface["mtu"]?.toIntOrNull()?.let { endpointJson.put("mtu", it) }
+        val config = JSONObject()
+            .put("log", JSONObject().put("level", "warn"))
+            .put("inbounds", JSONArray().put(JSONObject()
+                .put("type", "socks").put("tag", "socks-in")
+                .put("listen", "127.0.0.1").put("listen_port", 10808)))
+            .put("endpoints", JSONArray().put(endpointJson))
+            .put("route", JSONObject().put("final", "proxy").put("auto_detect_interface", true))
+            .toString()
+        val countryCode = fileName.substringAfter("PORTAL-", "").substringBefore('_').uppercase(Locale.ROOT)
+        val country = mapOf("CA" to "Канада", "US" to "США", "NL" to "Нидерланды", "JP" to "Япония", "SG" to "Сингапур", "MX" to "Мексика", "RO" to "Румыния", "CH" to "Швейцария", "NO" to "Норвегия", "PL" to "Польша")[countryCode] ?: "PORTAL GATE"
+        return PortalGateProfile(fileName, country, "$host:$port", config)
+    }
+}

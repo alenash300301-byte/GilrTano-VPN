@@ -3,6 +3,8 @@ name: Build GilrTano VPN APK
 on:
   workflow_dispatch:
   push:
+    branches: [main, 'feature/portal-gate-awg-integration']
+  pull_request:
     branches: [main]
 
 permissions:
