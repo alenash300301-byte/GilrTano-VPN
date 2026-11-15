@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.IntentFilter
 import android.os.Build
 import android.net.VpnService
+import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import android.widget.ArrayAdapter
@@ -77,6 +78,7 @@ class PortalGateActivity : Activity() {
             setOnClickListener { finish() }
         })
         setContentView(root)
+        restoreArchive()
         refreshProfiles()
     }
 
@@ -99,6 +101,16 @@ class PortalGateActivity : Activity() {
         super.onPause()
     }
 
+
+    private fun restoreArchive() {
+        val saved = getSharedPreferences("portal_gate", MODE_PRIVATE).getString("archive_uri", null) ?: return
+        runCatching {
+            contentResolver.openInputStream(Uri.parse(saved))?.use { PortalGateImporter.parseZip(it) }
+                ?: error("Архив PORTAL GATE недоступен")
+        }.onSuccess { PortalGateSession.profiles = it }
+            .onFailure { status.text = "Повторно выбери архив PORTAL GATE: ${it.message}" }
+    }
+
     private fun refreshProfiles() {
         val profiles = PortalGateSession.profiles
         picker.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item,
@@ -115,6 +127,8 @@ class PortalGateActivity : Activity() {
                 contentResolver.openInputStream(uri)?.use { PortalGateImporter.parseZip(it) }
                     ?: error("Не удалось открыть архив")
             }.onSuccess {
+                runCatching { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+                getSharedPreferences("portal_gate", MODE_PRIVATE).edit().putString("archive_uri", uri.toString()).apply()
                 PortalGateSession.profiles = it
                 refreshProfiles()
                 Toast.makeText(this, "Импортировано серверов: ${it.size}", Toast.LENGTH_LONG).show()
