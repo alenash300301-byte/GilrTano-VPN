@@ -74,7 +74,6 @@ jobs:
 
       - name: Build legacy teapod-core AAR
         run: |
-          (cd upstream/teapod-core && go mod download)
           go install golang.org/x/mobile/cmd/gomobile@latest
           "${HOME}/go/bin/gomobile" init
           bash upstream/teapod-core/build.sh build
