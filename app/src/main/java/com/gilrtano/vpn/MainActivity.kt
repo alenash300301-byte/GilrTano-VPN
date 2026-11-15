@@ -480,11 +480,6 @@ class MainActivity : Activity() {
                 addView(importDocx)
                 addView(freeSource, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
                 addView(importFree)
-                addView(TextView(this@MainActivity).apply {
-                    text = "Бесплатные серверы предоставляются сторонними операторами."
-                    textSize = 10f; setTextColor(Color.GRAY); gravity = android.view.Gravity.CENTER
-                    setPadding(0, dp(12), 0, dp(8))
-                })
             })
         }
         // Respect Android system bars so the brand header and bottom navigation
