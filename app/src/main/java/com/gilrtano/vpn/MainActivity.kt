@@ -188,11 +188,16 @@ class MainActivity : Activity() {
         }
         freeTab = Button(this).apply {
             text = "PORTAL GATE"
-            setOnClickListener { startActivity(Intent(this@MainActivity, PortalGateActivity::class.java)) }
+            setOnClickListener {
+                autoMode = false
+                activeMode = "portal"
+                prefs.edit().putString("connection_mode", activeMode).apply()
+                refreshMode()
+            }
         }
         autoTab = Button(this).apply {
-            text = "АВТО QUATTRO"
-            setOnClickListener { switchMode(false) }
+            text = "АВТО"
+            setOnClickListener { switchToAuto() }
         }
 
         portalGateButton = Button(this).apply {
@@ -282,11 +287,7 @@ class MainActivity : Activity() {
                     addView(TextView(this@MainActivity).apply {
                         text = "☰"; textSize = 27f; setTextColor(Color.WHITE)
                         setPadding(dp(4), 0, dp(10), 0)
-                        setOnClickListener {
-                            settingsExpanded = !settingsExpanded
-                            settingsHeader.visibility = if (settingsExpanded) View.VISIBLE else View.GONE
-                            findImportButtonsVisibility()
-                        }
+                        setOnClickListener { openSettingsScreen() }
                     })
                     addView(LinearLayout(this@MainActivity).apply {
                         orientation = LinearLayout.HORIZONTAL
@@ -378,7 +379,8 @@ class MainActivity : Activity() {
                 modeSelectorRow = LinearLayout(this@MainActivity).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = android.view.Gravity.CENTER
-                    addView(quattroTab, LinearLayout.LayoutParams(0, dp(44), 1f).apply { rightMargin = dp(6) })
+                    addView(autoTab, LinearLayout.LayoutParams(0, dp(44), 1f).apply { rightMargin = dp(4) })
+                    addView(quattroTab, LinearLayout.LayoutParams(0, dp(44), 1f).apply { leftMargin = dp(4); rightMargin = dp(4) })
                     addView(freeTab, LinearLayout.LayoutParams(0, dp(44), 1f).apply { leftMargin = dp(4) })
                 }
                 settingsHeader = TextView(this@MainActivity).apply {
@@ -503,8 +505,9 @@ class MainActivity : Activity() {
                 false
             }
         }
-        activeMode = prefs.getString("connection_mode", "quattro") ?: "quattro"
-        autoMode = false
+        activeMode = prefs.getString("connection_mode", "portal") ?: "portal"
+        if (activeMode !in setOf("auto", "quattro", "portal")) activeMode = "portal"
+        autoMode = activeMode == "auto"
         activeFree = false
         refreshMode()
         updatePowerOrb(false)
@@ -734,24 +737,24 @@ class MainActivity : Activity() {
     }
 
     private fun refreshMode() {
-        autoTab.isEnabled = !autoMode
-        quattroTab.isEnabled = autoMode || activeFree
-        freeTab.isEnabled = autoMode || !activeFree
-        autoTab.alpha = if (autoMode) 1f else 0.72f
-        quattroTab.alpha = if (!autoMode && !activeFree) 1f else 0.72f
-        freeTab.alpha = if (!autoMode && activeFree) 1f else 0.72f
+        autoTab.isEnabled = activeMode != "auto"
+        quattroTab.isEnabled = activeMode != "quattro"
+        freeTab.isEnabled = activeMode != "portal"
+        autoTab.alpha = if (activeMode == "auto") 1f else 0.72f
+        quattroTab.alpha = if (activeMode == "quattro") 1f else 0.72f
+        freeTab.alpha = if (activeMode == "portal") 1f else 0.72f
         fun modeBackground(selected: Boolean) = GradientDrawable().apply {
             setColor(if (selected) Color.rgb(39, 70, 130) else Color.rgb(32, 34, 42))
             cornerRadius = dp(14).toFloat()
             setStroke(dp(if (selected) 2 else 1),
                 if (selected) Color.rgb(95, 150, 255) else Color.rgb(75, 82, 105))
         }
-        quattroTab.background = modeBackground(!autoMode && !activeFree)
-        freeTab.background = modeBackground(!autoMode && activeFree)
-        autoTab.background = modeBackground(autoMode)
-        quattroTab.setTextColor(if (!autoMode && !activeFree) Color.WHITE else Color.LTGRAY)
-        freeTab.setTextColor(if (!autoMode && activeFree) Color.WHITE else Color.LTGRAY)
-        autoTab.setTextColor(if (autoMode) Color.WHITE else Color.LTGRAY)
+        quattroTab.background = modeBackground(activeMode == "quattro")
+        freeTab.background = modeBackground(activeMode == "portal")
+        autoTab.background = modeBackground(activeMode == "auto")
+        quattroTab.setTextColor(if (activeMode == "quattro") Color.WHITE else Color.LTGRAY)
+        freeTab.setTextColor(if (activeMode == "portal") Color.WHITE else Color.LTGRAY)
+        autoTab.setTextColor(if (activeMode == "auto") Color.WHITE else Color.LTGRAY)
         primarySource.visibility = if (activeFree) ViewGroup.GONE else ViewGroup.VISIBLE
         freeSource.visibility = if (activeFree) ViewGroup.VISIBLE else ViewGroup.GONE
         findImportButtonsVisibility()
