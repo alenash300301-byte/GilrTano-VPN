@@ -662,6 +662,18 @@ class MainActivity : Activity() {
 
     private fun updateServerCard(connected: Boolean) {
         if (!::serverCardTitle.isInitialized) return
+        if (activeMode == "portal") {
+            if (connected) {
+                val selected = status.text.toString().substringAfter("Подключено · ", "PORTAL")
+                serverCardTitle.text = selected
+                serverCardSubtitle.text = "PORTAL · MASQUE"
+            } else {
+                serverCardTitle.text = "PORTAL MASQUE"
+                serverCardSubtitle.text = "Выбор сервера PORTAL"
+            }
+            serverCardPing.text = ""
+            return
+        }
         val node = activeNodes.getOrNull(servers.selectedItemPosition)
         if (connected && node != null) {
             serverCardTitle.text = node.name
