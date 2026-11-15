@@ -79,10 +79,10 @@ object PortalGateImporter {
             val lines = mutableListOf("[Interface]", "PrivateKey = $privateKey", "Address = $address")
             (merged["dns"] as? List<*>)?.mapNotNull { it?.toString()?.trim() }
                 ?.filter(String::isNotEmpty)?.takeIf { it.isNotEmpty() }
-                ?.let { lines += "DNS = \${it.joinToString(", ")}" }
+                ?.let { dns -> lines += "DNS = " + dns.joinToString(", ") }
             field("mtu")?.let { lines += "MTU = $it" }
             (merged["amnezia-wg-option"] as? Map<*, *>)?.forEach { (key, value) ->
-                if (key != null && value != null) lines += "\${key.toString().replace('-', '_')} = $value"
+                if (key != null && value != null) lines += "${key.toString().replace('-', '_')} = $value"
             }
             lines += "[Peer]"
             lines += "PublicKey = $publicKey"
