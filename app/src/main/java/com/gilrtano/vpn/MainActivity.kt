@@ -417,40 +417,71 @@ class MainActivity : Activity() {
                 // duplicate pill from the visual layout to match the approved reference.
                 connectButton.visibility = View.GONE
                 addView(connectButton, LinearLayout.LayoutParams(1, 1))
-                // Single full-width live ping metric.
-                val pingCard = LinearLayout(this@MainActivity).apply {
-                    orientation = LinearLayout.VERTICAL
+                // Minimal region selector: a single text row, no card or extra panel.
+                val regionLabels = arrayOf("Азия", "Европа", "США")
+                val regionKey = "selected_region"
+                val regionText = TextView(this@MainActivity).apply {
+                    text = "◎  ${prefs.getString(regionKey, "Европа")}  ⌄"
+                    textSize = 19f
+                    setTextColor(Color.WHITE)
                     gravity = android.view.Gravity.CENTER
-                    setPadding(dp(20), dp(12), dp(20), dp(12))
-                    background = GradientDrawable().apply {
-                        setColor(Color.rgb(12, 12, 15))
-                        cornerRadius = dp(20).toFloat()
-                        setStroke(dp(1), Color.rgb(48, 48, 52))
+                    setPadding(dp(12), dp(10), dp(12), dp(10))
+                    setOnClickListener {
+                        val current = prefs.getString(regionKey, "Европа") ?: "Европа"
+                        AlertDialog.Builder(this@MainActivity)
+                            .setItems(regionLabels) { _, which ->
+                                val selected = regionLabels[which]
+                                prefs.edit().putString(regionKey, selected).apply()
+                                text = "◎  $selected  ⌄"
+                            }
+                            .setNegativeButton("Отмена", null)
+                            .show()
                     }
+                }
+                addView(regionText, LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(46)
+                ).apply { topMargin = dp(4); bottomMargin = dp(2) })
+
+                // One understated inline ping row; no bordered card.
+                val pingRow = LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = android.view.Gravity.CENTER
                     addView(TextView(this@MainActivity).apply {
-                        text = "Пинг"
-                        textSize = 16f
+                        text = "Пинг  "
+                        textSize = 15f
                         setTextColor(Color.LTGRAY)
-                        gravity = android.view.Gravity.CENTER
                     })
                     addView(TextView(this@MainActivity).apply {
                         text = "— мс"
-                        textSize = 26f
+                        textSize = 16f
                         typeface = android.graphics.Typeface.DEFAULT_BOLD
-                        setTextColor(Color.rgb(30, 238, 65))
-                        gravity = android.view.Gravity.CENTER
-                        setPadding(0, dp(5), 0, 0)
+                        setTextColor(Color.LTGRAY)
                         pingMetric = this
                     })
+                    addView(TextView(this@MainActivity).apply {
+                        text = "   │   "
+                        textSize = 15f
+                        setTextColor(Color.DKGRAY)
+                    })
+                    checkPing.apply {
+                        text = "◴  Проверить"
+                        textSize = 14f
+                        isAllCaps = false
+                        minHeight = 0
+                        minimumHeight = 0
+                        minWidth = 0
+                        elevation = 0f
+                        setPadding(dp(4), 0, dp(4), 0)
+                        setTextColor(Color.rgb(30, 238, 65))
+                        background = android.graphics.drawable.ColorDrawable(Color.TRANSPARENT)
+                    }
+                    addView(checkPing, LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT, dp(38)
+                    ))
                 }
-                addView(pingCard, LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, dp(94)
-                ).apply {
-                    leftMargin = dp(8)
-                    rightMargin = dp(8)
-                    topMargin = dp(12)
-                    bottomMargin = dp(12)
-                })
+                addView(pingRow, LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(48)
+                ).apply { topMargin = dp(2); bottomMargin = dp(8) })
                 addView(servers, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)))
                 servers.visibility = View.GONE
                 addView(pingStatus.apply { gravity = android.view.Gravity.CENTER_VERTICAL }, LinearLayout.LayoutParams.MATCH_PARENT, dp(1))
