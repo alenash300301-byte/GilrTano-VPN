@@ -256,8 +256,11 @@ class MainActivity : Activity() {
                     } catch (e: Exception) {
                         runOnUiThread {
                             connectButton.isEnabled = true
-                            status.text = "Не удалось получить WARP: ${e.message ?: "ошибка генератора"}"
+                            // Never expose backend errors such as HTTP 502 in the user interface.
+                            status.text = "●  Отключено"
+                            status.setTextColor(Color.LTGRAY)
                             resetConnectButtonGlow()
+                            Toast.makeText(this@MainActivity, "Сервис подключения временно недоступен. Попробуйте позже.", Toast.LENGTH_LONG).show()
                         }
                     }
                 }.start()
@@ -389,88 +392,7 @@ class MainActivity : Activity() {
                 // duplicate pill from the visual layout to match the approved reference.
                 connectButton.visibility = View.GONE
                 addView(connectButton, LinearLayout.LayoutParams(1, 1))
-                addView(LinearLayout(this@MainActivity).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = android.view.Gravity.CENTER_VERTICAL
-                    background = GradientDrawable().apply {
-                        setColor(Color.rgb(31, 33, 39)); cornerRadius = dp(28).toFloat()
-                        setStroke(dp(1), Color.rgb(65, 70, 88))
-                    }
-                    setPadding(dp(16), dp(10), dp(14), dp(10))
-                    setOnClickListener { showServerPicker() }
-                    addView(TextView(this@MainActivity).apply {
-                        text = "🌐"; textSize = 25f; setTextColor(Color.WHITE)
-                        setPadding(0, 0, dp(14), 0)
-                    })
-                    addView(LinearLayout(this@MainActivity).apply {
-                        orientation = LinearLayout.VERTICAL
-                        serverCardTitle = TextView(this@MainActivity).apply {
-                            text = "Автоматический сервер"; textSize = 16f
-                            setTextColor(Color.WHITE)
-                        }
-                        serverCardSubtitle = TextView(this@MainActivity).apply {
-                            text = "Автовыбор"; textSize = 12f
-                            setTextColor(Color.LTGRAY)
-                        }
-                        addView(serverCardTitle)
-                        addView(serverCardSubtitle)
-                    }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-                    addView(LinearLayout(this@MainActivity).apply {
-                        orientation = LinearLayout.HORIZONTAL
-                        gravity = android.view.Gravity.CENTER_VERTICAL
-                        serverCardPing = TextView(this@MainActivity).apply {
-                            text = ""; textSize = 13f; setTextColor(Color.rgb(0, 230, 55))
-                        }
-                        addView(serverCardPing)
-                        addView(TextView(this@MainActivity).apply {
-                            text = "  ›"; textSize = 27f; setTextColor(Color.WHITE)
-                        })
-                    })
-                }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(70)).apply {
-                    topMargin = dp(8); bottomMargin = dp(14)
-                })
-                // Three compact live-metric cards and the neon traffic trace from the approved reference.
-                addView(LinearLayout(this@MainActivity).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = android.view.Gravity.CENTER
-                    fun metric(title: String, value: String, unit: String = ""): LinearLayout {
-                        return LinearLayout(this@MainActivity).apply {
-                            orientation = LinearLayout.VERTICAL
-                            gravity = android.view.Gravity.CENTER
-                            background = GradientDrawable().apply {
-                                setColor(Color.rgb(34, 36, 43))
-                                cornerRadius = dp(16).toFloat()
-                                setStroke(dp(1), Color.rgb(65, 70, 88))
-                            }
-                            addView(TextView(this@MainActivity).apply {
-                                text = title; textSize = 11f
-                                setTextColor(Color.LTGRAY)
-                            })
-                            addView(TextView(this@MainActivity).apply {
-                                text = value + unit; textSize = 14f
-                                typeface = android.graphics.Typeface.DEFAULT_BOLD
-                                setTextColor(Color.rgb(30, 238, 65))
-                                setPadding(0, dp(3), 0, 0)
-                                if (title == "Пинг") pingMetric = this
-                                if (title == "Входящий") downloadMetric = this
-                                if (title == "Исходящий") uploadMetric = this
-                            })
-                        }
-                    }
-                    addView(metric("Пинг", "—", " мс"), LinearLayout.LayoutParams(0, dp(62), 1f).apply { rightMargin = dp(6) })
-                    addView(metric("Входящий", "—", " Мбит/с"), LinearLayout.LayoutParams(0, dp(62), 1f).apply { leftMargin = dp(3); rightMargin = dp(3) })
-                    addView(metric("Исходящий", "—", " Мбит/с"), LinearLayout.LayoutParams(0, dp(62), 1f).apply { leftMargin = dp(6) })
-                }, LinearLayout.LayoutParams.MATCH_PARENT, dp(62))
-                addView(TextView(this@MainActivity).apply {
-                    text = "Скорость сети"
-                    textSize = 10f
-                    setTextColor(Color.GRAY)
-                    gravity = android.view.Gravity.CENTER
-                    setPadding(0, dp(3), 0, 0)
-                }, LinearLayout.LayoutParams.MATCH_PARENT, dp(20))
-                addView(TrafficWaveView(this@MainActivity), LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, dp(58)
-                ).apply { topMargin = dp(8); bottomMargin = dp(8) })
+                // Server details and traffic diagnostics are intentionally hidden from Home.
                 addView(servers, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)))
                 servers.visibility = View.GONE
                 addView(pingStatus.apply { gravity = android.view.Gravity.CENTER_VERTICAL }, LinearLayout.LayoutParams.MATCH_PARENT, dp(1))
