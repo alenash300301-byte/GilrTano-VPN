@@ -107,8 +107,7 @@ class PortalMasqueVpnService : VpnService() {
                     .notify(NOTIFICATION_ID, notification("Подключено · $name"))
             } catch (e: Exception) {
                 Log.e(TAG, "PORTAL startup failed", e)
-                sendStatus("Ошибка PORTAL: ${e.message ?: "неизвестная ошибка"}")
-                stopPortal()
+                stopPortal("Ошибка PORTAL: ${e.message ?: "неизвестная ошибка"}")
             }
         }, "GilrTano-Portal-start").start()
     }
@@ -136,7 +135,7 @@ class PortalMasqueVpnService : VpnService() {
         }
     }
 
-    private fun stopPortal() {
+    private fun stopPortal(finalStatus: String = "Отключено") {
         stopping = true
         Thread({
             runCatching {
@@ -149,7 +148,7 @@ class PortalMasqueVpnService : VpnService() {
             started = false
             if (Build.VERSION.SDK_INT >= 24) stopForeground(STOP_FOREGROUND_REMOVE)
             else @Suppress("DEPRECATION") stopForeground(true)
-            sendStatus("Отключено")
+            sendStatus(finalStatus)
             stopSelf()
         }, "GilrTano-Portal-stop").start()
     }
