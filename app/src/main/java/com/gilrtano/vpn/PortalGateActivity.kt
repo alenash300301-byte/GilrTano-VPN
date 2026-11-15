@@ -176,11 +176,13 @@ class PortalGateActivity : Activity() {
     }
 
     private fun startPortal(config: String) {
+        val isMasque = config.contains("\\"protocol\\":\\"masque\\"")
+        val action = if (isMasque) GilrTanoVpnService.ACTION_START else GilrTanoVpnService.ACTION_START_PORTAL
         startForegroundService(Intent(this, GilrTanoVpnService::class.java)
-            .setAction(GilrTanoVpnService.ACTION_START_PORTAL)
+            .setAction(action)
             .putExtra(GilrTanoVpnService.EXTRA_CONFIG, config))
-        status.text = if (action == GilrTanoVpnService.ACTION_START) "Запускаю PORTAL MASQUE…" else "Запускаю PORTAL GATE…"
-        Toast.makeText(this, "Запуск PORTAL GATE", Toast.LENGTH_SHORT).show()
+        status.text = if (isMasque) "Запускаю PORTAL MASQUE…" else "Запускаю PORTAL GATE…"
+        Toast.makeText(this, if (isMasque) "Запуск PORTAL MASQUE" else "Запуск PORTAL GATE", Toast.LENGTH_SHORT).show()
     }
 
     companion object { private const val IMPORT_REQUEST = 7313 }
