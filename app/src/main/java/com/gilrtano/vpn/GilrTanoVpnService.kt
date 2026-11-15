@@ -125,7 +125,7 @@ class GilrTanoVpnService : VpnService() {
                             if (automaticMode && !usingFallback && !fallbackConfig.isNullOrBlank()) {
                                 usingFallback = true
                                 lastAutomaticSwitchAt = System.currentTimeMillis()
-                                broadcastStatus("Quattro недоступен. Запускаю бесплатный резерв…")
+                                broadcastStatus("Основной протокол недоступен. Запускаю резервный сервер…")
                                 switchTunnel(fallbackConfig!!, fallbackBoxMode, false)
                             } else {
                                 broadcastStatus("Ошибка ${if (boxMode) "PORTAL GATE" else "Quattro"}: $message")
@@ -142,7 +142,7 @@ class GilrTanoVpnService : VpnService() {
                     if (automaticMode && !usingFallback && !fallbackConfig.isNullOrBlank()) {
                         usingFallback = true
                         lastAutomaticSwitchAt = System.currentTimeMillis()
-                        broadcastStatus("Не удалось запустить Quattro. Пробую бесплатный резерв…")
+                        broadcastStatus("Не удалось запустить основной протокол. Пробую резервный сервер…")
                         switchTunnel(fallbackConfig!!, fallbackBoxMode)
                     } else {
                         broadcastStatus("Ошибка запуска: ${e.message}")
@@ -222,7 +222,7 @@ class GilrTanoVpnService : VpnService() {
             if (automaticMode && !usingFallback && !fallbackConfig.isNullOrBlank() && !stopping) {
                 usingFallback = true
                 lastAutomaticSwitchAt = System.currentTimeMillis()
-                broadcastStatus("У выбранного сервера нет интернета. Пробую бесплатный резерв…")
+                broadcastStatus("У основного сервера нет интернета. Пробую резервный сервер…")
                 switchTunnel(fallbackConfig!!, fallbackBoxMode)
             } else {
                 broadcastStatus("Не удалось подключиться: ${e.message}")
@@ -255,7 +255,7 @@ class GilrTanoVpnService : VpnService() {
                             usingFallback = true
                             lastAutomaticSwitchAt = System.currentTimeMillis()
                             consecutiveProbeFailures = 0
-                            broadcastStatus("Связь ухудшилась. Переключаю на бесплатный резерв…")
+                            broadcastStatus("Связь ухудшилась. Переключаю на резервный сервер…")
                             switchTunnel(target, fallbackBoxMode, false)
                         } else if (usingFallback && !preferredConfig.isNullOrBlank() &&
                             System.currentTimeMillis() - lastAutomaticSwitchAt >= RECOVERY_INTERVAL_MS) {
