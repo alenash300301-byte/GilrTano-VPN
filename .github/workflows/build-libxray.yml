@@ -1,4 +1,4 @@
-name: Build libXray Android AAR
+name: Build libXray and GilrTano APK
 
 on:
   workflow_dispatch:
@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 jobs:
-  build-libxray:
+  build-portal-and-apk:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 75
     steps:
       - name: Checkout GilrTano VPN
         uses: actions/checkout@v4
@@ -50,11 +50,16 @@ jobs:
           ndk-version: r29
           add-to-path: true
 
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+
       - name: Download Go modules
         working-directory: .build/libXray
         run: go mod download
 
-      - name: Build Android AAR
+      - name: Build Android libXray AAR
         working-directory: .build/libXray
         env:
           LIBXRAY_ANDROID_API: "29"
@@ -62,6 +67,23 @@ jobs:
           python3 build/main.py android
           test -s libXray.aar
           test -s libXray-sources.jar
+
+      - name: Integrate AAR into Android app
+        run: |
+          mkdir -p app/libs
+          cp .build/libXray/libXray.aar app/libs/libXray.aar
+          test -s app/libs/libXray.aar
+
+      - name: Build GilrTano debug APK
+        run: gradle --no-daemon :app:assembleDebug
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: GilrTano-PORTAL-debug
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Upload libXray AAR
         uses: actions/upload-artifact@v4
