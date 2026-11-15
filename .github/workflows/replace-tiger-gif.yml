@@ -1,0 +1,74 @@
+name: Replace tiger GIF and build APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      gif_url:
+        description: "Public direct HTTPS URL to the replacement GIF"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: replace-tiger-gif-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  replace-gif:
+    if: github.ref == 'refs/heads/feature/portal-masque-libxray'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout target branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/portal-masque-libxray
+          fetch-depth: 0
+
+      - name: Download and validate GIF
+        env:
+          GIF_URL: ${{ inputs.gif_url }}
+        run: |
+          python3 - <<'PY'
+          import os
+          from urllib.parse import urlparse
+          u = urlparse(os.environ["GIF_URL"])
+          if u.scheme != "https" or not u.hostname:
+              raise SystemExit("A public HTTPS URL is required")
+          if u.username or u.password:
+              raise SystemExit("Credentials in the URL are not allowed")
+          PY
+          curl --fail --location --silent --show-error \
+            --max-time 90 --max-filesize 30000000 \
+            "$GIF_URL" -o /tmp/tiger.gif
+          test -s /tmp/tiger.gif
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("/tmp/tiger.gif")
+          b = p.read_bytes()
+          if not (b.startswith(b"GIF87a") or b.startswith(b"GIF89a")):
+              raise SystemExit("Downloaded file is not a GIF")
+          if len(b) > 30_000_000:
+              raise SystemExit("GIF exceeds 30 MB")
+          print(f"Validated GIF: {len(b)} bytes")
+          PY
+
+      - name: Replace app animation
+        run: |
+          install -D /tmp/tiger.gif app/src/main/res/drawable-nodpi/gilrtano_fire.gif
+          test -s app/src/main/res/drawable-nodpi/gilrtano_fire.gif
+          file app/src/main/res/drawable-nodpi/gilrtano_fire.gif
+
+      - name: Commit replacement to feature branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/res/drawable-nodpi/gilrtano_fire.gif
+          if git diff --cached --quiet; then
+            echo "GIF is already identical; no commit needed."
+            exit 0
+          fi
+          git commit -m "Replace tiger flame animation"
+          git push origin HEAD:feature/portal-masque-libxray
