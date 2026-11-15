@@ -872,9 +872,9 @@ class MainActivity : Activity() {
         portalTab.isEnabled = !portalSelected
         portalTab.alpha = if (portalSelected) 1f else 0.72f
         autoTab.isEnabled = !autoMode && !portalSelected
-        quattroTab.isEnabled = autoMode || activeFree
-        freeTab.isEnabled = autoMode || !activeFree
-        autoTab.alpha = if (autoMode) 1f else 0.72f
+        quattroTab.isEnabled = !portalSelected && (autoMode || activeFree)
+        freeTab.isEnabled = !portalSelected && (autoMode || !activeFree)
+        autoTab.alpha = if (autoMode && !portalSelected) 1f else 0.72f
         quattroTab.alpha = if (!autoMode && !activeFree) 1f else 0.72f
         freeTab.alpha = if (!autoMode && activeFree) 1f else 0.72f
         fun modeBackground(selected: Boolean) = GradientDrawable().apply {
@@ -1251,6 +1251,48 @@ class MainActivity : Activity() {
         }.start()
     }
 
+    private fun startPortalVpn() {
+        pendingPortalStart = false
+        val credentials = runCatching { PortalCredentialStore.load(this) }.getOrNull()
+        if (credentials == null) { showPortalCredentialsDialog(); return }
+        startForegroundService(Intent(this, PortalMasqueVpnService::class.java)
+            .setAction(PortalMasqueVpnService.ACTION_START)
+            .putExtra(PortalMasqueVpnService.EXTRA_ENDPOINT, 0))
+        status.text = "Запускаю PORTAL MASQUE…"
+    }
+
+    private fun showPortalCredentialsDialog() {
+        val fields = listOf(
+            EditText(this).apply { hint = "WARP private key (PEM/Base64)"; minLines = 2; maxLines = 4; inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE },
+            EditText(this).apply { hint = "WARP public key"; minLines = 2; maxLines = 3; inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE },
+            EditText(this).apply { hint = "WARP IPv4 (например 172.16.0.2)" },
+            EditText(this).apply { hint = "WARP IPv6" }
+        )
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(8), dp(20), dp(4))
+            fields.forEach { addView(it, LinearLayout.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT) }
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Первичная настройка PORTAL")
+            .setMessage("Введи параметры WARP один раз. Ключ будет сохранён зашифрованным в Android Keystore; в GitHub он не попадёт.")
+            .setView(panel)
+            .setNegativeButton("Отмена", null)
+            .setPositiveButton("Сохранить") { _, _ ->
+                try {
+                    PortalCredentialStore.save(this, PortalWarpCredentials(
+                        fields[0].text.toString().trim(), fields[1].text.toString().trim(),
+                        fields[2].text.toString().trim(), fields[3].text.toString().trim()))
+                    Toast.makeText(this, "Параметры PORTAL сохранены на устройстве", Toast.LENGTH_SHORT).show()
+                    pendingPortalStart = true
+                    val permission = VpnService.prepare(this)
+                    if (permission != null) startActivityForResult(permission, requestCode) else startPortalVpn()
+                } catch (e: Exception) {
+                    Toast.makeText(this, "Не удалось сохранить PORTAL: " + e.message, Toast.LENGTH_LONG).show()
+                }
+            }
+            .show()
+    }
     private fun startVpn(
         config: String,
         fallbackConfig: String? = null,
@@ -1282,6 +1324,9 @@ class MainActivity : Activity() {
                 pendingPreferredConfig = null
                 pendingAutomatic = false
             } ?: run { status.text = "Подключение отменено" }
+        } else if (requestCode == this.requestCode && pendingPortalStart) {
+            pendingPortalStart = false
+            status.text = "Разрешение VPN для PORTAL не предоставлено"
         } else if (requestCode == this.requestCode) {
             pendingConfig = null
             connectButton.isEnabled = true
@@ -1315,7 +1360,7 @@ class MainActivity : Activity() {
 
     override fun onStart() {
         super.onStart()
-        val filter = IntentFilter(GilrTanoVpnService.ACTION_STATUS)
+        val filter = IntentFilter(GilrTanoVpnService.ACTION_STATUS).apply { addAction(PortalMasqueVpnService.ACTION_STATUS) }
         if (android.os.Build.VERSION.SDK_INT >= 33) registerReceiver(receiver, filter, RECEIVER_NOT_EXPORTED)
         else @Suppress("DEPRECATION") registerReceiver(receiver, filter)
     }
