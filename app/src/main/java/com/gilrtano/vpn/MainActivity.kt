@@ -333,15 +333,7 @@ class MainActivity : Activity() {
                     }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
                     addView(TextView(this@MainActivity).apply {
                         text = "⚙"; textSize = 25f; setTextColor(Color.WHITE)
-                        setOnClickListener {
-                            settingsExpanded = !settingsExpanded
-                            findImportButtonsVisibility()
-                            root.post {
-                                (root.parent as? android.widget.ScrollView)?.smoothScrollTo(
-                                    0, if (settingsExpanded) root.height else 0
-                                )
-                            }
-                        }
+                        setOnClickListener { showSettingsScreen() }
                     })
                 })
                 // The uploaded GIF is the complete hero composition: tiger, realistic fire and orb.
@@ -892,6 +884,124 @@ class MainActivity : Activity() {
             status.text = "●  Отключено"
             status.setTextColor(Color.LTGRAY)
         }
+    }
+
+    private fun showSettingsScreen() {
+        val dialog = android.app.Dialog(this)
+        val page = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(22), dp(18), dp(22), dp(18))
+            setBackgroundColor(Color.rgb(5, 5, 7))
+        }
+        val scroll = android.widget.ScrollView(this).apply {
+            isFillViewport = true
+            addView(page)
+        }
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            addView(TextView(this@MainActivity).apply {
+                text = "‹"
+                textSize = 36f
+                setTextColor(Color.WHITE)
+                setPadding(0, 0, dp(18), 0)
+                setOnClickListener { dialog.dismiss() }
+            })
+            addView(TextView(this@MainActivity).apply {
+                text = "GilrTano VPN"
+                textSize = 25f
+                typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.BOLD_ITALIC)
+                setTextColor(Color.WHITE)
+            }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            addView(TextView(this@MainActivity).apply {
+                text = "⚙"
+                textSize = 25f
+                setTextColor(Color.rgb(30, 238, 65))
+            })
+        }
+        page.addView(header)
+        page.addView(TextView(this).apply {
+            text = "Настройки"
+            textSize = 29f
+            gravity = android.view.Gravity.CENTER
+            setTextColor(Color.WHITE)
+            setPadding(0, dp(14), 0, dp(24))
+        })
+        fun addToggle(title: String, subtitle: String, key: String) {
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                setPadding(0, dp(12), 0, dp(12))
+            }
+            val labels = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+            labels.addView(TextView(this).apply {
+                text = title; textSize = 18f; setTextColor(Color.WHITE)
+            })
+            labels.addView(TextView(this).apply {
+                text = subtitle; textSize = 13f; setTextColor(Color.LTGRAY)
+            })
+            row.addView(labels, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            val toggle = android.widget.Switch(this).apply {
+                isChecked = prefs.getBoolean(key, false)
+                buttonTintList = android.content.res.ColorStateList.valueOf(Color.rgb(30, 238, 65))
+                setOnCheckedChangeListener { _, checked -> prefs.edit().putBoolean(key, checked).apply() }
+            }
+            row.addView(toggle)
+            page.addView(row)
+        }
+        addToggle("Автоподключение", "Подключаться при запуске", "setting_autoconnect")
+        addToggle("Автосмена сервера", "Менять сервер при падении скорости", "setting_auto_server")
+        addToggle("Быстрое подключение", "Выбирать лучший доступный сервер", "setting_quick_connect")
+        fun addDivider() {
+            page.addView(View(this).apply { setBackgroundColor(Color.DKGRAY) },
+                LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)).apply {
+                    topMargin = dp(12); bottomMargin = dp(12)
+                })
+        }
+        fun addRow(title: String, value: String? = null, action: () -> Unit) {
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                setPadding(0, dp(16), 0, dp(16))
+                setOnClickListener { action() }
+            }
+            row.addView(TextView(this).apply {
+                text = title; textSize = 18f; setTextColor(Color.WHITE)
+            }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            row.addView(TextView(this).apply {
+                text = (value?.let { "$it  " } ?: "") + "›"
+                textSize = 20f; setTextColor(Color.rgb(30, 238, 65))
+            })
+            page.addView(row)
+        }
+        addDivider()
+        addRow("Протокол", "Авто") {
+            AlertDialog.Builder(this).setTitle("Протокол")
+                .setItems(arrayOf("Авто", "VLESS", "VMess", "Trojan", "Shadowsocks")) { _, which ->
+                    prefs.edit().putString("selected_protocol", arrayOf("Авто", "VLESS", "VMess", "Trojan", "Shadowsocks")[which]).apply()
+                }.show()
+        }
+        addRow("Импорт конфигурации") {
+            dialog.dismiss()
+            settingsExpanded = true
+            findImportButtonsVisibility()
+            Toast.makeText(this, "Выберите режим и импортируйте конфигурацию на экране приложения", Toast.LENGTH_LONG).show()
+        }
+        addRow("Quattro") {
+            dialog.dismiss()
+            settingsExpanded = true
+            findImportButtonsVisibility()
+        }
+        addDivider()
+        addRow("О приложении") {
+            AlertDialog.Builder(this).setTitle("GilrTano VPN")
+                .setMessage("GilrTano VPN\nВерсия приложения")
+                .setPositiveButton("OK", null).show()
+        }
+        dialog.setContentView(scroll)
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        dialog.show()
+        dialog.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
     }
 
     private fun findImportButtonsVisibility() {
