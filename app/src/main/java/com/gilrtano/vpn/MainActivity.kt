@@ -947,6 +947,12 @@ class MainActivity : Activity() {
 
     private fun configForNode(node: ImportedNode): Pair<String, Boolean> =
         when {
+            node.uri.startsWith("awgconf://", true) -> {
+                val encoded = node.uri.substringAfter("://")
+                val bytes = android.util.Base64.decode(encoded, android.util.Base64.DEFAULT)
+                val conf = String(bytes, Charsets.UTF_8)
+                PortalGateImporter.parseConf(conf, node.name).config to true
+            }
             node.uri.startsWith("hy2://", true) || node.uri.startsWith("hysteria2://", true) ->
                 Hysteria2Config.fromUri(node.uri) to true
             else -> ProtocolConfig.toXrayConfig(node.uri) to false
