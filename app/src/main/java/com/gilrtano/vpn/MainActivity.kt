@@ -236,29 +236,39 @@ class MainActivity : Activity() {
                         .setAction(GilrTanoVpnService.ACTION_STOP))
                     return@setOnClickListener
                 }
-                // Standalone mode: start the PORTAL profiles bundled in the APK.
-                // No external generator or manually imported Quattro document is required
-                // for the first connection attempt.
-                status.text = "Запускаю встроенный PORTAL GATE…"
-                connectButton.isEnabled = false
-                val bundledPortal = GilrTanoVpnService.BUNDLED_PORTAL_CONFIG
-                val quattroFallback = quattroNodes.firstOrNull()
-                    ?.let { runCatching { configForNode(it).first }.getOrNull() }
-                pendingConfig = bundledPortal
-                pendingFallbackConfig = quattroFallback
-                pendingPreferredConfig = null
-                pendingAutomatic = true
-                pendingPortalAwg = true
-                connectButton.isEnabled = true
                 val permission = VpnService.prepare(this@MainActivity)
-                if (permission != null) {
-                    startActivityForResult(permission, requestCode)
-                } else {
-                    startWarpVpn(bundledPortal, quattroFallback)
-                    pendingConfig = null
-                    pendingFallbackConfig = null
-                    pendingPortalAwg = false
-                    pendingAutomatic = false
+                when (activeMode) {
+                    "quattro" -> {
+                        val node = quattroNodes.getOrNull(prefs.getInt("quattro_selected", 0).coerceIn(0, (quattroNodes.size - 1).coerceAtLeast(0)))
+                        if (node == null) {
+                            Toast.makeText(this@MainActivity, "Сначала добавь QUATTRO в настройках", Toast.LENGTH_LONG).show()
+                            return@setOnClickListener
+                        }
+                        val (config, engineBox) = configForNode(node)
+                        pendingConfig = config
+                        pendingFallbackConfig = null
+                        pendingPreferredConfig = config
+                        pendingAutomatic = false
+                        pendingPortalAwg = false
+                        pendingEngineBox = engineBox
+                        status.text = "Запускаю QUATTRO…"
+                        if (permission != null) startActivityForResult(permission, requestCode)
+                        else {
+                            startVpn(config, preferredConfig = config, engineBox = engineBox)
+                            pendingConfig = null
+                            pendingPreferredConfig = null
+                        }
+                    }
+                    "auto" -> {
+                        activeFree = quattroNodes.isEmpty()
+                        if (activeNodes.isNotEmpty()) {
+                            val key = if (activeFree) "free_selected" else "quattro_selected"
+                            val index = prefs.getInt(key, 0).coerceIn(0, activeNodes.lastIndex)
+                            servers.setSelection(index)
+                            connectAutomaticallySelected()
+                        } else startBundledPortal(permission)
+                    }
+                    else -> startBundledPortal(permission)
                 }
             }
         }
@@ -1232,6 +1242,25 @@ class MainActivity : Activity() {
                 }
             }
         }.start()
+    }
+
+    private fun startBundledPortal(permission: Intent?) {
+        val bundledPortal = GilrTanoVpnService.BUNDLED_PORTAL_CONFIG
+        val fallback = quattroNodes.firstOrNull()?.let { runCatching { configForNode(it).first }.getOrNull() }
+        pendingConfig = bundledPortal
+        pendingFallbackConfig = fallback
+        pendingPreferredConfig = null
+        pendingAutomatic = true
+        pendingPortalAwg = true
+        status.text = "Запускаю встроенный PORTAL GATE…"
+        if (permission != null) startActivityForResult(permission, requestCode)
+        else {
+            startWarpVpn(bundledPortal, fallback)
+            pendingConfig = null
+            pendingFallbackConfig = null
+            pendingPortalAwg = false
+            pendingAutomatic = false
+        }
     }
 
     private fun startWarpVpn(config: String, fallbackQuattro: String?) {
