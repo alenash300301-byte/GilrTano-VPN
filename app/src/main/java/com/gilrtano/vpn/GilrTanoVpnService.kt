@@ -15,6 +15,7 @@ import teapodcore.Teapodcore
 import teapodcore.VpnProtector
 import teapodcore.XrayCallback
 import org.json.JSONObject
+import org.json.JSONArray
 import java.net.Socket
 import javax.net.ssl.SSLSocketFactory
 
@@ -69,6 +70,8 @@ class GilrTanoVpnService : VpnService(), TunInterface {
         return START_NOT_STICKY
     }
 
+    private fun activeFallbackTarget(): String = selectedFallbackConfig ?: fallbackConfig ?: rotationConfigs.firstOrNull().orEmpty()
+
     private fun nextFallbackConfig(): String? {
         if (rotationConfigs.isNotEmpty()) {
             if (rotationIndex >= rotationConfigs.size) rotationIndex = 0
@@ -82,8 +85,6 @@ class GilrTanoVpnService : VpnService(), TunInterface {
         broadcastStatus("Переключаю сервер…")
         Thread({
             synchronized(this) {
-                if (mihomoStarted) runCatching { Clash.stopTun() }
-                mihomoStarted = false
                 if (mihomoStarted) runCatching { Clash.stopTun() }
                 mihomoStarted = false
                 runCatching { Teapodcore.stopTun2Socks() }
@@ -255,7 +256,7 @@ class GilrTanoVpnService : VpnService(), TunInterface {
         } finally { pool.shutdownNow() }
     }
 
-    override fun protect(fd: Int) { super.protect(fd) }
+    override fun protect(fd: Int): Boolean = super.protect(fd)
 
     override fun resolverProcess(protocol: Int, source: String, target: String, uid: Int): String = ""
 
