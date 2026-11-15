@@ -349,12 +349,7 @@ class MainActivity : Activity() {
                     }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
                     addView(TextView(this@MainActivity).apply {
                         text = "⚙"; textSize = 25f; setTextColor(Color.WHITE)
-                        setOnClickListener {
-                            settingsExpanded = true
-                            settingsHeader.visibility = View.VISIBLE
-                            findImportButtonsVisibility()
-                            root.post { (root.parent as? android.widget.ScrollView)?.smoothScrollTo(0, root.height) }
-                        }
+                        setOnClickListener { showSettingsDialog() }
                     })
                 })
                 // The uploaded GIF is the complete hero composition: tiger, realistic fire and orb.
@@ -606,12 +601,7 @@ class MainActivity : Activity() {
             }
             navItem("⌂", "Главная", { scroll.smoothScrollTo(0, 0) }, true)
             navItem("◎", "Серверы", { showServerPicker() })
-            navItem("⚙", "Настройки", {
-                settingsExpanded = true
-                settingsHeader.visibility = View.VISIBLE
-                findImportButtonsVisibility()
-                scroll.post { scroll.smoothScrollTo(0, root.height) }
-            })
+            navItem("⚙", "Настройки", { showSettingsDialog() })
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(66)))
         setContentView(root)
         trafficHandler.removeCallbacks(trafficSample)
@@ -1002,6 +992,102 @@ class MainActivity : Activity() {
             status.text = "●  Отключено"
             status.setTextColor(Color.LTGRAY)
         }
+    }
+
+    private fun showSettingsDialog() {
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(18), dp(20), dp(18))
+            setBackgroundColor(Color.rgb(7, 7, 9))
+        }
+        val heading = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            addView(TextView(this@MainActivity).apply {
+                text = "Настройки"
+                textSize = 23f
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                setTextColor(Color.WHITE)
+            }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            addView(TextView(this@MainActivity).apply {
+                text = "✕"; textSize = 24f; setTextColor(Color.LTGRAY)
+                setPadding(dp(12), dp(4), dp(4), dp(4))
+                setOnClickListener { (tag as? AlertDialog)?.dismiss() }
+            })
+        }
+        panel.addView(heading)
+        fun section(title: String) {
+            panel.addView(TextView(this).apply {
+                text = title; textSize = 17f
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                setTextColor(Color.rgb(230, 230, 235))
+                setPadding(0, dp(18), 0, dp(6))
+            })
+        }
+        fun sourceField(hintText: String, saved: String): EditText =
+            EditText(this).apply {
+                hint = hintText
+                setText(saved)
+                setTextColor(Color.WHITE)
+                setHintTextColor(Color.GRAY)
+                setSingleLine(false)
+                minLines = 1
+                maxLines = 3
+                setPadding(dp(12), dp(8), dp(12), dp(8))
+                background = GradientDrawable().apply {
+                    setColor(Color.rgb(20, 20, 23))
+                    cornerRadius = dp(12).toFloat()
+                    setStroke(dp(1), Color.rgb(55, 55, 60))
+                }
+            }
+        fun actionButton(label: String, action: () -> Unit) {
+            panel.addView(Button(this).apply {
+                text = label
+                setOnClickListener { action() }
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(46)).apply { topMargin = dp(6) })
+        }
+
+        section("QUATTRO · Платный сервис")
+        val quattroUrl = sourceField("Ссылка на подписку Quattro", prefs.getString("subscription_url", "") ?: "")
+        panel.addView(quattroUrl, LinearLayout.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        actionButton("Добавить Quattro по ссылке") { importFrom(quattroUrl.text.toString().trim(), false) }
+        actionButton("Добавить Quattro через DOCX") {
+            val pick = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            }
+            startActivityForResult(pick, docxRequestCode)
+        }
+
+        section("PORTAL")
+        val portalUrl = sourceField("Ссылка Portal", prefs.getString("portal_subscription_url", "") ?: "")
+        panel.addView(portalUrl, LinearLayout.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        actionButton("Добавить Portal по ссылке") { importPortal(portalUrl.text.toString().trim()) }
+        actionButton("Выбрать WARP YAML") {
+            val pick = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "*/*"
+            }
+            startActivityForResult(pick, portalYamlRequestCode)
+        }
+
+        section("FREE")
+        val freeUrl = sourceField("Ссылка на бесплатные серверы", prefs.getString("free_subscription_url", "") ?: "")
+        panel.addView(freeUrl, LinearLayout.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        actionButton("Добавить бесплатные серверы") { importFrom(freeUrl.text.toString().trim(), true) }
+
+        val scrollPanel = android.widget.ScrollView(this).apply {
+            isFillViewport = true
+            addView(panel)
+        }
+        val dialog = AlertDialog.Builder(this).setView(scrollPanel).create()
+        (heading.getChildAt(1) as? TextView)?.tag = dialog
+        dialog.setOnShowListener {
+            dialog.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+            dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        }
+        dialog.show()
+        dialog.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
     }
 
     private fun findImportButtonsVisibility() {
