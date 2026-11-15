@@ -1206,24 +1206,7 @@ class MainActivity : Activity() {
         }.start()
     }
 
-    private fun buildPortalFallbackChain(fallbackQuattro: String?): String {
-        val chain = JSONArray()
-        // The archive is injected into the APK by CI from a private Actions secret.
-        // Never commit the ZIP: it contains client private keys.
-        val profiles = runCatching {
-            assets.open("portal_gate.zip").use { PortalGateImporter.parseZip(it) }
-        }.getOrDefault(emptyList())
-        profiles.forEach { profile ->
-            chain.put(JSONObject().put("config", profile.config).put("box", true))
-        }
-        fallbackQuattro?.takeIf { it.isNotBlank() }?.let {
-            chain.put(JSONObject().put("config", it).put("box", false))
-        }
-        return chain.toString()
-    }
-
     private fun startWarpVpn(config: String, fallbackQuattro: String?) {
-        val chainJson = buildPortalFallbackChain(fallbackQuattro)
         val intent = Intent(this, GilrTanoVpnService::class.java)
             .setAction(GilrTanoVpnService.ACTION_START_PORTAL)
             .putExtra(GilrTanoVpnService.EXTRA_CONFIG, config)
@@ -1232,9 +1215,8 @@ class MainActivity : Activity() {
             .putExtra(GilrTanoVpnService.EXTRA_AUTO, true)
             .putExtra(GilrTanoVpnService.EXTRA_FALLBACK_CONFIG, fallbackQuattro)
             .putExtra(GilrTanoVpnService.EXTRA_FALLBACK_ENGINE_BOX, false)
-            .putExtra(GilrTanoVpnService.EXTRA_FALLBACK_CHAIN, chainJson)
         startForegroundService(intent)
-        status.text = "Запускаю WARP. Резервных профилей: ${JSONArray(chainJson).length()}…"
+        status.text = "Запускаю сгенерированный WARP. Резервный архив загружает VPN-служба…"
     }
 
     private fun startVpn(
