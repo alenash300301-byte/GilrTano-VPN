@@ -89,7 +89,7 @@ object PortalGateImporter {
             lines += "Endpoint = $server:$port"
             field("allowed-ips", "allowed_ips")?.let { lines += "AllowedIPs = $it" }
             field("persistent-keepalive", "persistent_keepalive")?.let { lines += "PersistentKeepalive = $it" }
-            return listOf(parseConf(lines.joinToString("\\n"), fileName))
+            return listOf(parseConf(lines.joinToString("\n"), fileName))
         }
         return PortalGateMasqueImporter.parseYaml(ByteArrayInputStream(bytes))
     }
@@ -97,7 +97,7 @@ object PortalGateImporter {
     fun parseConf(text: String, fileName: String): PortalGateProfile {
         val sections = linkedMapOf<String, MutableMap<String, String>>()
         var section = ""
-        text.removePrefix("\\uFEFF").lineSequence().forEach { raw ->
+        text.removePrefix("\uFEFF").lineSequence().forEach { raw ->
             val line = raw.substringBefore('#').substringBefore(';').trim()
             if (line.isEmpty()) return@forEach
             val header = sectionPattern.matchEntire(line)
