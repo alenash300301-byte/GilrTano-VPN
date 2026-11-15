@@ -1217,7 +1217,8 @@ class MainActivity : Activity() {
                         }.getOrNull()
                     })
                 }
-                val checked = mutableListOf<Pair<ImportedNode, Long>>()\n                val bestByRegion = linkedMapOf<String, Pair<ImportedNode, Long>>()
+                val checked = mutableListOf<Pair<ImportedNode, Long>>()
+                val bestByRegion = linkedMapOf<String, Pair<ImportedNode, Long>>()
                 val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(35)
                 var completed = 0
                 while (completed < candidates.size && System.nanoTime() < deadline && bestByRegion.size < 3) {
