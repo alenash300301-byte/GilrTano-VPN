@@ -85,8 +85,10 @@ class MainActivity : Activity() {
     private var settingsExpanded = false
     private var quattroNodes: List<ImportedNode> = emptyList()
     private var freeNodes: List<ImportedNode> = emptyList()
+    private var aetrisFallbackNodes: List<ImportedNode> = emptyList()
     private var pendingConfig: String? = null
     private var pendingFallbackConfig: String? = null
+    private var pendingFallbackChainJson: String? = null
     private var pendingPreferredConfig: String? = null
     private var pendingAutomatic = false
     private var pendingPortalAwg = false
@@ -155,6 +157,7 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         quattroNodes = restoreNodes("quattro_nodes")
         freeNodes = restoreNodes("free_nodes")
+        aetrisFallbackNodes = restoreNodes("aetris_fallback_nodes")
 
         status = TextView(this).apply { text = "Отключено"; textSize = 14f; maxLines = 2; gravity = android.view.Gravity.CENTER; setPadding(dp(18), dp(4), dp(18), dp(4)) }
         pingStatus = TextView(this).apply { text = "Пинг: —"; textSize = 15f }
@@ -957,10 +960,11 @@ class MainActivity : Activity() {
         status.text = if (isFree) "Загружаю резерв…" else "Загружаю Quattro…"
         Thread {
             try {
-                val imported = SubscriptionImporter.load(source)
+                val parsedNodes = SubscriptionImporter.load(source)
+                val imported = parsedNodes.filter { node -> runCatching { configForNode(node) }.isSuccess }
                 runOnUiThread {
                     if (imported.isEmpty()) {
-                        status.text = "Не найдено поддерживаемых VLESS/Hysteria2-серверов"
+                        status.text = "Не найдено пригодных серверов: проверь формат подписки и параметры доступа"
                         return@runOnUiThread
                     }
                     if (isFree) {
@@ -968,8 +972,13 @@ class MainActivity : Activity() {
                         prefs.edit().putString("free_subscription_url", source).apply()
                         saveNodes("free_nodes", freeNodes)
                     } else {
+                        val isAetris = source.contains("AetrisVPN", true) || source.contains("#profile-title", true)
+                        if (isAetris && quattroNodes.isNotEmpty()) {
+                            aetrisFallbackNodes = quattroNodes
+                            saveNodes("aetris_fallback_nodes", aetrisFallbackNodes)
+                        }
                         quattroNodes = imported
-                        prefs.edit().putString("subscription_url", source).apply()
+                        prefs.edit().putString("subscription_url", source).putBoolean("aetris_subscription", isAetris).apply()
                         saveNodes("quattro_nodes", quattroNodes)
                     }
                     activeFree = isFree
@@ -978,7 +987,7 @@ class MainActivity : Activity() {
                     settingsExpanded = false
                     settingsHeader.text = "Настройки"
                     findImportButtonsVisibility()
-                    status.text = "Серверы добавлены"
+                    status.text = "Добавлено: ${imported.size} серверов из ${parsedNodes.size}; неподходящих: ${parsedNodes.size - imported.size}"
                     if (isFree) findBestFreeServers() else measureSelectedPing()
                 }
             } catch (e: Exception) {
@@ -1194,14 +1203,21 @@ class MainActivity : Activity() {
         val node = activeNodes.getOrNull(servers.selectedItemPosition) ?: return
         try {
             val (config, engineBox) = configForNode(node)
-            val fallbackNode = if (activeFree) freeNodes.getOrNull(1) else freeNodes.firstOrNull()
-            val fallback = fallbackNode
-                ?.let { runCatching { configForNode(it).first }.getOrNull() }
+            val fallbackNodes = (if (!activeFree && aetrisFallbackNodes.isNotEmpty()) aetrisFallbackNodes else
+                if (activeFree) freeNodes.drop(1) else freeNodes).distinctBy { it.uri }
+            val fallbackEntries = JSONArray()
+            fallbackNodes.forEach { fallbackNode ->
+                runCatching { configForNode(fallbackNode) }.getOrNull()?.let { pair ->
+                    fallbackEntries.put(JSONObject().put("config", pair.first).put("engineBox", pair.second).put("portal", false))
+                }
+            }
+            val fallback = fallbackEntries.optJSONObject(0)?.optString("config")
             pendingConfig = config
             pendingFallbackConfig = fallback
             pendingPreferredConfig = config
             pendingAutomatic = true
             pendingEngineBox = engineBox
+            pendingFallbackChainJson = fallbackEntries.toString()
             status.text = "Подключаю лучший доступный сервер…"
             val permission = VpnService.prepare(this)
             if (permission != null) startActivityForResult(permission, requestCode)
@@ -1262,7 +1278,7 @@ class MainActivity : Activity() {
     }
 
     private fun clearPendingPortalRequest() {
-        pendingConfig = null; pendingFallbackConfig = null; pendingPreferredConfig = null
+        pendingConfig = null; pendingFallbackConfig = null; pendingFallbackChainJson = null; pendingPreferredConfig = null
         pendingAutomatic = false; pendingPortalAwg = false; pendingPortalGenerate = false; pendingEngineBox = false
     }
 
@@ -1316,6 +1332,7 @@ class MainActivity : Activity() {
             .putExtra(GilrTanoVpnService.EXTRA_ENGINE_BOX, engineBox)
             .putExtra(GilrTanoVpnService.EXTRA_PREFERRED_ENGINE_BOX, engineBox)
         fallbackConfig?.let { intent.putExtra(GilrTanoVpnService.EXTRA_FALLBACK_CONFIG, it) }
+        pendingFallbackChainJson?.let { intent.putExtra(GilrTanoVpnService.EXTRA_FALLBACK_CHAIN, it) }
         preferredConfig?.let { intent.putExtra(GilrTanoVpnService.EXTRA_PREFERRED_CONFIG, it) }
         startForegroundService(intent)
         status.text = "Запускаю VPN…"
