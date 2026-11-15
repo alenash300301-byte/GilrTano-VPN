@@ -288,19 +288,16 @@ class MainActivity : Activity() {
             setOnClickListener { refreshFreeServersAndFindBest() }
         }
         checkPing = Button(this).apply {
-            text = "Проверить пинг"
+            text = "◴  Проверить пинг"
             textSize = 13f
             isAllCaps = false
             minHeight = 0
             minimumHeight = 0
             minWidth = 0
-            setPadding(dp(18), 0, dp(18), 0)
+            elevation = 0f
+            setPadding(dp(10), 0, dp(10), 0)
             setTextColor(Color.LTGRAY)
-            background = GradientDrawable().apply {
-                setColor(Color.rgb(14, 14, 17))
-                cornerRadius = dp(14).toFloat()
-                setStroke(dp(1), Color.rgb(65, 45, 45))
-            }
+            background = android.graphics.drawable.ColorDrawable(Color.TRANSPARENT)
             setOnClickListener { measureSelectedPing() }
         }
 
@@ -461,13 +458,13 @@ class MainActivity : Activity() {
                 addView(bestFreeButton, LinearLayout.LayoutParams.MATCH_PARENT, dp(1))
                 bestFreeButton.visibility = View.GONE
                 addView(checkPing, LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT, dp(38)
+                    ViewGroup.LayoutParams.WRAP_CONTENT, dp(34)
                 ).apply {
                     gravity = android.view.Gravity.CENTER_HORIZONTAL
-                    topMargin = dp(6)
-                    bottomMargin = dp(6)
+                    topMargin = dp(2)
+                    bottomMargin = dp(4)
                 })
-                checkPing.visibility = View.GONE
+                checkPing.visibility = View.VISIBLE
                 modeSelectorRow = LinearLayout(this@MainActivity).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = android.view.Gravity.CENTER
@@ -883,7 +880,7 @@ class MainActivity : Activity() {
         primarySource.visibility = if (settingsExpanded && !activeFree) View.VISIBLE else View.GONE
         freeSource.visibility = if (settingsExpanded && activeFree) View.VISIBLE else View.GONE
         bestFreeButton.visibility = if (settingsExpanded && activeFree) View.VISIBLE else View.GONE
-        checkPing.visibility = if (settingsExpanded) View.VISIBLE else View.GONE
+        checkPing.visibility = View.VISIBLE
         for (i in 0 until page.childCount) {
             val child = page.getChildAt(i)
             if (child is Button) {
