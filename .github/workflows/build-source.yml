@@ -1,6 +1,6 @@
 name: Build GilrTano VPN APK
 
-# Pushes to the Aetris integration branch run the full native + Android APK validation.
+# Pushes to the Aetris integration branch run the full native + Android APK validation. PR checks are enabled on the base branch.
 
 on:
   workflow_dispatch:
