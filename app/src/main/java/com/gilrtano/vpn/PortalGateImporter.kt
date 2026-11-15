@@ -161,7 +161,7 @@ object PortalGateImporter {
             .put("log", JSONObject().put("level", "warn"))
             .put("inbounds", JSONArray().put(JSONObject()
                 .put("type", "socks").put("tag", "socks-in")
-                .put("listen", "127.0.0.1").put("listen_port", 10808)))
+                .put("listen", "127.0.0.1").put("listen_port", 10808).put("udp", true)))
             .put("endpoints", JSONArray().put(endpointJson))
             .put("route", JSONObject().put("final", "proxy").put("auto_detect_interface", true))
             .toString()
