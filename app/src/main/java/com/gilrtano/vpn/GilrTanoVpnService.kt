@@ -319,10 +319,17 @@ class GilrTanoVpnService : VpnService() {
     private fun probeTunnel(): Long = probeTunnelHost("www.gstatic.com", "/generate_204", 204)
 
     private fun verifyRequiredServices(): Boolean {
+        // Lightweight HTTPS reachability checks for the requested services.
+        // These verify reachability through the tunnel, not full in-app playback/login.
         val hosts = listOf(
             "www.youtube.com",
+            "i.ytimg.com",
             "www.instagram.com",
-            "api.telegram.org"
+            "i.instagram.com",
+            "api.telegram.org",
+            "telegram.org",
+            "api.vk.com",
+            "vk.com"
         )
         val pool = java.util.concurrent.Executors.newFixedThreadPool(hosts.size)
         return try {
