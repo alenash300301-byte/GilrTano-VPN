@@ -222,7 +222,7 @@ class MainActivity : Activity() {
                     } else {
                         val credentials = runCatching { PortalCredentialStore.load(this@MainActivity) }.getOrNull()
                         if (credentials == null) {
-                            showPortalCredentialsDialog()
+                            ensurePortalCredentials()
                             return@setOnClickListener
                         }
                         pendingPortalStart = true
@@ -1260,7 +1260,7 @@ class MainActivity : Activity() {
     private fun startPortalVpn() {
         pendingPortalStart = false
         val credentials = runCatching { PortalCredentialStore.load(this) }.getOrNull()
-        if (credentials == null) { showPortalCredentialsDialog(); return }
+        if (credentials == null) { ensurePortalCredentials(); return }
         AlertDialog.Builder(this)
             .setTitle("Выбор сервера PORTAL")
             .setSingleChoiceItems(arrayOf("КИБЕРПОРТАЛ", "КИБЕРПОРТАЛ 2"), 0) { dialog, which ->
@@ -1274,38 +1274,50 @@ class MainActivity : Activity() {
             .show()
     }
 
-    private fun showPortalCredentialsDialog() {
-        val fields = listOf(
-            EditText(this).apply { hint = "WARP private key (PEM/Base64)"; minLines = 2; maxLines = 4; inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE },
-            EditText(this).apply { hint = "WARP public key"; minLines = 2; maxLines = 3; inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE },
-            EditText(this).apply { hint = "WARP IPv4 (например 172.16.0.2)" },
-            EditText(this).apply { hint = "WARP IPv6" }
-        )
-        val panel = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(8), dp(20), dp(4))
-            fields.forEach { addView(it, LinearLayout.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT) }
+    private fun ensurePortalCredentials() {
+        if (runCatching { PortalCredentialStore.load(this) }.getOrNull() != null) {
+            pendingPortalStart = true
+            val permission = VpnService.prepare(this)
+            if (permission != null) startActivityForResult(permission, requestCode)
+            else startPortalVpn()
+            return
         }
+
         AlertDialog.Builder(this)
-            .setTitle("Первичная настройка PORTAL")
-            .setMessage("Введи параметры WARP один раз. Ключ будет сохранён зашифрованным в Android Keystore; в GitHub он не попадёт.")
-            .setView(panel)
+            .setTitle("Настройка PORTAL")
+            .setMessage(
+                "GilrTano создаст новую бесплатную регистрацию Cloudflare WARP и подготовит ключ MASQUE автоматически. " +
+                    "Для этого приложение обратится к API Cloudflare. Продолжая, ты принимаешь " +
+                    "Условия использования Cloudflare: https://www.cloudflare.com/application/terms/"
+            )
             .setNegativeButton("Отмена", null)
-            .setPositiveButton("Сохранить") { _, _ ->
-                try {
-                    PortalCredentialStore.save(this, PortalWarpCredentials(
-                        fields[0].text.toString().trim(), fields[1].text.toString().trim(),
-                        fields[2].text.toString().trim(), fields[3].text.toString().trim()))
-                    Toast.makeText(this, "Параметры PORTAL сохранены на устройстве", Toast.LENGTH_SHORT).show()
-                    pendingPortalStart = true
-                    val permission = VpnService.prepare(this)
-                    if (permission != null) startActivityForResult(permission, requestCode) else startPortalVpn()
-                } catch (e: Exception) {
-                    Toast.makeText(this, "Не удалось сохранить PORTAL: " + e.message, Toast.LENGTH_LONG).show()
-                }
+            .setPositiveButton("Принять и продолжить") { _, _ ->
+                status.text = "Регистрирую PORTAL в Cloudflare…"
+                connectButton.isEnabled = false
+                Thread({
+                    val result = runCatching { PortalRegistrationClient.registerAndSave(this) }
+                    runOnUiThread {
+                        connectButton.isEnabled = true
+                        result.onSuccess {
+                            Toast.makeText(this, "PORTAL зарегистрирован. Ключ сохранён защищённо.", Toast.LENGTH_LONG).show()
+                            pendingPortalStart = true
+                            val permission = VpnService.prepare(this)
+                            if (permission != null) startActivityForResult(permission, requestCode)
+                            else startPortalVpn()
+                        }.onFailure { error ->
+                            status.text = "Регистрация PORTAL не удалась"
+                            Toast.makeText(
+                                this,
+                                "Не удалось зарегистрировать WARP: ${error.message ?: "ошибка сети"}",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    }
+                }, "GilrTano-Portal-register").start()
             }
             .show()
     }
+
     private fun startVpn(
         config: String,
         fallbackConfig: String? = null,
