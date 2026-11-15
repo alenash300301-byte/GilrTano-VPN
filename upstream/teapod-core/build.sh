@@ -74,9 +74,17 @@ merge_xray_rust() {
 # xray-core собирается из кэша модулей с патчами patches/xray-core/*.patch
 # (go.mod: replace github.com/xtls/xray-core => ./.xray-core).
 prepare_xray_core() {
-    local version dir dest="$SCRIPT_DIR/.xray-core"
+    local version dir dest="$SCRIPT_DIR/.xray-core" download_mod
     version=$(awk '$1=="github.com/xtls/xray-core"{print $2; exit}' "$SCRIPT_DIR/go.mod")
-    dir=$(cd "$SCRIPT_DIR" && $GO_BIN mod download -json "github.com/xtls/xray-core@$version" | awk -F'"' '$2=="Dir"{print $4}')
+    [[ -n "$version" ]] || err "Версия xray-core не найдена в go.mod"
+
+    # go.mod заменяет xray-core на локальную ./.xray-core. Сначала скачиваем
+    # исходный upstream-модуль через отдельный временный mod-файл без replace,
+    # иначе Go пытается открыть ещё не созданную локальную папку.
+    download_mod=$(mktemp "$SCRIPT_DIR/.xray-download.XXXXXX.mod")
+    trap 'rm -f "$download_mod" "${download_mod%.mod}.sum"' RETURN
+    printf 'module github.com/Wendor/teapod-core\n\ngo 1.27\n\nrequire github.com/xtls/xray-core %s\n' "$version" > "$download_mod"
+    dir=$($GO_BIN mod download -modfile="$download_mod" -json "github.com/xtls/xray-core@$version" | awk -F'"' '$2=="Dir"{print $4}')
     [[ -d "$dir" ]] || err "xray-core $version: модуль не скачан"
     rm -rf "$dest"
     cp -R "$dir" "$dest"
