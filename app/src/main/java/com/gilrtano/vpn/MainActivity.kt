@@ -60,7 +60,6 @@ class MainActivity : Activity() {
     private lateinit var servers: Spinner
     private lateinit var quattroTab: Button
     private lateinit var freeTab: Button
-    private lateinit var autoTab: Button
     private lateinit var portalTab: Button
     private var pendingPortalStart = false
     private var autoMode = true
@@ -185,10 +184,6 @@ class MainActivity : Activity() {
         freeTab = Button(this).apply {
             text = "БЕСПЛАТНЫЙ"
             setOnClickListener { switchMode(true) }
-        }
-        autoTab = Button(this).apply {
-            text = "АВТО"
-            setOnClickListener { switchToAuto() }
         }
         portalTab = Button(this).apply {
             text = "PORTAL"
@@ -513,7 +508,6 @@ class MainActivity : Activity() {
                     gravity = android.view.Gravity.CENTER
                     addView(quattroTab, LinearLayout.LayoutParams(0, dp(44), 1f).apply { rightMargin = dp(6) })
                     addView(freeTab, LinearLayout.LayoutParams(0, dp(44), 1f).apply { leftMargin = dp(4); rightMargin = dp(4) })
-                    addView(autoTab, LinearLayout.LayoutParams(0, dp(44), 1f).apply { leftMargin = dp(4); rightMargin = dp(4) })
                     addView(portalTab, LinearLayout.LayoutParams(0, dp(44), 1f).apply { leftMargin = dp(4) })
                     visibility = View.GONE
                 }
@@ -625,8 +619,12 @@ class MainActivity : Activity() {
                 false
             }
         }
-        activeMode = prefs.getString("connection_mode", "auto") ?: "auto"
-        autoMode = activeMode == "auto"
+        activeMode = prefs.getString("connection_mode", "quattro") ?: "quattro"
+        if (activeMode == "auto") {
+            activeMode = "quattro"
+            prefs.edit().putString("connection_mode", "quattro").apply()
+        }
+        autoMode = false
         activeFree = prefs.getBoolean("active_free_mode", false)
         refreshMode()
         updatePowerOrb(false)
@@ -871,10 +869,8 @@ class MainActivity : Activity() {
         val portalSelected = activeMode == "portal"
         portalTab.isEnabled = !portalSelected
         portalTab.alpha = if (portalSelected) 1f else 0.72f
-        autoTab.isEnabled = !autoMode && !portalSelected
-        quattroTab.isEnabled = !portalSelected && (autoMode || activeFree)
-        freeTab.isEnabled = !portalSelected && (autoMode || !activeFree)
-        autoTab.alpha = if (autoMode && !portalSelected) 1f else 0.72f
+        quattroTab.isEnabled = !portalSelected && !activeFree
+        freeTab.isEnabled = !portalSelected && activeFree
         quattroTab.alpha = if (!autoMode && !activeFree) 1f else 0.72f
         freeTab.alpha = if (!autoMode && activeFree) 1f else 0.72f
         fun modeBackground(selected: Boolean) = GradientDrawable().apply {
@@ -883,13 +879,11 @@ class MainActivity : Activity() {
             setStroke(dp(if (selected) 2 else 1),
                 if (selected) Color.rgb(220, 32, 32) else Color.rgb(58, 58, 62))
         }
-        quattroTab.background = modeBackground(!autoMode && !activeFree)
-        freeTab.background = modeBackground(!autoMode && activeFree)
-        autoTab.background = modeBackground(autoMode && !portalSelected)
+        quattroTab.background = modeBackground(!portalSelected && !activeFree)
+        freeTab.background = modeBackground(!portalSelected && activeFree)
         portalTab.background = modeBackground(portalSelected)
-        quattroTab.setTextColor(if (!autoMode && !activeFree) Color.WHITE else Color.LTGRAY)
-        freeTab.setTextColor(if (!autoMode && activeFree) Color.WHITE else Color.LTGRAY)
-        autoTab.setTextColor(if (autoMode && !portalSelected) Color.WHITE else Color.LTGRAY)
+        quattroTab.setTextColor(if (!portalSelected && !activeFree) Color.WHITE else Color.LTGRAY)
+        freeTab.setTextColor(if (!portalSelected && activeFree) Color.WHITE else Color.LTGRAY)
         portalTab.setTextColor(if (portalSelected) Color.WHITE else Color.LTGRAY)
         primarySource.visibility = if (activeFree || portalSelected) ViewGroup.GONE else ViewGroup.VISIBLE
         freeSource.visibility = if (activeFree && !portalSelected) ViewGroup.VISIBLE else ViewGroup.GONE
@@ -1255,10 +1249,17 @@ class MainActivity : Activity() {
         pendingPortalStart = false
         val credentials = runCatching { PortalCredentialStore.load(this) }.getOrNull()
         if (credentials == null) { showPortalCredentialsDialog(); return }
-        startForegroundService(Intent(this, PortalMasqueVpnService::class.java)
-            .setAction(PortalMasqueVpnService.ACTION_START)
-            .putExtra(PortalMasqueVpnService.EXTRA_ENDPOINT, 0))
-        status.text = "Запускаю PORTAL MASQUE…"
+        AlertDialog.Builder(this)
+            .setTitle("Выбор сервера PORTAL")
+            .setSingleChoiceItems(arrayOf("КИБЕРПОРТАЛ", "КИБЕРПОРТАЛ 2"), 0) { dialog, which ->
+                dialog.dismiss()
+                startForegroundService(Intent(this, PortalMasqueVpnService::class.java)
+                    .setAction(PortalMasqueVpnService.ACTION_START)
+                    .putExtra(PortalMasqueVpnService.EXTRA_ENDPOINT, which))
+                status.text = "Запускаю ${PortalMasqueConfig.endpoints[which].name}…"
+            }
+            .setNegativeButton("Отмена", null)
+            .show()
     }
 
     private fun showPortalCredentialsDialog() {
