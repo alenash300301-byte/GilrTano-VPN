@@ -93,8 +93,9 @@ class MainActivity : Activity() {
     private val prefs by lazy { getPreferences(MODE_PRIVATE) }
     private val activeNodes: List<ImportedNode>
         get() = if (activeFree) freeNodes else {
-            val selectedRegion = prefs.getString("selected_region", "Европа") ?: "Европа"
-            quattroNodes.filter { ServerRegionClassifier.region(it) == selectedRegion }
+            val selectedRegion = prefs.getString("selected_region", "Авто") ?: "Авто"
+            if (selectedRegion == "Авто") quattroNodes
+            else quattroNodes.filter { ServerRegionClassifier.region(it) == selectedRegion }
         }
 
     private val receiver = object : BroadcastReceiver() {
@@ -257,6 +258,10 @@ class MainActivity : Activity() {
                         return@setOnClickListener
                     }
                 }
+                if (!activeFree && activeMode != "portal") {
+                    findBestQuattroAndConnect()
+                    return@setOnClickListener
+                }
                 val node = activeNodes.getOrNull(servers.selectedItemPosition)
                 if (node == null) {
                     Toast.makeText(this@MainActivity, "В этом режиме пока нет серверов", Toast.LENGTH_LONG).show()
@@ -417,25 +422,25 @@ class MainActivity : Activity() {
                 val regionLabels = arrayOf("Азия", "Европа", "США")
                 val regionKey = "selected_region"
                 regionSelector = TextView(this@MainActivity).apply {
-                    text = "◎  ${prefs.getString(regionKey, "Европа")}  ⌄"
+                    text = "◎  ${prefs.getString(regionKey, "Авто")}  ⌄"
                     textSize = 19f
                     setTextColor(Color.WHITE)
                     gravity = android.view.Gravity.CENTER
                     setPadding(dp(12), dp(10), dp(12), dp(10))
                     setOnClickListener {
-                        val current = prefs.getString(regionKey, "Европа") ?: "Европа"
+                        val current = prefs.getString(regionKey, "Авто") ?: "Авто"
                         AlertDialog.Builder(this@MainActivity)
-                            .setItems(regionLabels) { _, which ->
-                                val selected = regionLabels[which]
+                            .setItems(arrayOf("Автовыбор · все серверы") + regionLabels) { _, which ->
+                                val selected = if (which == 0) "Авто" else regionLabels[which - 1]
                                 prefs.edit().putString(regionKey, selected).apply()
-                                text = "◎  $selected  ⌄"
+                                text = if (selected == "Авто") "◎  Автовыбор  ⌄" else "◎  $selected  ⌄"
                                 if (activeMode != "portal" && !activeFree) {
                                     refreshMode()
                                     val count = activeNodes.size
                                     Toast.makeText(
                                         this@MainActivity,
                                         if (count > 0) "Найдено серверов: $count · $selected"
-                                        else "В подписке нет серверов с определённым регионом: $selected",
+                                        else if (selected == "Авто") "В подписке нет серверов" else "В подписке нет серверов с определённым регионом: $selected",
                                         Toast.LENGTH_LONG
                                     ).show()
                                 }
@@ -622,7 +627,7 @@ class MainActivity : Activity() {
         val nodes = activeNodes
         if (nodes.isEmpty()) {
             if (!activeFree && activeMode != "portal") {
-                val selectedRegion = prefs.getString("selected_region", "Европа") ?: "Европа"
+                val selectedRegion = prefs.getString("selected_region", "Авто") ?: "Авто"
                 Toast.makeText(this, "В подписке нет серверов для региона: $selectedRegion", Toast.LENGTH_LONG).show()
                 return
             }
@@ -1417,6 +1422,71 @@ class MainActivity : Activity() {
             } finally {
                 pool.shutdownNow()
             }
+        }.start()
+    }
+    /** Measure all eligible Quattro profiles and connect to the lowest measured Xray delay. */
+    private fun findBestQuattroAndConnect() {
+        val selectedRegion = prefs.getString("selected_region", "Авто") ?: "Авто"
+        val candidates = activeNodes
+        if (candidates.isEmpty()) {
+            status.text = if (selectedRegion == "Авто") "В подписке нет серверов" else "Нет серверов региона: $selectedRegion"
+            Toast.makeText(this, status.text, Toast.LENGTH_LONG).show()
+            return
+        }
+        connectButton.isEnabled = false
+        status.text = "Проверяю серверы QUATTRO…"
+        Thread {
+            val pool = Executors.newFixedThreadPool(8)
+            val completion = java.util.concurrent.ExecutorCompletionService<Pair<ImportedNode, Long>?>(pool)
+            try {
+                candidates.forEach { node ->
+                    completion.submit(Callable<Pair<ImportedNode, Long>?> {
+                        val config = runCatching { GilrTanoVpnService.xrayConfigFromVless(node.uri) }.getOrNull() ?: return@Callable null
+                        runCatching {
+                            val delay = teapodcore.Teapodcore.measureOutboundDelay(config, "https://www.gstatic.com/generate_204")
+                            if (delay > 0L) node to delay else null
+                        }.getOrNull()
+                    })
+                }
+                val ranked = mutableListOf<Pair<ImportedNode, Long>>()
+                val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(45)
+                var completed = 0
+                while (completed < candidates.size && System.nanoTime() < deadline) {
+                    val future = completion.poll(deadline - System.nanoTime(), TimeUnit.NANOSECONDS) ?: break
+                    completed++
+                    runCatching { future.get() }.getOrNull()?.let { ranked.add(it) }
+                    val done = completed
+                    runOnUiThread { if (!isFinishing && !isDestroyed) status.text = "Проверка QUATTRO: $done/${candidates.size}" }
+                }
+                val fastest = ranked.minByOrNull { it.second }
+                runOnUiThread {
+                    connectButton.isEnabled = true
+                    if (fastest == null) {
+                        status.text = "Не найден рабочий сервер для региона: $selectedRegion"
+                        Toast.makeText(this, status.text, Toast.LENGTH_LONG).show()
+                        return@runOnUiThread
+                    }
+                    val node = fastest.first
+                    val index = candidates.indexOf(node)
+                    if (index >= 0 && servers.adapter != null) servers.setSelection(index)
+                    prefs.edit().putInt("quattro_selected", index.coerceAtLeast(0)).apply()
+                    pingStatus.text = "Проверка Xray: ${fastest.second} мс"
+                    if (::pingMetric.isInitialized) pingMetric.text = "${fastest.second} мс"
+                    status.text = "Самый быстрый: ${node.name} · ${fastest.second} мс"
+                    try {
+                        val config = GilrTanoVpnService.xrayConfigFromVless(node.uri)
+                        pendingConfig = config
+                        pendingFallbackConfig = null
+                        pendingPreferredConfig = null
+                        pendingAutomatic = false
+                        val permission = VpnService.prepare(this)
+                        if (permission != null) startActivityForResult(permission, requestCode)
+                        else startVpn(config, null, null, false)
+                    } catch (e: Exception) { status.text = "Ошибка подготовки QUATTRO: ${e.message}" }
+                }
+            } catch (e: Exception) {
+                runOnUiThread { connectButton.isEnabled = true; status.text = "Ошибка проверки серверов: ${e.message}" }
+            } finally { pool.shutdownNow() }
         }.start()
     }
     private fun connectAutomaticallySelected() {
