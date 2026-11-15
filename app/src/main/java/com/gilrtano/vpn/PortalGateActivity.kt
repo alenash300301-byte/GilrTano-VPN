@@ -2,6 +2,10 @@ package com.gilrtano.vpn
 
 import android.app.Activity
 import android.content.Intent
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.IntentFilter
+import android.os.Build
 import android.net.VpnService
 import android.os.Bundle
 import android.view.View
@@ -18,6 +22,12 @@ class PortalGateActivity : Activity() {
     private lateinit var picker: Spinner
     private val requestCode = 7314
     private var pendingConfig: String? = null
+    private var receiverRegistered = false
+    private val statusReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            status.text = intent?.getStringExtra(GilrTanoVpnService.EXTRA_STATUS) ?: status.text
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -70,6 +80,25 @@ class PortalGateActivity : Activity() {
         refreshProfiles()
     }
 
+
+    override fun onResume() {
+        super.onResume()
+        if (!receiverRegistered) {
+            val filter = IntentFilter(GilrTanoVpnService.ACTION_STATUS)
+            if (Build.VERSION.SDK_INT >= 33) registerReceiver(statusReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            else @Suppress("DEPRECATION") registerReceiver(statusReceiver, filter)
+            receiverRegistered = true
+        }
+    }
+
+    override fun onPause() {
+        if (receiverRegistered) {
+            runCatching { unregisterReceiver(statusReceiver) }
+            receiverRegistered = false
+        }
+        super.onPause()
+    }
+
     private fun refreshProfiles() {
         val profiles = PortalGateSession.profiles
         picker.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item,
@@ -92,7 +121,7 @@ class PortalGateActivity : Activity() {
             }.onFailure {
                 status.text = "Ошибка импорта: ${it.message}"
             }
-        } else if (requestCode == requestCode && resultCode == RESULT_OK) {
+        } else if (requestCode == this.requestCode && resultCode == RESULT_OK) {
             pendingConfig?.let { startPortal(it) }
             pendingConfig = null
         }
