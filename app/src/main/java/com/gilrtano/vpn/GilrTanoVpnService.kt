@@ -106,7 +106,7 @@ class GilrTanoVpnService : VpnService() {
                                 broadcastStatus("Quattro недоступен. Запускаю бесплатный резерв…")
                                 switchTunnel(fallbackConfig!!)
                             } else {
-                                broadcastStatus("Ошибка Xray: $message")
+                                broadcastStatus("Ошибка ${if (boxMode) "PORTAL GATE" else "Quattro"}: $message")
                                 stopTunnel()
                             }
                         }
@@ -115,7 +115,7 @@ class GilrTanoVpnService : VpnService() {
                 if (boxMode) Teapodcore.startBox(config, filesDir.absolutePath, callback)
                 else Teapodcore.startXray(config, callback)
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to start Xray", e)
+                Log.e(TAG, "Failed to start ${if (boxMode) "PORTAL GATE" else "Quattro"}", e)
                 if (!stopping) {
                     if (automaticMode && !usingFallback && !fallbackConfig.isNullOrBlank()) {
                         usingFallback = true
@@ -139,8 +139,11 @@ class GilrTanoVpnService : VpnService() {
                 .setMtu(1280)
                 .addAddress("10.77.0.2", 32)
                 .addRoute("0.0.0.0", 0)
+                .addAddress("fd00:77::2", 128)
+                .addRoute("::", 0)
                 .addDnsServer("1.1.1.1")
                 .addDnsServer("8.8.8.8")
+                .addDnsServer("2606:4700:4700::1111")
                 .establish() ?: throw IllegalStateException("Android не создал VPN-интерфейс")
             tun = pfd
             // Force HTTP/3 apps to fall back to HTTPS/TCP because many public
