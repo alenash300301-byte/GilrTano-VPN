@@ -693,18 +693,40 @@ class MainActivity : Activity() {
             Toast.makeText(this, "Добавь сервер в настройках", Toast.LENGTH_LONG).show()
             return
         }
-        val names = nodes.map { it.name }.toTypedArray()
+        val regions = arrayOf("Все регионы", "🇪🇺 Европа", "🌏 Азия", "🇺🇸 США")
         AlertDialog.Builder(this)
-            .setTitle("Выбор сервера")
-            .setSingleChoiceItems(names, servers.selectedItemPosition) { dialog, which ->
-                servers.setSelection(which)
-                val key = if (activeFree) "free_selected" else "quattro_selected"
-                prefs.edit().putInt(key, which).apply()
-                serverCardTitle.text = nodes[which].name
-                serverCardSubtitle.text = if (activeFree) "Бесплатный" else "Quattro"
-                serverCardPing.text = ""
-                pingStatus.text = "Пинг: —"
-                dialog.dismiss()
+            .setTitle("Выбери регион")
+            .setItems(regions) { _, regionIndex ->
+                val region = regions[regionIndex]
+                val indexed = nodes.mapIndexed { index, node -> index to node }
+                    .filter { regionIndex == 0 || freeRegion(it.second.name) == region }
+                if (indexed.isEmpty()) {
+                    Toast.makeText(this, "В этом регионе серверов пока нет", Toast.LENGTH_SHORT).show()
+                    return@setItems
+                }
+                val names = indexed.map { (index, node) ->
+                    node.name + if (regionIndex == 0) freeRegion(node.name)?.let { " · $it" }.orEmpty() else ""
+                }.toTypedArray()
+                val current = indexed.indexOfFirst { it.first == servers.selectedItemPosition }.coerceAtLeast(0)
+                AlertDialog.Builder(this)
+                    .setTitle("Сервер · $region")
+                    .setSingleChoiceItems(names, current) { dialog, which ->
+                        val actualIndex = indexed[which].first
+                        servers.setSelection(actualIndex)
+                        val key = when {
+                            activePortal -> "portal_selected"
+                            activeFree -> "free_selected"
+                            else -> "quattro_selected"
+                        }
+                        prefs.edit().putInt(key, actualIndex).putString("selected_region", region).apply()
+                        serverCardTitle.text = indexed[which].second.name
+                        serverCardSubtitle.text = if (activePortal) "Portal" else if (activeFree) "Free" else "Quattro"
+                        serverCardPing.text = ""
+                        pingStatus.text = "Пинг: —"
+                        dialog.dismiss()
+                    }
+                    .setNegativeButton("Назад", null)
+                    .show()
             }
             .setNegativeButton("Закрыть", null)
             .show()
