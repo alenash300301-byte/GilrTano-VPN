@@ -878,8 +878,8 @@ class MainActivity : Activity() {
         val dialog = android.app.Dialog(this)
         val page = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(18), dp(20), dp(20))
-            setBackgroundColor(Color.rgb(5, 5, 7))
+            setPadding(dp(22), dp(18), dp(22), dp(18))
+            setBackgroundColor(Color.rgb(7, 7, 9))
         }
         val header = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -891,44 +891,77 @@ class MainActivity : Activity() {
             setOnClickListener { dialog.dismiss() }
         })
         header.addView(TextView(this).apply {
-            text = "Настройки"; textSize = 24f
+            text = "Настройки"; textSize = 23f
             typeface = android.graphics.Typeface.DEFAULT_BOLD
             setTextColor(Color.WHITE)
         })
-        page.addView(header, LinearLayout.LayoutParams.MATCH_PARENT, dp(56))
-        val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        val settingsScroll = android.widget.ScrollView(this).apply { addView(content) }
+        page.addView(header, LinearLayout.LayoutParams.MATCH_PARENT, dp(54))
+
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dp(8), 0, dp(20))
+        }
+        val settingsScroll = android.widget.ScrollView(this).apply {
+            isFillViewport = false
+            addView(content)
+        }
         fun section(label: String) {
             content.addView(TextView(this).apply {
-                text = label; textSize = 13f
+                text = label
+                textSize = 12f
+                letterSpacing = 0.12f
                 typeface = android.graphics.Typeface.DEFAULT_BOLD
-                setTextColor(Color.rgb(235, 65, 65))
-                setPadding(0, dp(18), 0, dp(8))
+                setTextColor(Color.rgb(220, 75, 75))
+                setPadding(dp(2), dp(20), 0, dp(9))
             })
         }
-        fun action(label: String, callback: () -> Unit) {
-            content.addView(Button(this).apply {
+        fun action(label: String, primary: Boolean = false, callback: () -> Unit) {
+            val button = TextView(this).apply {
                 text = label
-                isAllCaps = false
+                textSize = 14f
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                setPadding(dp(16), 0, dp(16), 0)
+                setTextColor(if (primary) Color.WHITE else Color.rgb(225, 225, 230))
+                background = GradientDrawable().apply {
+                    setColor(if (primary) Color.rgb(105, 18, 24) else Color.rgb(20, 20, 24))
+                    cornerRadius = dp(14).toFloat()
+                    setStroke(dp(1), if (primary) Color.rgb(160, 38, 45) else Color.rgb(48, 48, 54))
+                }
                 setOnClickListener { callback() }
-            }, LinearLayout.LayoutParams.MATCH_PARENT, dp(48))
+            }
+            val params = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(50))
+            params.bottomMargin = dp(8)
+            content.addView(button, params)
         }
+        fun input(hintText: String, value: String, lines: Int): EditText {
+            return EditText(this).apply {
+                hint = hintText
+                setText(value)
+                minLines = 1
+                maxLines = lines
+                textSize = 14f
+                setTextColor(Color.WHITE)
+                setHintTextColor(Color.GRAY)
+                setPadding(dp(14), dp(10), dp(14), dp(10))
+                background = GradientDrawable().apply {
+                    setColor(Color.rgb(17, 17, 21))
+                    cornerRadius = dp(13).toFloat()
+                    setStroke(dp(1), Color.rgb(55, 55, 62))
+                }
+                inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            }
+        }
+
         section("QUATTRO")
-        val quattroLink = EditText(this).apply {
-            hint = "Ссылка Quattro или Clash YAML"
-            setText(prefs.getString("subscription_url", ""))
-            minLines = 1
-            maxLines = 3
-            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
-        }
+        val quattroLink = input("Ссылка или Clash YAML", prefs.getString("subscription_url", "") ?: "", 3)
         content.addView(quattroLink, LinearLayout.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-        action("Импортировать ссылку / YAML") {
+        action("Импортировать ссылку / YAML", true) {
             val value = quattroLink.text.toString().trim()
             prefs.edit().putString("subscription_url", value).apply()
             importFrom(value, false)
             dialog.dismiss()
         }
-        action("Импортировать DOCX") {
+        action("Выбрать DOCX-файл") {
             val pick = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                 addCategory(Intent.CATEGORY_OPENABLE)
                 type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -936,22 +969,20 @@ class MainActivity : Activity() {
             startActivityForResult(pick, docxRequestCode)
             dialog.dismiss()
         }
+
         section("СЕРВЕРЫ")
         action("Выбрать сервер") { showServerPicker(); dialog.dismiss() }
-        action("Проверить пинг") { measureSelectedPing() }
+        action("Проверить соединение") { measureSelectedPing() }
+
         section("PORTAL GATE")
-        action("Открыть Portal Gate") {
+        action("Открыть Portal Gate", true) {
             startActivity(Intent(this, PortalGateActivity::class.java))
             dialog.dismiss()
         }
-        content.addView(TextView(this).apply {
-            text = "Настройки подключения и импорт профилей."
-            textSize = 11f; setTextColor(Color.GRAY); setPadding(0, dp(14), 0, dp(8))
-        })
         page.addView(settingsScroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
         dialog.setContentView(page)
         dialog.show()
-        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        dialog.window?.setBackgroundDrawableResource(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
         dialog.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
     }
 
