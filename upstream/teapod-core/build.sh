@@ -81,7 +81,8 @@ prepare_xray_core() {
     # go.mod заменяет xray-core на локальную ./.xray-core. Сначала скачиваем
     # исходный upstream-модуль через отдельный временный mod-файл без replace,
     # иначе Go пытается открыть ещё не созданную локальную папку.
-    download_mod=$(mktemp "$SCRIPT_DIR/.xray-download.XXXXXX.mod")
+    download_mod="$SCRIPT_DIR/.xray-download.mod"
+    rm -f "$download_mod" "$SCRIPT_DIR/.xray-download.sum"
     trap 'rm -f "$download_mod" "${download_mod%.mod}.sum"' RETURN
     printf 'module github.com/Wendor/teapod-core\n\ngo 1.27\n\nrequire github.com/xtls/xray-core %s\n' "$version" > "$download_mod"
     dir=$($GO_BIN mod download -modfile="$download_mod" -json "github.com/xtls/xray-core@$version" | awk -F'"' '$2=="Dir"{print $4}')
