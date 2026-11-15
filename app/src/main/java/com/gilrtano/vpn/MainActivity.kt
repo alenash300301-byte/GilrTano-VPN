@@ -975,7 +975,34 @@ class MainActivity : Activity() {
             page.addView(row)
         }
         addDivider()
-        addRow("Протокол", "Авто") {
+        val currentModeLabel = when (activeMode) {
+            "portal" -> "PORTAL"
+            "free" -> "БЕСПЛАТНЫЙ"
+            "auto" -> "АВТО"
+            else -> "QUATTRO"
+        }
+        addRow("Режим подключения", currentModeLabel) {
+            val modeItems = arrayOf("QUATTRO", "БЕСПЛАТНЫЙ", "PORTAL")
+            AlertDialog.Builder(this)
+                .setTitle("Выбрать режим")
+                .setSingleChoiceItems(modeItems, when (activeMode) {
+                    "portal" -> 2
+                    "free" -> 1
+                    else -> 0
+                }) { picker, which ->
+                    picker.dismiss()
+                    when (which) {
+                        0 -> switchMode(false)
+                        1 -> switchMode(true)
+                        2 -> switchToPortal()
+                    }
+                    dialog.dismiss()
+                }
+                .setNegativeButton("Отмена", null)
+                .show()
+        }
+        addDivider()
+        addRow("Протокол", prefs.getString("selected_protocol", "Авто") ?: "Авто") {
             AlertDialog.Builder(this).setTitle("Протокол")
                 .setItems(arrayOf("Авто", "VLESS", "VMess", "Trojan", "Shadowsocks")) { _, which ->
                     prefs.edit().putString("selected_protocol", arrayOf("Авто", "VLESS", "VMess", "Trojan", "Shadowsocks")[which]).apply()
