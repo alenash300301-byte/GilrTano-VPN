@@ -822,7 +822,8 @@ class MainActivity : Activity() {
             status.text = "Переключаю на ${if (free) "бесплатный сервер" else "Quattro"}…"
             startService(Intent(this, GilrTanoVpnService::class.java)
                 .setAction(GilrTanoVpnService.ACTION_SWITCH)
-                .putExtra(GilrTanoVpnService.EXTRA_CONFIG, config))
+                .putExtra(GilrTanoVpnService.EXTRA_CONFIG, config)
+                .putExtra(GilrTanoVpnService.EXTRA_ENGINE_BOX, configForNode(node).second))
         } else {
             Toast.makeText(this, if (free) "Выбран бесплатный резерв" else "Выбран Quattro", Toast.LENGTH_SHORT).show()
         }
@@ -1239,6 +1240,7 @@ class MainActivity : Activity() {
             .putExtra(GilrTanoVpnService.EXTRA_CONFIG, config)
             .putExtra(GilrTanoVpnService.EXTRA_AUTO, automatic)
             .putExtra(GilrTanoVpnService.EXTRA_ENGINE_BOX, engineBox)
+            .putExtra(GilrTanoVpnService.EXTRA_PREFERRED_ENGINE_BOX, engineBox)
         fallbackConfig?.let { intent.putExtra(GilrTanoVpnService.EXTRA_FALLBACK_CONFIG, it) }
         preferredConfig?.let { intent.putExtra(GilrTanoVpnService.EXTRA_PREFERRED_CONFIG, it) }
         startForegroundService(intent)
