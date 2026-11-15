@@ -25,6 +25,8 @@ class GilrTanoVpnService : VpnService() {
     @Volatile private var coreInitialized = false
     @Volatile private var activeConfig: String? = null
     @Volatile private var fallbackConfig: String? = null
+    @Volatile private var fallbackChain: List<Pair<String, Boolean>> = emptyList()
+    @Volatile private var fallbackIndex = -1
     @Volatile private var preferredConfig: String? = null
     @Volatile private var automaticMode = false
     @Volatile private var portalMode = false
@@ -54,6 +56,21 @@ class GilrTanoVpnService : VpnService() {
                     portalMode = intent.getBooleanExtra(EXTRA_PORTAL, intent.action == ACTION_START_PORTAL)
                     automaticMode = intent.getBooleanExtra(EXTRA_AUTO, false)
                     fallbackConfig = intent.getStringExtra(EXTRA_FALLBACK_CONFIG)
+                    fallbackChain = runCatching {
+                        val raw = intent.getStringExtra(EXTRA_FALLBACK_CHAIN)
+                        if (raw.isNullOrBlank()) emptyList() else {
+                            val array = org.json.JSONArray(raw)
+                            (0 until array.length()).mapNotNull { i ->
+                                val item = array.optJSONObject(i) ?: return@mapNotNull null
+                                val cfg = item.optString("config")
+                                if (cfg.isBlank()) null else cfg to item.optBoolean("box", true)
+                            }
+                        }
+                    }.getOrDefault(emptyList())
+                    if (fallbackChain.isEmpty() && !fallbackConfig.isNullOrBlank()) {
+                        fallbackChain = listOf(fallbackConfig!! to intent.getBooleanExtra(EXTRA_FALLBACK_ENGINE_BOX, false))
+                    }
+                    fallbackIndex = -1
                     fallbackBoxMode = intent.getBooleanExtra(EXTRA_FALLBACK_ENGINE_BOX, false)
                     preferredConfig = intent.getStringExtra(EXTRA_PREFERRED_CONFIG)
                     preferredBoxMode = intent.getBooleanExtra(EXTRA_PREFERRED_ENGINE_BOX, false)
@@ -90,6 +107,25 @@ class GilrTanoVpnService : VpnService() {
         }, "GilrTano-VPN-switch").start()
     }
 
+    /**
+     * Move through the ordered failover chain: generated WARP, bundled PORTAL
+     * AmneziaWG profiles, then Quattro/Xray. Each candidate is validated by the
+     * same end-to-end HTTPS probe before it is reported as connected.
+     */
+    @Synchronized private fun advanceFallback(reason: String): Boolean {
+        if (!automaticMode || stopping) return false
+        val next = fallbackIndex + 1
+        if (next !in fallbackChain.indices) return false
+        fallbackIndex = next
+        usingFallback = true
+        lastAutomaticSwitchAt = System.currentTimeMillis()
+        consecutiveProbeFailures = 0
+        val (config, isBox) = fallbackChain[next]
+        val label = if (isBox) "PORTAL AmneziaWG ${next + 1}/${fallbackChain.size}" else "Quattro"
+        broadcastStatus("$reason. Переключаюсь на $label…")
+        switchTunnel(config, isBox, isBox)
+        return true
+    }
     private fun startTunnel(config: String) {
         stopping = false
         activeConfig = config
@@ -122,11 +158,8 @@ class GilrTanoVpnService : VpnService() {
                         Log.i(TAG, "${when { portalMode && boxMode -> "PORTAL AmneziaWG"; portalMode -> "PORTAL MASQUE"; boxMode -> "PORTAL GATE"; else -> "Quattro" }} status=$status $message")
                         if (status == 0L && !stopping) establishTun()
                         else if (status < 0L && !stopping) {
-                            if (automaticMode && !usingFallback && !fallbackConfig.isNullOrBlank()) {
-                                usingFallback = true
-                                lastAutomaticSwitchAt = System.currentTimeMillis()
-                                broadcastStatus("Основной протокол недоступен. Запускаю резервный сервер…")
-                                switchTunnel(fallbackConfig!!, fallbackBoxMode, false)
+                            if (automaticMode && advanceFallback("Основной протокол недоступен")) {
+                                return
                             } else {
                                 broadcastStatus("Ошибка ${if (boxMode) "PORTAL GATE" else "Quattro"}: $message")
                                 stopTunnel()
@@ -139,11 +172,8 @@ class GilrTanoVpnService : VpnService() {
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to start ${if (boxMode) "PORTAL GATE" else "Quattro"}", e)
                 if (!stopping) {
-                    if (automaticMode && !usingFallback && !fallbackConfig.isNullOrBlank()) {
-                        usingFallback = true
-                        lastAutomaticSwitchAt = System.currentTimeMillis()
-                        broadcastStatus("Не удалось запустить основной протокол. Пробую резервный сервер…")
-                        switchTunnel(fallbackConfig!!, fallbackBoxMode)
+                    if (automaticMode && advanceFallback("Не удалось запустить основной протокол")) {
+                        return@Thread
                     } else {
                         broadcastStatus("Ошибка запуска: ${e.message}")
                         stopTunnel()
@@ -219,11 +249,8 @@ class GilrTanoVpnService : VpnService() {
             startConnectionMonitor()
         } catch (e: Exception) {
             Log.w(TAG, "VPN tunnel did not pass internet verification", e)
-            if (automaticMode && !usingFallback && !fallbackConfig.isNullOrBlank() && !stopping) {
-                usingFallback = true
-                lastAutomaticSwitchAt = System.currentTimeMillis()
-                broadcastStatus("У основного сервера нет интернета. Пробую резервный сервер…")
-                switchTunnel(fallbackConfig!!, fallbackBoxMode)
+            if (automaticMode && !stopping && advanceFallback("У сервера нет доступа в интернет")) {
+                return
             } else {
                 broadcastStatus("Не удалось подключиться: ${e.message}")
                 stopTunnel()
@@ -457,6 +484,7 @@ class GilrTanoVpnService : VpnService() {
         const val EXTRA_STATUS = "status"
         const val EXTRA_AUTO = "automatic_mode"
         const val EXTRA_FALLBACK_CONFIG = "fallback_config"
+        const val EXTRA_FALLBACK_CHAIN = "fallback_chain"
         const val EXTRA_PREFERRED_CONFIG = "preferred_config"
         private const val TAG = "GilrTanoVPN"
         private const val CHANNEL_ID = "gilrtano_vpn"
