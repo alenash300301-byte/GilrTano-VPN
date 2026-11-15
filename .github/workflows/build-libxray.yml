@@ -95,6 +95,17 @@ jobs:
           test -s app/libs/libXray.aar
           test -s app/libs/teapod-core-1.7.7.aar
 
+          # Both gomobile AARs package the same shared Java runtime (go.Seq/go.Universe).
+          # Keep that runtime from libXray and remove only the duplicate runtime
+          # classes from teapod-core; preserve teapod-core's generated API classes.
+          tmp="$(mktemp -d)"
+          unzip -q app/libs/teapod-core-1.7.7.aar -d "$tmp"
+          if [[ -f "$tmp/classes.jar" ]]; then
+            zip -q -d "$tmp/classes.jar" 'go/*' || true
+          fi
+          (cd "$tmp" && zip -qr "$GITHUB_WORKSPACE/app/libs/teapod-core-1.7.7.aar" .)
+          rm -rf "$tmp"
+
       - name: Build GilrTano debug APK
         run: gradle --no-daemon :app:assembleDebug
 
