@@ -103,6 +103,11 @@ jobs:
           if [[ -f "$tmp/classes.jar" ]]; then
             zip -q -d "$tmp/classes.jar" 'go/*' || true
           fi
+          # libXray is the single owner of gomobile's JNI runtime in the APK.
+          # Remove the duplicate native runtime from teapod-core for every ABI.
+          for so in "$tmp"/jni/*/libgojni.so; do
+            [[ -e "$so" ]] && rm -f "$so"
+          done
           (cd "$tmp" && zip -qr "$GITHUB_WORKSPACE/app/libs/teapod-core-1.7.7.aar" .)
           rm -rf "$tmp"
 
