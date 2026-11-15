@@ -28,8 +28,8 @@ data class PortalMasqueEndpoint(
 
 object PortalMasqueConfig {
     val endpoints = listOf(
-        PortalMasqueEndpoint("КИБЕРПОРТАЛ", "162.159.198.2", serverName = "4pda.to"),
-        PortalMasqueEndpoint("КИБЕРПОРТАЛ 2", "162.159.199.2", serverName = "mail.ru")
+        PortalMasqueEndpoint("WARP MASQUE · основной", "162.159.198.2", serverName = "consumer-masque.cloudflareclient.com"),
+        PortalMasqueEndpoint("WARP MASQUE · резерв", "162.159.198.10", serverName = "consumer-masque.cloudflareclient.com")
     )
 
     /**
