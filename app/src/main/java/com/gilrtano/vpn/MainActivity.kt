@@ -165,7 +165,7 @@ class MainActivity : Activity() {
             hint = "Ссылка Quattro или Clash YAML"
             minLines = 2
             maxLines = 5
-            setText(prefs.getString("subscription_url", ""))
+            setText(prefs.getString("subscription_url", "https://raw.githubusercontent.com/flaafix/AetrisVPN-white-list-lite/refs/heads/main/AetrisVPN.txt"))
             inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
         }
         freeSource = EditText(this).apply {
@@ -978,7 +978,8 @@ class MainActivity : Activity() {
                             saveNodes("aetris_fallback_nodes", aetrisFallbackNodes)
                         }
                         quattroNodes = imported
-                        prefs.edit().putString("subscription_url", source).putBoolean("aetris_subscription", isAetris).apply()
+                        prefs.edit().putString("subscription_url", source).putBoolean("aetris_subscription", isAetris)
+                            .putLong("aetris_last_refresh_ms", if (isAetris) System.currentTimeMillis() else 0L).apply()
                         saveNodes("quattro_nodes", quattroNodes)
                     }
                     activeFree = isFree
@@ -1385,6 +1386,19 @@ class MainActivity : Activity() {
         val filter = IntentFilter(GilrTanoVpnService.ACTION_STATUS)
         if (android.os.Build.VERSION.SDK_INT >= 33) registerReceiver(receiver, filter, RECEIVER_NOT_EXPORTED)
         else @Suppress("DEPRECATION") registerReceiver(receiver, filter)
+        refreshAetrisSubscriptionIfDue()
+    }
+
+    private fun refreshAetrisSubscriptionIfDue() {
+        val source = prefs.getString("subscription_url", null)
+            ?: "https://raw.githubusercontent.com/flaafix/AetrisVPN-white-list-lite/refs/heads/main/AetrisVPN.txt"
+        if (!source.contains("AetrisVPN-white-list-lite", ignoreCase = true)) return
+        val lastRefresh = prefs.getLong("aetris_last_refresh_ms", 0L)
+        // Android background scheduling is not reliable at one-minute intervals;
+        // refresh on foreground entry, with a conservative 15-minute minimum.
+        if (System.currentTimeMillis() - lastRefresh < 15 * 60 * 1000L) return
+        primarySource.setText(source)
+        importFrom(source, false)
     }
 
     override fun onStop() {
