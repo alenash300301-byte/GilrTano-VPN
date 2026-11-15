@@ -87,12 +87,26 @@ object PortalMasqueConfig {
         return JSONObject()
             .put("log", JSONObject().put("loglevel", "warning"))
             .put("env", JSONObject().put("xray.tun.fd", tunFd.toString()))
-            .put("inbounds", JSONArray())
+            .put("inbounds", JSONArray().put(
+                JSONObject()
+                    .put("tag", "portal-tun")
+                    .put("protocol", "tun")
+                    .put("settings", JSONObject()
+                        .put("name", "gilrtano-portal")
+                        .put("mtu", 1280)
+                        .put("gateway", JSONArray().put("10.77.0.1/30"))
+                        .put("dns", JSONArray().put("1.1.1.1")))
+            ))
             .put("outbounds", JSONArray()
                 .put(masqueOutbound)
                 .put(JSONObject().put("tag", "direct").put("protocol", "freedom").put("settings", JSONObject()))
                 .put(JSONObject().put("tag", "block").put("protocol", "blackhole").put("settings", JSONObject())))
-            .put("routing", JSONObject().put("domainStrategy", "AsIs").put("rules", JSONArray()))
+            .put("routing", JSONObject().put("domainStrategy", "AsIs").put("rules", JSONArray().put(
+                JSONObject()
+                    .put("type", "field")
+                    .put("inboundTag", JSONArray().put("portal-tun"))
+                    .put("outboundTag", "portal-warp")
+            )))
             .toString(2)
     }
 }
