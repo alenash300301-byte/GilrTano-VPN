@@ -37,6 +37,13 @@ Upstream API: `LibXray.invoke` with API version 3. The request method
 descriptor is supplied inside the Xray config root `env` as
 `xray.tun.fd`; a top-level request `env` is ignored.
 
+## Implemented groundwork in this branch
+
+- `PortalMasqueConfig.kt` builds one Xray WARP/MASQUE outbound at a time and supplies the Android TUN FD through the root `env.xray.tun.fd` field.
+- `PortalCredentialStore.kt` encrypts the WARP private key and companion fields with AES-256-GCM; the AES key is generated and retained by Android Keystore.
+- The generator accepts the two endpoint definitions and runtime credentials; no WARP secret is embedded in the repository.
+- The current generated config is an endpoint smoke-test profile, not the full PORTAL policy. It currently has no imported rule providers or category-specific routing.
+
 ## PORTAL profile requirements
 
 - Generate Xray MASQUE outbounds from app-held settings; never commit a WARP
@@ -46,7 +53,12 @@ descriptor is supplied inside the Xray config root `env` as
   single catch-all WARP route is not equivalent to the original profile's
   category-specific DIRECT/WARP rules and rule providers.
 - Use a dedicated TLS/SNI and ALPN configuration per endpoint and validate it
-  against the actual endpoint. Do not silently rewrite SNI values.
+  against the actual endpoint. Do not silently rewrite SNI values. The current
+  source profile uses custom SNI values (`4pda.to` and `mail.ru`); Xray's WARP
+  endpoint public-key pin may not match a certificate presented for those
+  custom names. Confirm certificate verification behavior before enabling either
+  endpoint. The documented default WARP SNI is
+  `consumer-masque.cloudflareclient.com`.
 - Protect core sockets from the VPN tunnel and verify real HTTPS traffic before
   displaying a connected state.
 - Store any private key encrypted at rest (Android Keystore-backed key); never
@@ -54,7 +66,9 @@ descriptor is supplied inside the Xray config root `env` as
 
 ## Acceptance gates
 
-1. Build the pinned AAR and verify its exported Android API surface.
+1. Build the pinned AAR and verify its exported Android API surface. The CI
+   workflow now installs Go, Java 21, Android SDK and NDK r29 before running
+   the upstream build script.
 2. Implement and unit-test a sanitized MASQUE JSON generator.
 3. Establish Android VpnService TUN and pass its FD using the documented Xray
    config environment field.
