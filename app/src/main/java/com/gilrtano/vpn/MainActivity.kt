@@ -1011,18 +1011,18 @@ class MainActivity : Activity() {
                 }
                 setOnClickListener { action() }
             }
-        val quattroChip = modeChip("QUATTRO", activeMode != "portal" && activeMode != "free", ::apply {
+        val quattroChip = modeChip("QUATTRO", activeMode != "portal" && activeMode != "free") {
             switchMode(false)
             dialog.dismiss()
-        })
-        val portalChip = modeChip("PORTAL", activeMode == "portal", ::apply {
+        }
+        val portalChip = modeChip("PORTAL", activeMode == "portal") {
             switchToPortal()
             dialog.dismiss()
-        })
-        val freeChip = modeChip("FREE", activeMode == "free", ::apply {
+        }
+        val freeChip = modeChip("FREE", activeMode == "free") {
             switchMode(true)
             dialog.dismiss()
-        })
+        }
         modeStrip.addView(quattroChip, LinearLayout.LayoutParams(0, dp(48), 1f))
         modeStrip.addView(portalChip, LinearLayout.LayoutParams(0, dp(48), 1f))
         modeStrip.addView(freeChip, LinearLayout.LayoutParams(0, dp(48), 1f))
