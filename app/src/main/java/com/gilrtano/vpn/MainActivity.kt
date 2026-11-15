@@ -310,7 +310,7 @@ class MainActivity : Activity() {
             addView(LinearLayout(this@MainActivity).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = android.view.Gravity.CENTER_HORIZONTAL
-                setPadding(dp(18), dp(12), dp(18), dp(18))
+                setPadding(dp(18), dp(6), dp(18), dp(2))
                 addView(LinearLayout(this@MainActivity).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = android.view.Gravity.CENTER_VERTICAL
@@ -358,7 +358,7 @@ class MainActivity : Activity() {
                     ))
                 }
                 addView(tigerScene, LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, dp(410)
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(380)
                 ).apply { topMargin = dp(0); bottomMargin = dp(0) })
 
                 // Transparent hit target sits over the power symbol already rendered in the GIF.
@@ -394,7 +394,7 @@ class MainActivity : Activity() {
                 powerOrb.contentDescription = "Кнопка питания VPN"
                 tigerScene.addView(powerOrb, FrameLayout.LayoutParams(dp(132), dp(132)).apply {
                     gravity = android.view.Gravity.TOP or android.view.Gravity.CENTER_HORIZONTAL
-                    topMargin = dp(242)
+                    topMargin = dp(224)
                 })
                 addView(status.apply {
                     text = "●  Отключено"; textSize = 17f
@@ -439,8 +439,8 @@ class MainActivity : Activity() {
                     }
                 }
                 addView(regionText, LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, dp(46)
-                ).apply { topMargin = dp(4); bottomMargin = dp(2) })
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(40)
+                ).apply { topMargin = dp(0); bottomMargin = dp(0) })
 
                 // One understated inline ping row; no bordered card.
                 val pingRow = LinearLayout(this@MainActivity).apply {
@@ -480,21 +480,14 @@ class MainActivity : Activity() {
                     ))
                 }
                 addView(pingRow, LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, dp(48)
-                ).apply { topMargin = dp(2); bottomMargin = dp(8) })
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(38)
+                ).apply { topMargin = dp(0); bottomMargin = dp(0) })
                 addView(servers, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)))
                 servers.visibility = View.GONE
                 addView(pingStatus.apply { gravity = android.view.Gravity.CENTER_VERTICAL }, LinearLayout.LayoutParams.MATCH_PARENT, dp(1))
                 pingStatus.visibility = View.GONE
                 addView(bestFreeButton, LinearLayout.LayoutParams.MATCH_PARENT, dp(1))
                 bestFreeButton.visibility = View.GONE
-                addView(checkPing, LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT, dp(34)
-                ).apply {
-                    gravity = android.view.Gravity.CENTER_HORIZONTAL
-                    topMargin = dp(2)
-                    bottomMargin = dp(4)
-                })
                 checkPing.visibility = View.VISIBLE
                 modeSelectorRow = LinearLayout(this@MainActivity).apply {
                     orientation = LinearLayout.HORIZONTAL
