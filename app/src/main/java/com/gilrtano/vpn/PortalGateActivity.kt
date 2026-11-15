@@ -89,7 +89,10 @@ class PortalGateActivity : Activity() {
         if (!receiverRegistered) {
             val filter = IntentFilter(GilrTanoVpnService.ACTION_STATUS)
             if (Build.VERSION.SDK_INT >= 33) registerReceiver(statusReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
-            else {\n                @Suppress("DEPRECATION")\n                registerReceiver(statusReceiver, filter)\n            }
+            else {
+                @Suppress("DEPRECATION")
+                registerReceiver(statusReceiver, filter)
+            }
             receiverRegistered = true
         }
     }
@@ -176,7 +179,7 @@ class PortalGateActivity : Activity() {
     }
 
     private fun startPortal(config: String) {
-        val isMasque = config.contains("\\"protocol\\":\\"masque\\"")
+        val isMasque = config.contains("\"protocol\":\"masque\"")
         val action = if (isMasque) GilrTanoVpnService.ACTION_START else GilrTanoVpnService.ACTION_START_PORTAL
         startForegroundService(Intent(this, GilrTanoVpnService::class.java)
             .setAction(action)
