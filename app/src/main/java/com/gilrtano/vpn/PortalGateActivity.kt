@@ -44,7 +44,7 @@ class PortalGateActivity : Activity() {
             typeface = android.graphics.Typeface.DEFAULT_BOLD
         })
         root.addView(TextView(this).apply {
-            text = "AmneziaWG · импорт серверного архива"
+            text = "AmneziaWG / MASQUE · импорт ZIP или YAML"
             textSize = 13f
             setTextColor(0xffaaaaaa.toInt())
             setPadding(0, 8, 0, 20)
@@ -56,11 +56,11 @@ class PortalGateActivity : Activity() {
         }
         root.addView(status)
         val import = Button(this).apply {
-            text = "ИМПОРТИРОВАТЬ ZIP"
+            text = "ИМПОРТИРОВАТЬ ZIP / YAML"
             setOnClickListener {
                 val pick = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                     addCategory(Intent.CATEGORY_OPENABLE)
-                    type = "application/zip"
+                    type = "*/*"
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
                 }
                 startActivityForResult(pick, IMPORT_REQUEST)
@@ -89,7 +89,7 @@ class PortalGateActivity : Activity() {
         if (!receiverRegistered) {
             val filter = IntentFilter(GilrTanoVpnService.ACTION_STATUS)
             if (Build.VERSION.SDK_INT >= 33) registerReceiver(statusReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
-            else @Suppress("DEPRECATION") registerReceiver(statusReceiver, filter)
+            else {\n                @Suppress("DEPRECATION")\n                registerReceiver(statusReceiver, filter)\n            }
             receiverRegistered = true
         }
     }
@@ -124,9 +124,20 @@ class PortalGateActivity : Activity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == IMPORT_REQUEST && resultCode == RESULT_OK) {
             val uri = data?.data ?: return
+            val displayName = runCatching {
+                contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)
+                    ?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else "" } ?: ""
+            }.getOrDefault("")
             runCatching {
-                contentResolver.openInputStream(uri)?.use { PortalGateImporter.parseZip(it) }
-                    ?: error("Не удалось открыть архив")
+                contentResolver.openInputStream(uri)?.use { stream ->
+                    when {
+                        displayName.endsWith(".yaml", true) || displayName.endsWith(".yml", true) ->
+                            PortalGateMasqueImporter.parseYaml(stream)
+                        displayName.endsWith(".zip", true) || displayName.isBlank() ->
+                            PortalGateImporter.parseZip(stream)
+                        else -> error("Поддерживаются ZIP с AmneziaWG и YAML с MASQUE")
+                    }
+                } ?: error("Не удалось открыть файл")
             }.onSuccess {
                 runCatching { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
                 getSharedPreferences("portal_gate", MODE_PRIVATE).edit().putString("archive_uri", uri.toString()).apply()
@@ -158,7 +169,7 @@ class PortalGateActivity : Activity() {
         startForegroundService(Intent(this, GilrTanoVpnService::class.java)
             .setAction(GilrTanoVpnService.ACTION_START_PORTAL)
             .putExtra(GilrTanoVpnService.EXTRA_CONFIG, config))
-        status.text = "Запускаю PORTAL GATE…"
+        status.text = if (action == GilrTanoVpnService.ACTION_START) "Запускаю PORTAL MASQUE…" else "Запускаю PORTAL GATE…"
         Toast.makeText(this, "Запуск PORTAL GATE", Toast.LENGTH_SHORT).show()
     }
 
