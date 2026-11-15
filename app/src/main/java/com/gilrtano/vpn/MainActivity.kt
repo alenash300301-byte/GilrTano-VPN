@@ -953,9 +953,6 @@ class MainActivity : Activity() {
             row.addView(toggle)
             page.addView(row)
         }
-        addToggle("Автоподключение", "Подключаться при запуске", "setting_autoconnect")
-        addToggle("Автосмена сервера", "Менять сервер при падении скорости", "setting_auto_server")
-        addToggle("Быстрое подключение", "Выбирать лучший доступный сервер", "setting_quick_connect")
         fun addDivider() {
             page.addView(View(this).apply { setBackgroundColor(Color.DKGRAY) },
                 LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)).apply {
@@ -1045,12 +1042,6 @@ class MainActivity : Activity() {
             ).apply { topMargin = dp(12) })
         }
         addDivider()
-        addRow("Протокол", prefs.getString("selected_protocol", "Авто") ?: "Авто") {
-            AlertDialog.Builder(this).setTitle("Протокол")
-                .setItems(arrayOf("Авто", "VLESS", "VMess", "Trojan", "Shadowsocks")) { _, which ->
-                    prefs.edit().putString("selected_protocol", arrayOf("Авто", "VLESS", "VMess", "Trojan", "Shadowsocks")[which]).apply()
-                }.show()
-        }
         addRow("Импорт конфигурации") {
             val choices = arrayOf("Импортировать Quattro по ссылке", "Выбрать DOCX Quattro", "Импортировать бесплатные серверы")
             AlertDialog.Builder(this)
@@ -1103,30 +1094,6 @@ class MainActivity : Activity() {
                         }
                     }
                 }.show()
-        }
-        addRow("Quattro", "${quattroNodes.size} серверов") {
-            AlertDialog.Builder(this)
-                .setTitle("Quattro")
-                .setMessage(if (quattroNodes.isEmpty()) "Подписка ещё не импортирована." else "Сохранено серверов: ${quattroNodes.size}")
-                .setPositiveButton("Импортировать") { _, _ ->
-                    val input = EditText(this).apply {
-                        hint = "Ссылка Quattro или Clash YAML"
-                        setText(prefs.getString("subscription_url", ""))
-                    }
-                    AlertDialog.Builder(this).setTitle("Импорт Quattro").setView(input)
-                        .setNegativeButton("Отмена", null)
-                        .setPositiveButton("Продолжить") { _, _ ->
-                            val url = input.text.toString().trim()
-                            if (url.isNotBlank()) {
-                                primarySource.setText(url)
-                                prefs.edit().putString("subscription_url", url).apply()
-                                dialog.dismiss()
-                                importFrom(url, false)
-                            }
-                        }.show()
-                }
-                .setNegativeButton("Закрыть", null)
-                .show()
         }
         addDivider()
         addRow("О приложении") {
