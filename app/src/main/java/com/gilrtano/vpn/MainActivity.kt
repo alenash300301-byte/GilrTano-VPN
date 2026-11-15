@@ -907,7 +907,7 @@ class MainActivity : Activity() {
         val scroll = root.getChildAt(0) as? android.widget.ScrollView ?: return
         val page = scroll.getChildAt(0) as? ViewGroup ?: return
         settingsHeader.visibility = if (settingsExpanded) View.VISIBLE else View.GONE
-        modeSelectorRow.visibility = if (settingsExpanded) View.VISIBLE else View.GONE
+        modeSelectorRow.visibility = View.VISIBLE
         primarySource.visibility = if (settingsExpanded && !activeFree) View.VISIBLE else View.GONE
         freeSource.visibility = if (settingsExpanded && activeFree) View.VISIBLE else View.GONE
         bestFreeButton.visibility = if (settingsExpanded && activeFree) View.VISIBLE else View.GONE
