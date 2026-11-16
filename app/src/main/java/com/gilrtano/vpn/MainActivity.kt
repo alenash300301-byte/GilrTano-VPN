@@ -24,6 +24,8 @@ import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.Chronometer
 import android.os.SystemClock
+import android.os.Handler
+import android.os.Looper
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ImageView
