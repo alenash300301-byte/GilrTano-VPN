@@ -70,6 +70,8 @@ class MainActivity : Activity() {
     private lateinit var pingMetric: TextView
     private lateinit var downloadMetric: TextView
     private lateinit var uploadMetric: TextView
+    private lateinit var sessionMetric: TextView
+    private lateinit var trafficTotalMetric: TextView
     private val trafficHandler = Handler(Looper.getMainLooper())
     private var lastRxBytes = TrafficStats.getTotalRxBytes()
     private var lastTxBytes = TrafficStats.getTotalTxBytes()
@@ -640,6 +642,44 @@ class MainActivity : Activity() {
                     addView(metric("Входящий", "—", " Мбит/с"), LinearLayout.LayoutParams(0, dp(62), 1f).apply { leftMargin = dp(3); rightMargin = dp(3) })
                     addView(metric("Исходящий", "—", " Мбит/с"), LinearLayout.LayoutParams(0, dp(62), 1f).apply { leftMargin = dp(6) })
                 }, LinearLayout.LayoutParams.MATCH_PARENT, dp(62))
+                // Second dashboard strip: session duration, total traffic and active route.
+                addView(LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = android.view.Gravity.CENTER_VERTICAL
+                    background = GradientDrawable().apply {
+                        setColor(Color.rgb(12, 12, 15))
+                        cornerRadius = dp(17).toFloat()
+                        setStroke(dp(1), Color.rgb(82, 35, 37))
+                    }
+                    setPadding(dp(8), dp(9), dp(8), dp(9))
+                    fun detail(label: String, initial: String): LinearLayout {
+                        return LinearLayout(this@MainActivity).apply {
+                            orientation = LinearLayout.VERTICAL
+                            gravity = android.view.Gravity.CENTER
+                            addView(TextView(this@MainActivity).apply {
+                                text = label; textSize = 10f
+                                setTextColor(Color.rgb(155, 158, 166))
+                            })
+                            addView(TextView(this@MainActivity).apply {
+                                text = initial; textSize = 13f
+                                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                                setTextColor(Color.WHITE)
+                                setPadding(0, dp(3), 0, 0)
+                                if (label == "СЕССИЯ") sessionMetric = this
+                                if (label == "ТРАФИК") trafficTotalMetric = this
+                            })
+                        }
+                    }
+                    addView(detail("СЕССИЯ", "00:00"), LinearLayout.LayoutParams(0, dp(43), 1f))
+                    addView(View(this@MainActivity).apply { setBackgroundColor(Color.rgb(58, 58, 64)) },
+                        LinearLayout.LayoutParams(dp(1), dp(30)))
+                    addView(detail("ТРАФИК", "—"), LinearLayout.LayoutParams(0, dp(43), 1f))
+                    addView(View(this@MainActivity).apply { setBackgroundColor(Color.rgb(58, 58, 64)) },
+                        LinearLayout.LayoutParams(dp(1), dp(30)))
+                    addView(detail("МАРШРУТ", "PORTAL → QUATTRO"), LinearLayout.LayoutParams(0, dp(43), 1.2f))
+                }, LinearLayout.LayoutParams.MATCH_PARENT, dp(62)).apply {
+                    topMargin = dp(8)
+                }
                 addView(TextView(this@MainActivity).apply {
                     text = "Скорость сети"
                     textSize = 10f
@@ -1483,6 +1523,15 @@ class MainActivity : Activity() {
                 val connected = ::status.isInitialized && status.text.toString().contains("Подключено")
                 downloadMetric.text = String.format(java.util.Locale.US, "%.1f Мбит/с", if (connected) down else 0.0)
                 uploadMetric.text = String.format(java.util.Locale.US, "%.1f Мбит/с", if (connected) up else 0.0)
+                if (::sessionMetric.isInitialized) {
+                    sessionMetric.text = if (connected && ::connectionTimer.isInitialized) connectionTimer.text.toString() else "00:00"
+                }
+                if (::trafficTotalMetric.isInitialized) {
+                    val total = if (connected && rx >= 0 && tx >= 0) rx + tx else 0L
+                    trafficTotalMetric.text = if (total >= 1_073_741_824L)
+                        String.format(java.util.Locale.US, "%.2f ГБ", total / 1_073_741_824.0)
+                    else String.format(java.util.Locale.US, "%.0f МБ", total / 1_048_576.0)
+                }
                 lastRxBytes = rx
                 lastTxBytes = tx
                 lastTrafficSample = now
