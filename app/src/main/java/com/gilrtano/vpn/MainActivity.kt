@@ -277,6 +277,7 @@ class MainActivity : Activity() {
                             else startWarpVpn(profile.config, quattro)
                         }
                     } catch (e: Exception) {
+                        android.util.Log.e("WarpGenerator", "WARP generation/import pipeline failed", e)
                         // Generator outage: use the bundled PORTAL archive as the
                         // primary profile. The service loads the rest as failover.
                         val bundled = runCatching {
