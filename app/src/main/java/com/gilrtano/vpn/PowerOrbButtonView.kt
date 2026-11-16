@@ -63,6 +63,14 @@ class PowerOrbButtonView @JvmOverloads constructor(
     private var animationsAllowed = true
     var useGlArtwork: Boolean = false
 
+    init {
+        // Ensure the circular bitmap clip is applied to the artwork's square
+        // bitmap bounds on Android devices with problematic HW path clipping.
+        setLayerType(View.LAYER_TYPE_SOFTWARE, null)
+        setBackgroundColor(Color.TRANSPARENT)
+        includeFontPadding = false
+    }
+
 
     fun setCaption(value: String) {
         caption = value
@@ -288,9 +296,11 @@ class PowerOrbButtonView @JvmOverloads constructor(
 
         val save = canvas.save()
         val clip = Path().apply {
-            addCircle(width / 2f, height / 2f, side * 0.5f, Path.Direction.CW)
+            addCircle(width / 2f, height / 2f, side * 0.495f, Path.Direction.CW)
         }
-        canvas.clipPath(clip)
+        // Explicit anti-aliased circular clipping removes the source PNG's
+        // opaque square corners so the tiger wallpaper remains visible.
+        canvas.clipPath(clip, android.graphics.Region.Op.INTERSECT)
         if (!useGlArtwork) {
             buttonArtwork.bounds = android.graphics.Rect(
                 left.toInt(), top.toInt(), (left + side).toInt(), (top + side).toInt()
