@@ -3,6 +3,7 @@ package com.gilrtano.vpn
 import android.content.Context
 import android.opengl.GLES20
 import android.opengl.GLSurfaceView
+import android.graphics.PixelFormat
 import android.view.View
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -20,6 +21,8 @@ class EnergyOrbGLView(context: Context) : GLSurfaceView(context) {
 
     init {
         setEGLContextClientVersion(2)
+        holder.setFormat(PixelFormat.TRANSLUCENT)
+        setZOrderMediaOverlay(true)
         setEGLConfigChooser(8, 8, 8, 8, 0, 0)
         setRenderer(orbRenderer)
         renderMode = RENDERMODE_CONTINUOUSLY
