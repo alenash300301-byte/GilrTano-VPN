@@ -740,7 +740,7 @@ class MainActivity : Activity() {
         }
         fun navItem(symbol: String, label: String, index: Int, action: () -> Unit): TextView =
             TextView(this).apply {
-                text = "$symbol\\n$label"
+                text = "$symbol\n$label"
                 textSize = 11f
                 typeface = android.graphics.Typeface.create(
                     "sans-serif-medium", android.graphics.Typeface.NORMAL
