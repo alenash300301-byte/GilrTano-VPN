@@ -76,6 +76,13 @@ object WarpGeneratorClient {
             require(config.contains("[Interface]") && config.contains("[Peer]")) {
                 "получен неподдерживаемый формат конфигурации"
             }
+            val hasCloudflareClientId = config.lineSequence().any { line ->
+                line.trim().removePrefix("#").trim()
+                    .startsWith("Reserved", ignoreCase = true) && line.contains('=')
+            }
+            require(hasCloudflareClientId) {
+                "генератор не вернул Cloudflare Client ID (Reserved): такой WARP-профиль может поднять handshake, но не пропускать трафик"
+            }
             return config
         } finally {
             connection.disconnect()
