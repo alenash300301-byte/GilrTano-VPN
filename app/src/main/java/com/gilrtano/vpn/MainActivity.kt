@@ -24,9 +24,6 @@ import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.Chronometer
 import android.os.SystemClock
-import android.os.Handler
-import android.os.Looper
-import android.net.TrafficStats
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ImageView
@@ -70,14 +67,7 @@ class MainActivity : Activity() {
     private val updateExecutor = Executors.newSingleThreadExecutor()
     private lateinit var modeSelectorRow: LinearLayout
     private lateinit var pingMetric: TextView
-    private lateinit var downloadMetric: TextView
-    private lateinit var uploadMetric: TextView
-    private lateinit var trafficTotalMetric: TextView
     private lateinit var protocolMetric: TextView
-    private val trafficHandler = Handler(Looper.getMainLooper())
-    private var lastRxBytes = TrafficStats.getTotalRxBytes()
-    private var lastTxBytes = TrafficStats.getTotalTxBytes()
-    private var lastTrafficSample = SystemClock.elapsedRealtime()
     private lateinit var connectButton: PowerOrbButtonView
     @Volatile private var scanningFree = false
     private var activeFree = false
@@ -278,7 +268,6 @@ class MainActivity : Activity() {
             setOnClickListener { checkForAppUpdate() }
         }
 
-        lateinit var trafficWaveAnchor: View
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.rgb(5, 5, 7))
@@ -425,38 +414,6 @@ class MainActivity : Activity() {
                 }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(70)).apply {
                     topMargin = dp(8); bottomMargin = dp(14)
                 })
-                // Three compact live-metric cards and the neon traffic trace from the approved reference.
-                addView(LinearLayout(this@MainActivity).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = android.view.Gravity.CENTER
-                    fun metric(title: String, value: String, unit: String = ""): LinearLayout {
-                        return LinearLayout(this@MainActivity).apply {
-                            orientation = LinearLayout.VERTICAL
-                            gravity = android.view.Gravity.CENTER
-                            background = GradientDrawable().apply {
-                                setColor(Color.rgb(12, 12, 15))
-                                cornerRadius = dp(16).toFloat()
-                                setStroke(dp(1), Color.rgb(48, 48, 52))
-                            }
-                            addView(TextView(this@MainActivity).apply {
-                                text = title; textSize = 11f
-                                setTextColor(Color.LTGRAY)
-                            })
-                            addView(TextView(this@MainActivity).apply {
-                                text = value + unit; textSize = 14f
-                                typeface = android.graphics.Typeface.DEFAULT_BOLD
-                                setTextColor(Color.rgb(30, 238, 65))
-                                setPadding(0, dp(3), 0, 0)
-                                if (title == "Пинг") pingMetric = this
-                                if (title == "Входящий") downloadMetric = this
-                                if (title == "Исходящий") uploadMetric = this
-                            })
-                        }
-                    }
-                    addView(metric("Пинг", "—", " мс"), LinearLayout.LayoutParams(0, dp(62), 1f).apply { rightMargin = dp(6) })
-                    addView(metric("Входящий", "—", " Мбит/с"), LinearLayout.LayoutParams(0, dp(62), 1f).apply { leftMargin = dp(3); rightMargin = dp(3) })
-                    addView(metric("Исходящий", "—", " Мбит/с"), LinearLayout.LayoutParams(0, dp(62), 1f).apply { leftMargin = dp(6) })
-                }, LinearLayout.LayoutParams.MATCH_PARENT, dp(62))
                 // Secondary live panel, matching FlClashX's modular dashboard-card approach.
                 addView(LinearLayout(this@MainActivity).apply {
                     orientation = LinearLayout.HORIZONTAL
@@ -482,12 +439,6 @@ class MainActivity : Activity() {
                         setTextColor(Color.WHITE)
                         format = "%s"
                     }
-                    val trafficValue = TextView(this@MainActivity).apply {
-                        text = "0,00 ГБ"; textSize = 15f
-                        typeface = android.graphics.Typeface.DEFAULT_BOLD
-                        setTextColor(Color.WHITE)
-                        trafficTotalMetric = this
-                    }
                     val protocolValue = TextView(this@MainActivity).apply {
                         text = "QUATTRO"; textSize = 15f
                         typeface = android.graphics.Typeface.DEFAULT_BOLD
@@ -499,27 +450,11 @@ class MainActivity : Activity() {
                     addView(View(this@MainActivity).apply {
                         setBackgroundColor(Color.rgb(65, 55, 58))
                     }, LinearLayout.LayoutParams(dp(1), dp(42)))
-                    addView(infoCell("Трафик", trafficValue),
-                        LinearLayout.LayoutParams(0, dp(48), 1f))
-                    addView(View(this@MainActivity).apply {
-                        setBackgroundColor(Color.rgb(65, 55, 58))
-                    }, LinearLayout.LayoutParams(dp(1), dp(42)))
                     addView(infoCell("Протокол", protocolValue),
                         LinearLayout.LayoutParams(0, dp(48), 1f))
                 }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(82)).apply {
                     topMargin = dp(10); bottomMargin = dp(10)
                 })
-                addView(TextView(this@MainActivity).apply {
-                    text = "Скорость сети"
-                    textSize = 10f
-                    setTextColor(Color.GRAY)
-                    gravity = android.view.Gravity.CENTER
-                    setPadding(0, dp(3), 0, 0)
-                }, LinearLayout.LayoutParams.MATCH_PARENT, dp(20))
-                trafficWaveAnchor = TrafficWaveView(this@MainActivity)
-                addView(trafficWaveAnchor, LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, dp(58)
-                ).apply { topMargin = dp(8); bottomMargin = dp(8) })
                 addView(servers, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)))
                 servers.visibility = View.GONE
                 addView(pingStatus.apply { gravity = android.view.Gravity.CENTER_VERTICAL }, LinearLayout.LayoutParams.MATCH_PARENT, dp(1))
@@ -772,87 +707,52 @@ class MainActivity : Activity() {
         pageHost.addView(wrapPage(profilesPage), FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         pageHost.addView(wrapPage(settingsPage), FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         var currentPageIndex = 0
+        var pageTransitionGeneration = 0
         fun showPage(index: Int) {
             if (index !in 0 until pageHost.childCount || index == currentPageIndex) return
-            val direction = if (index > currentPageIndex) 1f else -1f
-            val outgoing = pageHost.getChildAt(currentPageIndex)
+            val generation = ++pageTransitionGeneration
+            val previousIndex = currentPageIndex
+            val direction = if (index > previousIndex) 1f else -1f
+            val outgoing = pageHost.getChildAt(previousIndex)
             val incoming = pageHost.getChildAt(index)
-            val travel = (pageHost.width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels).toFloat() * 0.25f
             outgoing.animate().cancel()
             incoming.animate().cancel()
             incoming.visibility = View.VISIBLE
+            val travel = (pageHost.width.takeIf { it > 0 }
+                ?: resources.displayMetrics.widthPixels).toFloat() * 0.25f
             incoming.translationX = direction * travel
             incoming.alpha = 0f
             outgoing.animate().translationX(-direction * travel).alpha(0f)
-                .setDuration(135L).setInterpolator(DecelerateInterpolator())
+                .setDuration(450L)
+                .setInterpolator(android.view.animation.PathInterpolator(0.2f, 0f, 0f, 1f))
                 .withEndAction {
-                    outgoing.visibility = View.GONE
-                    outgoing.translationX = 0f
-                    outgoing.alpha = 1f
+                    if (generation == pageTransitionGeneration) {
+                        outgoing.visibility = View.GONE
+                        outgoing.translationX = 0f
+                        outgoing.alpha = 1f
+                    }
                 }.start()
             incoming.animate().translationX(0f).alpha(1f)
-                .setStartDelay(68L).setDuration(382L)
-                .setInterpolator(android.view.animation.PathInterpolator(0.65f, 0f, 0.35f, 1f))
-                .start()
+                .setDuration(450L)
+                .setInterpolator(android.view.animation.PathInterpolator(0.2f, 0f, 0f, 1f))
+                .withEndAction {
+                    if (generation == pageTransitionGeneration) navigationDock.setSelectedIndex(index, true)
+                }.start()
             currentPageIndex = index
             if (index == 1) updateServerPage()
             if (index == 2) refreshProfileCard()
         }
         root.addView(pageHost, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
-        val bottomNav = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = android.view.Gravity.CENTER
-            background = GradientDrawable().apply {
-                setColor(Color.rgb(10, 10, 13))
-                cornerRadius = dp(20).toFloat()
-                setStroke(dp(1), Color.rgb(100, 25, 28))
-            }
-            setPadding(dp(4), dp(4), dp(4), dp(4))
+        val navigationDock = FlClashNavigationDock(this) { destination ->
+            showPage(destination)
         }
-        val navItems = listOf("⌂\nГлавная", "◎\nПрокси", "▤\nПрофили", "⚙\nНастройки")
-        val navButtons = mutableListOf<Button>()
-        fun selectNav(selected: Int) {
-            navButtons.forEachIndexed { i, button ->
-                val active = i == selected
-                button.animate().cancel()
-                button.animate().scaleX(if (active) 1.035f else 1f).scaleY(if (active) 1.035f else 1f)
-                    .setDuration(220L).setInterpolator(android.view.animation.OvershootInterpolator(1.15f)).start()
-                button.setTextColor(if (active) Color.rgb(60, 255, 95) else Color.LTGRAY)
-                button.background = GradientDrawable().apply {
-                    setColor(if (active) Color.rgb(8, 38, 16) else Color.TRANSPARENT)
-                    cornerRadius = dp(18).toFloat()
-                    if (active) setStroke(dp(1), Color.rgb(55, 225, 80))
-                }
-                button.elevation = if (active) dp(5).toFloat() else 0f
-            }
-        }
-        navItems.forEachIndexed { index, label ->
-            val navButton = Button(this).apply {
-                text = label
-                contentDescription = "dashboard-nav"
-                textSize = 11f
-                isAllCaps = false
-                setTextColor(Color.LTGRAY)
-                background = GradientDrawable().apply {
-                    setColor(Color.TRANSPARENT)
-                    cornerRadius = dp(16).toFloat()
-                }
-                setOnClickListener {
-                    selectNav(index)
-                    showPage(index)
-
-                }
-            }
-            navButtons.add(navButton)
-            bottomNav.addView(navButton, LinearLayout.LayoutParams(0, dp(62), 1f))
-        }
-        selectNav(0)
-        root.addView(bottomNav, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(72)).apply {
-            leftMargin = dp(10); rightMargin = dp(10); bottomMargin = dp(5)
+        navigationDock.setSelectedIndex(0, false)
+        root.addView(navigationDock, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, dp(74)
+        ).apply {
+            leftMargin = dp(14); rightMargin = dp(14); bottomMargin = dp(8)
         })
         setContentView(root)
-        trafficHandler.removeCallbacks(trafficSample)
-        trafficHandler.post(trafficSample)
         styleDarkInterface()
         installButtonFeedback()
         setPowerButtonLabel("ПОДКЛЮЧИТЬ")
@@ -1100,7 +1000,6 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
-        trafficHandler.removeCallbacks(trafficSample)
         updateExecutor.shutdownNow()
         super.onDestroy()
     }
@@ -1116,6 +1015,7 @@ class MainActivity : Activity() {
         root.setBackgroundColor(Color.rgb(8, 8, 10))
         fun style(view: android.view.View) {
             when (view) {
+                is FlClashNavigationDock -> return
                 is Button -> {
                     // Preserve the circular hero power control; the other buttons use compact styling.
                     if (view === connectButton || view.contentDescription == "dashboard-nav") return
@@ -1143,10 +1043,8 @@ class MainActivity : Activity() {
                     }
                 }
                 is TextView -> {
-                    val isLiveMetric = (::pingMetric.isInitialized && view === pingMetric) ||
-                        (::downloadMetric.isInitialized && view === downloadMetric) ||
-                        (::uploadMetric.isInitialized && view === uploadMetric)
-                    if (!isLiveMetric && view.currentTextColor != Color.WHITE) view.setTextColor(Color.LTGRAY)
+                    if (!(::pingMetric.isInitialized && view === pingMetric) &&
+                        view.currentTextColor != Color.WHITE) view.setTextColor(Color.LTGRAY)
                 }
                 is Spinner -> {
                     view.setBackgroundColor(Color.rgb(24, 25, 28))
@@ -1266,32 +1164,6 @@ class MainActivity : Activity() {
         }
         pingStatus.visibility = if (settingsExpanded) View.VISIBLE else View.GONE
         updateButton.visibility = if (settingsExpanded) View.VISIBLE else View.GONE
-    }
-
-    private val trafficSample = object : Runnable {
-        override fun run() {
-            if (::downloadMetric.isInitialized && ::uploadMetric.isInitialized) {
-                val now = SystemClock.elapsedRealtime()
-                val rx = TrafficStats.getTotalRxBytes()
-                val tx = TrafficStats.getTotalTxBytes()
-                val seconds = ((now - lastTrafficSample).coerceAtLeast(1L)) / 1000.0
-                val down = if (rx >= 0 && lastRxBytes >= 0) ((rx - lastRxBytes).coerceAtLeast(0L) * 8.0 / seconds / 1_000_000.0) else 0.0
-                val up = if (tx >= 0 && lastTxBytes >= 0) ((tx - lastTxBytes).coerceAtLeast(0L) * 8.0 / seconds / 1_000_000.0) else 0.0
-                val connected = ::status.isInitialized && status.text.toString().contains("Подключено")
-                downloadMetric.text = String.format(java.util.Locale.US, "%.1f Мбит/с", if (connected) down else 0.0)
-                uploadMetric.text = String.format(java.util.Locale.US, "%.1f Мбит/с", if (connected) up else 0.0)
-                if (::trafficTotalMetric.isInitialized) {
-                    val appRx = TrafficStats.getUidRxBytes(android.os.Process.myUid()).coerceAtLeast(0L)
-                    val appTx = TrafficStats.getUidTxBytes(android.os.Process.myUid()).coerceAtLeast(0L)
-                    val totalGb = (appRx + appTx) / 1_000_000_000.0
-                    trafficTotalMetric.text = String.format(java.util.Locale.US, "%.2f ГБ", totalGb)
-                }
-                lastRxBytes = rx
-                lastTxBytes = tx
-                lastTrafficSample = now
-            }
-            trafficHandler.postDelayed(this, 1000L)
-        }
     }
 
     private fun importFrom(source: String, isFree: Boolean) {
