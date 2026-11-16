@@ -187,8 +187,8 @@ class MainActivity : Activity() {
             setOnClickListener { startActivity(Intent(this@MainActivity, PortalGateActivity::class.java)) }
         }
         autoTab = Button(this).apply {
-            text = "АВТО QUATTRO"
-            setOnClickListener { switchMode(false) }
+            text = "АВТО PORTAL"
+            setOnClickListener { switchToAuto() }
         }
 
         portalGateButton = Button(this).apply {
@@ -805,12 +805,15 @@ class MainActivity : Activity() {
     }
 
     private fun switchToAuto() {
+        // Automatic mode is PORTAL GATE first, with Quattro as the final fallback.
+        // Do not silently switch to the rejected public/free-server mode.
         autoMode = true
         activeMode = "auto"
-        prefs.edit().putString("connection_mode", "auto").apply()
-        activeFree = quattroNodes.isEmpty() && freeNodes.isNotEmpty()
+        activeFree = false
+        prefs.edit().putString("connection_mode", "auto")
+            .putBoolean("active_free_mode", false).apply()
         refreshMode()
-        Toast.makeText(this, "Автовыбор включён: Quattro в приоритете, бесплатный резерв", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Автовыбор включён: PORTAL GATE → Quattro", Toast.LENGTH_SHORT).show()
     }
 
     private fun switchMode(free: Boolean) {
@@ -1179,9 +1182,8 @@ class MainActivity : Activity() {
         val node = activeNodes.getOrNull(servers.selectedItemPosition) ?: return
         try {
             val config = GilrTanoVpnService.xrayConfigFromVless(node.uri)
-            val fallbackNode = if (activeFree) freeNodes.getOrNull(1) else freeNodes.firstOrNull()
-            val fallback = fallbackNode
-                ?.let { runCatching { GilrTanoVpnService.xrayConfigFromVless(it.uri) }.getOrNull() }
+            // Public/free nodes are intentionally excluded; Quattro remains the only Xray fallback.
+            val fallback: String? = null
             pendingConfig = config
             pendingFallbackConfig = fallback
             pendingPreferredConfig = config
