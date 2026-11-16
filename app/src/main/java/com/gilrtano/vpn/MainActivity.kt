@@ -313,7 +313,8 @@ class MainActivity : Activity() {
                 }
                 heroFrame.addView(connectButton, FrameLayout.LayoutParams(dp(174), dp(174),
                     android.view.Gravity.CENTER).apply {
-                    // Keep the power control centered over the tiger artwork.
+                    // Lower the orb over the tiger's muzzle, matching the reference composition.
+                    topMargin = dp(58)
                 })
                 addView(heroFrame, LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, dp(390)
