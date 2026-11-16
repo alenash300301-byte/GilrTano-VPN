@@ -315,19 +315,19 @@ class MainActivity : Activity() {
         }
         val scroll = android.widget.ScrollView(this).apply {
             isFillViewport = true
-            addView(LinearLayout(this@MainActivity).apply {
-                orientation = LinearLayout.VERTICAL
-                gravity = android.view.Gravity.CENTER_HORIZONTAL
+            addView(FrameLayout(this@MainActivity).apply {
+                clipChildren = false
+                clipToPadding = false
                 setPadding(dp(18), dp(12), dp(18), dp(18))
                 homePage = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL; gravity = android.view.Gravity.CENTER_HORIZONTAL }
                 proxyPage = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE }
                 profilesPage = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE }
                 settingsPage = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE }
                 navigationPages = listOf(homePage, proxyPage, profilesPage, settingsPage)
-                addView(homePage, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-                addView(proxyPage, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-                addView(profilesPage, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-                addView(settingsPage, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+                addView(homePage, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, android.view.Gravity.TOP))
+                addView(proxyPage, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, android.view.Gravity.TOP))
+                addView(profilesPage, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, android.view.Gravity.TOP))
+                addView(settingsPage, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, android.view.Gravity.TOP))
                 proxyPage.addView(TextView(this@MainActivity).apply { text = "ПРОКСИ"; textSize = 23f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE); setPadding(0, dp(8), 0, dp(18)) })
                 profilesPage.addView(TextView(this@MainActivity).apply { text = "ПРОФИЛИ"; textSize = 23f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE); setPadding(0, dp(8), 0, dp(8)) })
                 profilesPage.addView(TextView(this@MainActivity).apply { text = "Выбери источник подключения"; textSize = 13f; setTextColor(Color.LTGRAY); setPadding(0, 0, 0, dp(16)) })
