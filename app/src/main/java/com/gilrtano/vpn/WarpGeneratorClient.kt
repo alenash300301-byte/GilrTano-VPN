@@ -45,8 +45,10 @@ object WarpGeneratorClient {
     private fun requestConfig(apiUrl: String, payload: JSONObject): String {
         val connection = (URL(apiUrl).openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
-            connectTimeout = 15_000
-            readTimeout = 60_000
+            connectTimeout = 12_000
+            // Cyberportal documents that generation can take up to 75 seconds.
+            // A 60-second read timeout aborted valid slow generations prematurely.
+            readTimeout = 90_000
             doOutput = true
             setRequestProperty("Content-Type", "application/json")
             setRequestProperty("Accept", "application/json")
