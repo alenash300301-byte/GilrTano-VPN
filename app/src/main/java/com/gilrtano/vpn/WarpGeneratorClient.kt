@@ -6,36 +6,23 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * Requests a fresh AmneziaWG profile from Cyberportal.
- * The primary host may temporarily return 502 during overload, so try the
- * project's published mirrors before reporting generator failure.
+ * Requests a fresh AmneziaWG profile from the Cyberportal generator.
+ *
+ * Cyberportal exposes GET /api/warp and returns the generated profile as
+ * content.importText. It is not the unrelated Nellimonix POST /api/generate API.
  */
 object WarpGeneratorClient {
-    // Use the generator and mirror currently published by Cyberportal first.
-    // The old custom cyb-portal hostname is kept last as a compatibility fallback.
     private val API_URLS = listOf(
-        "https://warp-gen-vip.vercel.app/api/generate",
-        "https://portalwg.vercel.app/api/generate",
-        "https://warp-gen.cyb-portal.org/api/generate"
+        "https://warp-gen.cyb-portal.org/api/warp",
+        "https://warp-gen-vip.vercel.app/api/warp",
+        "https://portalwg.vercel.app/api/warp"
     )
 
-    // Matches the WARP UDP endpoint observed in the user's working PORTAL profile.
-    // Cloudflare's stable endpoint hostname avoids pinning a single anycast IP.
-    // Port 2408 is one of the currently documented WARP UDP ports.
-    private const val WARP_ENDPOINT = "engage.cloudflareclient.com:2408"
-
     fun generateAmneziaProfile(): String {
-        val payload = JSONObject()
-            .put("selectedServices", org.json.JSONArray())
-            .put("siteMode", "all")
-            .put("deviceType", "awg15")
-            .put("endpoint", WARP_ENDPOINT)
-
         val failures = mutableListOf<String>()
         for (apiUrl in API_URLS) {
             try {
-                val config = requestConfig(apiUrl, payload)
-                return config
+                return requestConfig(apiUrl)
             } catch (e: Exception) {
                 val host = runCatching { URL(apiUrl).host }.getOrDefault(apiUrl)
                 failures += "$host: ${e.message ?: e.javaClass.simpleName}"
@@ -44,22 +31,16 @@ object WarpGeneratorClient {
         error("Все генераторы WARP недоступны. " + failures.joinToString(" | "))
     }
 
-    private fun requestConfig(apiUrl: String, payload: JSONObject): String {
+    private fun requestConfig(apiUrl: String): String {
         val connection = (URL(apiUrl).openConnection() as HttpURLConnection).apply {
-            requestMethod = "POST"
-            // Keep each mirror bounded so a dead first host cannot leave the UI
-            // stuck for several minutes while the remaining mirrors are healthy.
+            // Cyberportal's documented client integration uses GET /api/warp.
+            requestMethod = "GET"
             connectTimeout = 8_000
-            readTimeout = 30_000
-            doOutput = true
-            setRequestProperty("Content-Type", "application/json")
+            readTimeout = 18_000
             setRequestProperty("Accept", "application/json")
-            setRequestProperty("User-Agent", "GilrTanoVPN/1.1 Android")
+            setRequestProperty("User-Agent", "WARP-Generator/2.0")
         }
         try {
-            connection.outputStream.use {
-                it.write(payload.toString().toByteArray(Charsets.UTF_8))
-            }
             val code = connection.responseCode
             val stream = if (code in 200..299) connection.inputStream else connection.errorStream
             val response = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
@@ -69,27 +50,43 @@ object WarpGeneratorClient {
             val json = runCatching { JSONObject(response) }.getOrElse {
                 error("сервер вернул не JSON (HTTP $code)")
             }
-            if (!json.optBoolean("success", false)) {
-                error(json.optString("message").ifBlank { "сервер отклонил генерацию" })
-            }
             val content = json.optJSONObject("content")
-                ?: error("в ответе отсутствует content")
+                ?: error(json.optString("message").ifBlank { "в ответе отсутствует content" })
+
+            // Cyberportal returns a ready-to-import configuration in importText.
+            val importText = content.optString("importText").trim()
+            if (importText.isNotBlank()) return validateConfig(importText)
+
+            // Keep compatibility with deployments that expose the generic
+            // base64 response envelope, but prefer Cyberportal's native field.
             val encoded = content.optString("configBase64")
-            if (encoded.isBlank()) error("сервер не вернул configBase64")
-            val config = String(Base64.decode(encoded, Base64.DEFAULT), Charsets.UTF_8)
-            require(config.contains("[Interface]") && config.contains("[Peer]")) {
-                "получен неподдерживаемый формат конфигурации"
+            if (encoded.isNotBlank()) {
+                val decoded = String(Base64.decode(encoded, Base64.DEFAULT), Charsets.UTF_8)
+                return validateConfig(decoded)
             }
-            val hasCloudflareClientId = config.lineSequence().any { line ->
-                line.trim().removePrefix("#").trim()
-                    .startsWith("Reserved", ignoreCase = true) && line.contains('=')
-            }
-            require(hasCloudflareClientId) {
-                "генератор не вернул Cloudflare Client ID (Reserved): такой WARP-профиль может поднять handshake, но не пропускать трафик"
-            }
-            return config
+            error("в ответе отсутствует content.importText")
         } finally {
             connection.disconnect()
         }
+    }
+
+    private fun validateConfig(raw: String): String {
+        val config = raw.trim()
+        require(config.contains("[Interface]") && config.contains("[Peer]")) {
+            "генератор вернул не WireGuard/AmneziaWG конфигурацию"
+        }
+        require(Regex("(?im)^\\s*PrivateKey\\s*=").containsMatchIn(config)) {
+            "в конфигурации отсутствует PrivateKey"
+        }
+        require(Regex("(?im)^\\s*PublicKey\\s*=").containsMatchIn(config)) {
+            "в конфигурации отсутствует PublicKey"
+        }
+        require(Regex("(?im)^\\s*Endpoint\\s*=").containsMatchIn(config)) {
+            "в конфигурации отсутствует Endpoint"
+        }
+        // Reserved is optional in Cyberportal's importText response. If supplied,
+        // the importer and AWG engine preserve it; do not reject valid profiles
+        // merely because this generator version omitted the field.
+        return config
     }
 }
