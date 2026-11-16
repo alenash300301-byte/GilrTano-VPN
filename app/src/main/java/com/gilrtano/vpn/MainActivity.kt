@@ -643,6 +643,7 @@ class MainActivity : Activity() {
         }
         val direction = if (destination > currentPageIndex) 1f else -1f
         val distance = resources.displayMetrics.widthPixels * 0.25f
+        incoming.bringToFront()
         incoming.visibility = View.VISIBLE
         incoming.alpha = 0f
         incoming.translationX = direction * distance
