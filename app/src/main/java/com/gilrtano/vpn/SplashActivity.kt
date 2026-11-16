@@ -17,7 +17,7 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 
 /**
- * Branded launch reveal. Uses the existing high-resolution tiger artwork,
+ * Branded launch reveal. Uses the uploaded high-resolution final GilrTano tiger artwork,
  * fades it in, gently pulses the eye highlights, then crossfades to the app.
  */
 class SplashActivity : Activity() {
@@ -37,7 +37,7 @@ class SplashActivity : Activity() {
 
         val root = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
         val artwork = ImageView(this).apply {
-            setImageResource(R.drawable.tiger_hero)
+            setImageResource(R.drawable.gilrtano_splash)
             scaleType = ImageView.ScaleType.FIT_CENTER
             alpha = 0f
             contentDescription = "GilrTano tiger"
