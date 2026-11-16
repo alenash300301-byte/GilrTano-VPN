@@ -626,6 +626,46 @@ class MainActivity : Activity() {
             insets
         }
         root.addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+
+        // Compact persistent dock inspired by FlClashX; the tiger dashboard stays the home screen.
+        val bottomNav = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER
+            setPadding(dp(8), dp(7), dp(8), dp(7))
+            background = GradientDrawable().apply {
+                setColor(Color.rgb(9, 9, 11))
+                cornerRadius = dp(22).toFloat()
+                setStroke(dp(1), Color.rgb(42, 42, 46))
+            }
+        }
+        fun navItem(symbol: String, label: String, action: () -> Unit) =
+            TextView(this).apply {
+                text = "$symbol\\n$label"
+                textSize = 10f
+                gravity = android.view.Gravity.CENTER
+                setTextColor(Color.rgb(205, 205, 210))
+                setPadding(dp(4), dp(5), dp(4), dp(5))
+                isClickable = true
+                isFocusable = true
+                setOnClickListener { action() }
+                layoutParams = LinearLayout.LayoutParams(0, dp(48), 1f)
+            }
+        bottomNav.addView(navItem("⌂", "Главная") { scroll.smoothScrollTo(0, 0) })
+        bottomNav.addView(navItem("◈", "Серверы") { showServerPicker() })
+        bottomNav.addView(navItem("⇄", "Трафик") { showConnectionDetails() })
+        bottomNav.addView(navItem("⚙", "Настройки") {
+            settingsExpanded = true
+            settingsHeader.visibility = View.VISIBLE
+            settingsHeader.text = "Настройки и импорт  ⌄"
+            findImportButtonsVisibility()
+            scroll.post { scroll.smoothScrollTo(0, settingsHeader.top) }
+        })
+        root.addView(LinearLayout(this).apply {
+            setPadding(dp(12), dp(6), dp(12), dp(6))
+            addView(bottomNav, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            ))
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         setContentView(root)
         trafficHandler.removeCallbacks(trafficSample)
         trafficHandler.post(trafficSample)
@@ -711,19 +751,78 @@ class MainActivity : Activity() {
             Toast.makeText(this, "Добавь сервер в настройках", Toast.LENGTH_LONG).show()
             return
         }
-        val names = nodes.map { it.name }.toTypedArray()
-        AlertDialog.Builder(this)
-            .setTitle("Выбор сервера")
-            .setSingleChoiceItems(names, servers.selectedItemPosition) { dialog, which ->
-                servers.setSelection(which)
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(18), dp(8), dp(18), dp(4))
+        }
+        val search = EditText(this).apply {
+            hint = "Поиск сервера"
+            singleLine = true
+            setTextColor(Color.WHITE)
+            setHintTextColor(Color.GRAY)
+            background = GradientDrawable().apply {
+                setColor(Color.rgb(24, 24, 28))
+                cornerRadius = dp(14).toFloat()
+                setStroke(dp(1), Color.rgb(70, 70, 76))
+            }
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+        }
+        val list = android.widget.ListView(this).apply {
+            divider = GradientDrawable().apply { setColor(Color.rgb(42, 42, 46)); setSize(1, dp(1)) }
+            dividerHeight = dp(1)
+            isTextFilterEnabled = true
+        }
+        val adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, nodes.map { it.name })
+        list.adapter = adapter
+        panel.addView(search, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)).apply { bottomMargin = dp(10) })
+        panel.addView(list, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(340)))
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Выбор сервера · ${nodes.size}")
+            .setView(panel)
+            .setNegativeButton("Закрыть", null)
+            .create()
+        search.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) { adapter.filter.filter(s) }
+            override fun afterTextChanged(s: android.text.Editable?) {}
+        })
+        list.setOnItemClickListener { _, _, position, _ ->
+            val selectedName = adapter.getItem(position) ?: return@setOnItemClickListener
+            val originalIndex = nodes.indexOfFirst { it.name == selectedName }
+            if (originalIndex >= 0) {
+                servers.setSelection(originalIndex)
                 val key = if (activeFree) "free_selected" else "quattro_selected"
-                prefs.edit().putInt(key, which).apply()
-                serverCardTitle.text = nodes[which].name
-                serverCardSubtitle.text = if (activeFree) "Бесплатный" else "Quattro"
+                prefs.edit().putInt(key, originalIndex).apply()
+                serverCardTitle.text = nodes[originalIndex].name
+                serverCardSubtitle.text = if (activeFree) "Бесплатный резерв" else "Quattro"
                 serverCardPing.text = ""
                 pingStatus.text = "Пинг: —"
-                dialog.dismiss()
             }
+            dialog.dismiss()
+        }
+        dialog.show()
+    }
+
+    private fun showConnectionDetails() {
+        val connected = status.text.toString().contains("Подключено")
+        val currentNode = activeNodes.getOrNull(servers.selectedItemPosition)?.name ?: "Автовыбор"
+        val details = buildString {
+            append(if (connected) "VPN подключён" else "VPN отключён")
+            append("\\n\\nСервер: ")
+            append(currentNode)
+            append("\\nРежим: ")
+            append(if (autoMode) "Автоматический · PORTAL → Quattro" else if (activeFree) "Резервный" else "Quattro")
+            append("\\n\\nВходящий трафик: ")
+            append(if (::downloadMetric.isInitialized) downloadMetric.text else "—")
+            append("\\nИсходящий трафик: ")
+            append(if (::uploadMetric.isInitialized) uploadMetric.text else "—")
+            append("\\nПинг: ")
+            append(if (::pingMetric.isInitialized) pingMetric.text else "—")
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Состояние соединения")
+            .setMessage(details)
+            .setPositiveButton("Проверить пинг") { _, _ -> measureSelectedPing() }
             .setNegativeButton("Закрыть", null)
             .show()
     }
