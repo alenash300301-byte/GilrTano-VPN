@@ -58,62 +58,107 @@ class EnergyOrbGLView(context: Context) : GLSurfaceView(context) {
             uniform float uState;
             uniform vec2 uResolution;
 
-            float hash(vec2 p) {
-                return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
-            }
-            float noise(vec2 p) {
-                vec2 i = floor(p), f = fract(p);
-                f = f*f*(3.0-2.0*f);
-                return mix(mix(hash(i), hash(i+vec2(1.0,0.0)), f.x),
-                           mix(hash(i+vec2(0.0,1.0)), hash(i+vec2(1.0,1.0)), f.x), f.y);
-            }
             float sdRoundBox(vec2 p, vec2 b, float r) {
-                vec2 q = abs(p)-b+r;
-                return length(max(q,0.0))+min(max(q.x,q.y),0.0)-r;
+                vec2 q = abs(p) - b + r;
+                return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;
+            }
+            float starFlare(vec2 p, float size) {
+                float d = length(p);
+                float crossGlow = exp(-abs(p.x) / (size * 0.13)) * exp(-abs(p.y) / (size * 1.8))
+                                + exp(-abs(p.y) / (size * 0.13)) * exp(-abs(p.x) / (size * 1.8));
+                float core = exp(-d * d / (size * size * 0.10));
+                return crossGlow * 0.42 + core * 1.7;
             }
             void main() {
-                vec2 p = (vUv-0.5) * 2.0;
-                p.x *= uResolution.x/uResolution.y;
+                vec2 p = (vUv - 0.5) * 2.0;
+                p.x *= uResolution.x / uResolution.y;
                 float t = uTime;
-                float active = step(1.5,uState);
-                float connecting = step(0.5,uState)* (1.0-step(1.5,uState));
-                float breathe = 0.5+0.5*sin(t*2.0);
-                float radius = length(p);
-                float angle = atan(p.y,p.x);
-                float n = noise(vec2(angle*5.0-t*1.8, radius*12.0+t*2.4));
-                float n2 = noise(vec2(angle*11.0+t*1.1, radius*20.0-t*3.0));
-                float flameRadius = 0.78 + 0.07*n + 0.035*n2;
-                float flame = smoothstep(flameRadius+0.10, flameRadius-0.015, radius);
-                flame *= smoothstep(0.58,0.78,radius);
-                flame *= (0.38 + 0.62*active + 0.38*connecting);
-                float ringD = abs(radius-0.73);
-                float ring = exp(-ringD*48.0);
-                float halo = exp(-ringD*13.0);
-                float glass = smoothstep(0.70,0.66,radius);
+                float connected = step(1.5, uState);
+                float connecting = step(0.5, uState) * (1.0 - connected);
+                float pulse = 0.5 + 0.5 * sin(t * (connected > 0.5 ? 2.0 : 1.15));
+                vec2 q = p - vec2(0.0, 0.065);
+                float r = length(q);
+                float angle = atan(q.y, q.x);
+
                 vec3 col = vec3(0.0);
-                col += vec3(0.05,1.0,0.08)*(halo*0.30 + ring*(0.65+0.35*breathe));
-                col += vec3(0.08,1.0,0.12)*flame*(0.18+0.75*n);
-                col += vec3(0.02,0.08,0.035)*glass;
-                float spec = pow(max(0.0,1.0-length((p-vec2(-0.22,0.28))*vec2(1.2,1.8))),12.0);
-                col += vec3(0.32,0.62,0.42)*spec*glass;
+                float alpha = 0.0;
 
-                // Power glyph: vertical stem plus a broken circular arc.
-                float stem = sdRoundBox(p-vec2(0.0,0.29),vec2(0.035,0.17),0.035);
-                float a = abs(atan(p.x,-p.y));
-                float arc = abs(length(p-vec2(0.0,0.02))-0.235);
-                float gap = step(0.48,a);
-                float glyph = min(abs(stem), arc + (1.0-gap)*0.18);
-                float power = exp(-glyph*95.0);
-                col += vec3(0.25,1.0,0.05)*power*1.5;
+                // Layered emerald circular rim and soft external aura.
+                float wobble = sin(angle * 9.0 + t * 1.8) * 0.0025;
+                float rimD = abs(r - (0.685 + wobble));
+                float outerD = abs(r - 0.725);
+                float aura = exp(-rimD * 18.0);
+                float neon = exp(-rimD * 86.0);
+                float hotCore = exp(-rimD * 190.0);
+                float fineRing = exp(-outerD * 105.0);
+                col += vec3(0.015, 0.52, 0.015) * aura * (0.35 + pulse * 0.18);
+                col += vec3(0.015, 0.95, 0.025) * neon * 0.95;
+                col += vec3(0.52, 1.0, 0.12) * hotCore * 0.9;
+                col += vec3(0.05, 0.8, 0.015) * fineRing * 0.65;
+                alpha = max(alpha, aura * 0.48);
+                alpha = max(alpha, max(neon, fineRing) * 0.96);
 
-                // Empty status capsule; Kotlin draws the live caption above the GL surface.
-                float capsule = abs(sdRoundBox(p-vec2(0.0,-0.34),vec2(0.36,0.075),0.075));
-                col += vec3(0.10,1.0,0.08)*exp(-capsule*90.0)*0.95;
-                col += vec3(0.015,0.04,0.02)*smoothstep(0.01,-0.02,sdRoundBox(p-vec2(0.0,-0.34),vec2(0.35,0.065),0.065));
-                float alpha = max(max(halo*0.45, flame*0.62), max(ring*0.95, max(power*0.95, glass*0.98)));
-                gl_FragColor = vec4(col, clamp(alpha,0.0,1.0));
+                // Dark smoked-glass lens with a subtle green inner edge.
+                float glassMask = 1.0 - smoothstep(0.655, 0.69, r);
+                float innerEdge = exp(-abs(r - 0.635) * 70.0);
+                col += vec3(0.002, 0.012, 0.006) * glassMask;
+                col += vec3(0.015, 0.12, 0.025) * innerEdge;
+                float glossA = exp(-pow((q.x + 0.245) * 8.0, 2.0) - pow((q.y - 0.34) * 5.0, 2.0));
+                float glossB = exp(-pow((q.x + 0.36) * 15.0, 2.0) - pow((q.y - 0.20) * 8.0, 2.0));
+                col += vec3(0.45, 0.72, 0.58) * glossA * 0.48;
+                col += vec3(0.82, 1.0, 0.88) * glossB * 0.78;
+                alpha = max(alpha, glassMask * 0.98);
+
+                // Central power symbol: bright stem and interrupted circular arc.
+                float stemD = sdRoundBox(p - vec2(0.0, 0.36), vec2(0.026, 0.115), 0.026);
+                float arcD = abs(length(p - vec2(0.0, 0.105)) - 0.205);
+                float arcAngle = atan(p.x, -(p.y - 0.105));
+                float arcVisible = step(0.48, abs(arcAngle));
+                arcD += (1.0 - arcVisible) * 0.20;
+                float glyphD = min(stemD, arcD);
+                float glyphGlow = exp(-max(glyphD, 0.0) * 36.0);
+                float glyphHot = exp(-abs(glyphD) * 115.0);
+                float powerColor = 0.75 + 0.25 * pulse;
+                col += vec3(0.02, 0.62, 0.005) * glyphGlow * powerColor;
+                col += vec3(0.35, 1.0, 0.015) * glyphHot * 1.15;
+                alpha = max(alpha, glyphGlow * 0.72);
+
+                // Empty illuminated status capsule.
+                vec2 cp = p - vec2(0.0, -0.285);
+                float capsuleD = sdRoundBox(cp, vec2(0.335, 0.062), 0.062);
+                float capsuleGlow = exp(-abs(capsuleD) * 42.0);
+                float capsuleLine = exp(-abs(capsuleD) * 125.0);
+                float capsuleInside = 1.0 - smoothstep(-0.008, 0.008, capsuleD);
+                col += vec3(0.015, 0.48, 0.025) * capsuleGlow * 0.55;
+                col += vec3(0.12, 1.0, 0.035) * capsuleLine;
+                col += vec3(0.001, 0.012, 0.004) * capsuleInside;
+                alpha = max(alpha, capsuleGlow * 0.55);
+
+                // Four sharp star flares on the ring, breathing gently.
+                float flareScale = 0.105 + 0.012 * pulse;
+                float flares = starFlare(q - vec2(0.0, 0.685), flareScale)
+                             + starFlare(q - vec2(0.0, -0.685), flareScale)
+                             + starFlare(q - vec2(0.685, 0.0), flareScale)
+                             + starFlare(q - vec2(-0.685, 0.0), flareScale);
+                col += vec3(0.42, 1.0, 0.035) * flares * 0.9;
+                alpha = max(alpha, min(flares, 1.0) * 0.95);
+
+                // Three soft green reflections beneath the orb.
+                float floorY = p.y + 0.79;
+                float leftPool = exp(-pow((p.x + 0.48) * 7.0, 2.0) - pow(floorY * 13.0, 2.0));
+                float centerPool = exp(-pow(p.x * 5.0, 2.0) - pow(floorY * 16.0, 2.0));
+                float rightPool = exp(-pow((p.x - 0.48) * 7.0, 2.0) - pow(floorY * 13.0, 2.0));
+                float reflections = leftPool * 0.75 + centerPool + rightPool * 0.75;
+                col += vec3(0.02, 0.72, 0.015) * reflections * (0.65 + pulse * 0.25);
+                col += vec3(0.18, 1.0, 0.035) * exp(-pow(p.x * 8.0, 2.0) - pow(floorY * 38.0, 2.0)) * 0.75;
+                alpha = max(alpha, reflections * 0.42);
+
+                // Connection states change only the energy intensity, not geometry.
+                float stateBoost = 1.0 + connected * 0.24 + connecting * (0.10 + 0.12 * sin(t * 7.0));
+                col *= stateBoost;
+                gl_FragColor = vec4(col, clamp(alpha, 0.0, 1.0));
             }
-        """.trimIndent()
+        """
 
         override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
             GLES20.glClearColor(0f,0f,0f,0f)
