@@ -86,7 +86,11 @@ object MasqueEndpointOptimizer {
                 .createSocket(raw, candidate.sni, candidate.port, true) as SSLSocket
             tls.soTimeout = READ_TIMEOUT_MS
             val params = tls.sslParameters
-            params.serverNames = listOf(SNIHostName(candidate.sni))
+            // SNIHostName rejects IP literals. Some imported profiles use an IP
+            // as serverName; TLS can still negotiate h2 without an SNI extension.
+            val sniIsIp = candidate.sni.contains(':') ||
+                candidate.sni.matches(Regex("\\d{1,3}(?:\\.\\d{1,3}){3}"))
+            params.serverNames = if (sniIsIp) emptyList() else listOf(SNIHostName(candidate.sni))
             params.applicationProtocols = arrayOf("h2")
             tls.sslParameters = params
             tls.startHandshake()
