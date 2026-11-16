@@ -14,9 +14,9 @@ object WarpGeneratorClient {
     // Use the generator and mirror currently published by Cyberportal first.
     // The old custom cyb-portal hostname is kept last as a compatibility fallback.
     private val API_URLS = listOf(
-        "https://warp-gen-vip.vercel.app/api/warp",
-        "https://portalwg.vercel.app/api/warp",
-        "https://warp-gen.cyb-portal.org/api/warp"
+        "https://warp-gen-vip.vercel.app/api/generate",
+        "https://portalwg.vercel.app/api/generate",
+        "https://warp-gen.cyb-portal.org/api/generate"
     )
 
     // Matches the WARP UDP endpoint observed in the user's working PORTAL profile.
