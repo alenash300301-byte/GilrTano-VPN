@@ -260,10 +260,29 @@ class MainActivity : Activity() {
                 connectButton.isEnabled = false
                 Thread {
                     try {
+                        // Refresh the saved Quattro subscription when configured, then
+                        // test real outbound latency and keep the fastest working nodes.
+                        val quattroSource = prefs.getString("subscription_url", "").orEmpty().trim()
+                        val discoveredQuattro = if (quattroSource.isNotBlank()) {
+                            runCatching { SubscriptionImporter.load(quattroSource) }
+                                .getOrElse { error ->
+                                    android.util.Log.w("QuattroAuto", "Subscription refresh failed; using cached nodes", error)
+                                    quattroNodes
+                                }
+                        } else quattroNodes
+                        val rankedQuattro = scanQuattroCandidates(discoveredQuattro)
+                        val selectedQuattro = rankedQuattro.firstOrNull()?.first ?: discoveredQuattro.firstOrNull()
+                        if (rankedQuattro.isNotEmpty()) {
+                            quattroNodes = rankedQuattro.map { it.first }
+                            saveNodes("quattro_nodes", quattroNodes)
+                            prefs.edit().putInt("quattro_selected", 0).apply()
+                        } else if (discoveredQuattro.isNotEmpty()) {
+                            quattroNodes = discoveredQuattro
+                        }
+                        val quattro = selectedQuattro
+                            ?.let { runCatching { GilrTanoVpnService.xrayConfigFromVless(it.uri) }.getOrNull() }
                         val generated = WarpGeneratorClient.generateAmneziaProfile()
                         val profile = PortalGateImporter.parseConf(generated, "WARP-Cyberportal")
-                        val quattro = quattroNodes.firstOrNull()
-                            ?.let { runCatching { GilrTanoVpnService.xrayConfigFromVless(it.uri) }.getOrNull() }
                         runOnUiThread {
                             pendingConfig = profile.config
                             pendingFallbackConfig = quattro
@@ -1224,6 +1243,43 @@ class MainActivity : Activity() {
             }
         }.start()
     }
+    /**
+     * Tests Quattro nodes through the actual proxy outbound, not just TCP port reachability.
+     * Returns up to three working nodes sorted by measured HTTPS latency.
+     */
+    private fun scanQuattroCandidates(nodes: List<ImportedNode>): List<Pair<ImportedNode, Long>> {
+        if (nodes.isEmpty()) return emptyList()
+        val candidates = nodes.take(80)
+        val pool = Executors.newFixedThreadPool(8)
+        val completion = java.util.concurrent.ExecutorCompletionService<Pair<ImportedNode, Long>?>(pool)
+        try {
+            candidates.forEach { node ->
+                completion.submit(Callable<Pair<ImportedNode, Long>?> {
+                    val config = runCatching { GilrTanoVpnService.xrayConfigFromVless(node.uri) }
+                        .getOrNull() ?: return@Callable null
+                    runCatching {
+                        val latency = teapodcore.Teapodcore.measureOutboundDelay(
+                            config, "https://www.gstatic.com/generate_204"
+                        )
+                        if (latency > 0L) node to latency else null
+                    }.getOrNull()
+                })
+            }
+            val results = mutableListOf<Pair<ImportedNode, Long>>()
+            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(18)
+            var completed = 0
+            while (completed < candidates.size && System.nanoTime() < deadline && results.size < 3) {
+                val remaining = deadline - System.nanoTime()
+                val future = completion.poll(remaining, TimeUnit.NANOSECONDS) ?: break
+                completed++
+                runCatching { future.get() }.getOrNull()?.let(results::add)
+            }
+            return results.sortedBy { it.second }
+        } finally {
+            pool.shutdownNow()
+        }
+    }
+
     private fun connectAutomaticallySelected() {
         val node = activeNodes.getOrNull(servers.selectedItemPosition) ?: return
         try {
