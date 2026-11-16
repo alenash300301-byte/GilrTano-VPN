@@ -239,60 +239,13 @@ class PowerOrbButtonView @JvmOverloads constructor(
         val left = (width - side) / 2f
         val top = (height - side) / 2f
 
-        // Draw animated green plasma tongues directly on this View. This avoids
-        // a separate SurfaceView, whose opaque buffer caused a visible square.
         val connected = state == State.CONNECTED
         val connecting = state == State.CONNECTING
-        val energy = if (connected) 1f else if (connecting) 0.88f else 0.48f + breath * 0.22f
-        val t = if (state == State.DISCONNECTED) breath * 0.45f else phase
-        val flameGlow = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
-            strokeCap = Paint.Cap.ROUND
-            strokeJoin = Paint.Join.ROUND
-            strokeWidth = side * 0.025f
-            color = Color.rgb(35, 255, 25)
-            alpha = (105 * energy).toInt()
-            setShadowLayer(side * 0.075f, 0f, 0f, Color.rgb(25, 255, 15))
-        }
-        val flameCore = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
-            strokeCap = Paint.Cap.ROUND
-            strokeJoin = Paint.Join.ROUND
-            strokeWidth = side * 0.008f
-            color = Color.rgb(150, 255, 35)
-            alpha = (220 * energy).toInt()
-        }
+        val energy = if (connected) 1f else if (connecting) 0.9f else 0.62f + breath * 0.18f
+        val t = if (state == State.DISCONNECTED) breath * 0.9f else phase * 6.28318f
         val cx = width / 2f
         val cy = height / 2f
-        val baseRadius = side * 0.455f
-        // Soft luminous ring under the artwork's outer rim.
-        canvas.drawCircle(cx, cy, baseRadius, flameGlow)
-        canvas.drawCircle(cx, cy, baseRadius, flameCore)
-        // Individually animated curved tongues of fire.
-        for (i in 0 until 28) {
-            val a = (Math.PI * 2.0 * i / 28.0).toFloat()
-            val wave = kotlin.math.sin(t * 6.28318f + i * 1.73f)
-            val wave2 = kotlin.math.cos(t * 4.1f + i * 0.91f)
-            val length = side * (0.025f + (0.025f + 0.018f * wave) * energy)
-            val r0 = baseRadius - side * 0.008f
-            val r1 = baseRadius + length
-            val tangent = side * (0.012f + 0.006f * wave2)
-            val path = Path().apply {
-                moveTo(cx + kotlin.math.cos(a) * r0, cy + kotlin.math.sin(a) * r0)
-                cubicTo(
-                    cx + kotlin.math.cos(a - 0.12f) * (r0 + length * 0.55f) - kotlin.math.sin(a) * tangent,
-                    cy + kotlin.math.sin(a - 0.12f) * (r0 + length * 0.55f) + kotlin.math.cos(a) * tangent,
-                    cx + kotlin.math.cos(a + 0.08f) * r1,
-                    cy + kotlin.math.sin(a + 0.08f) * r1,
-                    cx + kotlin.math.cos(a) * r0,
-                    cy + kotlin.math.sin(a) * r0
-                )
-            }
-            flameGlow.strokeWidth = side * (0.014f + 0.006f * energy)
-            canvas.drawPath(path, flameGlow)
-            flameCore.strokeWidth = side * 0.006f
-            canvas.drawPath(path, flameCore)
-        }
+        val baseRadius = side * 0.425f
 
         val save = canvas.save()
         val clip = Path().apply {
@@ -308,6 +261,82 @@ class PowerOrbButtonView @JvmOverloads constructor(
             buttonArtwork.draw(canvas)
         }
         canvas.restoreToCount(save)
+
+        // Draw real tapered flame tongues AFTER the PNG so the fire remains visible.
+        // Each tongue is a filled, curved silhouette with a soft green glow and a hot core.
+        val flameGlow = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeCap = Paint.Cap.ROUND
+            strokeJoin = Paint.Join.ROUND
+            strokeWidth = side * 0.026f
+            color = Color.rgb(30, 255, 18)
+            alpha = (145f * energy).toInt()
+            setShadowLayer(side * 0.085f, 0f, 0f, Color.rgb(25, 255, 8))
+        }
+        val flameFill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+            alpha = (210f * energy).toInt()
+        }
+        val flameCore = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeCap = Paint.Cap.ROUND
+            strokeWidth = side * 0.008f
+            color = Color.rgb(190, 255, 95)
+            alpha = (225f * energy).toInt()
+        }
+        fun point(angle: Float, radius: Float): android.graphics.PointF =
+            android.graphics.PointF(cx + kotlin.math.cos(angle) * radius, cy + kotlin.math.sin(angle) * radius)
+
+        // Two staggered rings create a continuous, turbulent corona rather than a static outline.
+        for (i in 0 until 42) {
+            val a = (Math.PI * 2.0 * i / 42.0).toFloat() + 0.035f * kotlin.math.sin(t * 1.7f + i)
+            val wave = kotlin.math.sin(t * 2.2f + i * 1.91f)
+            val wave2 = kotlin.math.cos(t * 3.1f + i * 0.73f)
+            val length = side * (0.018f + (0.025f + 0.025f * wave) * energy)
+            val r0 = baseRadius + side * 0.012f
+            val rTip = r0 + length
+            val p0 = point(a, r0)
+            val p1 = point(a - 0.10f + wave2 * 0.045f, r0 + length * 0.48f)
+            val p2 = point(a + 0.08f + wave * 0.055f, rTip)
+            val p3 = point(a, r0 + length * 0.22f)
+            val path = Path().apply {
+                moveTo(p0.x, p0.y)
+                cubicTo(p1.x, p1.y, p2.x, p2.y, p2.x, p2.y)
+                cubicTo(
+                    point(a + 0.055f, r0 + length * 0.52f).x,
+                    point(a + 0.055f, r0 + length * 0.52f).y,
+                    point(a - 0.025f, r0 + length * 0.20f).x,
+                    point(a - 0.025f, r0 + length * 0.20f).y,
+                    p0.x, p0.y
+                )
+                close()
+            }
+            flameGlow.strokeWidth = side * (0.018f + 0.008f * energy)
+            canvas.drawPath(path, flameGlow)
+            flameFill.shader = LinearGradient(
+                p0.x, p0.y, p2.x, p2.y,
+                intArrayOf(Color.argb(0, 40, 255, 10), Color.argb((175f * energy).toInt(), 40, 255, 5),
+                    Color.argb((220f * energy).toInt(), 180, 255, 35)),
+                floatArrayOf(0f, 0.58f, 1f), Shader.TileMode.CLAMP
+            )
+            canvas.drawPath(path, flameFill)
+            flameFill.shader = null
+            canvas.drawPath(path, flameCore)
+        }
+
+        // Fast tiny embers drift around the rim; deterministic positions keep rendering inexpensive.
+        val emberPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.rgb(155, 255, 70)
+            setShadowLayer(side * 0.035f, 0f, 0f, Color.GREEN)
+        }
+        for (i in 0 until 18) {
+            val a = i * (Math.PI.toFloat() * 2f / 18f) + t * (0.32f + (i % 3) * 0.08f)
+            val radius = baseRadius + side * (0.025f + 0.025f * kotlin.math.sin(t * 2f + i * 2.4f))
+            val p = point(a, radius)
+            emberPaint.alpha = (100 + 130 * (0.5f + 0.5f * kotlin.math.sin(t * 5f + i))).toInt()
+            val r = side * (0.004f + 0.003f * (0.5f + 0.5f * kotlin.math.sin(t * 4f + i)))
+            canvas.drawCircle(p.x, p.y, r, emberPaint)
+        }
 
         // The artwork contains an intentionally empty neon capsule. Draw the
         // live VPN status there so it can change without editing the PNG.
