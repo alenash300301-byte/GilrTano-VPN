@@ -435,15 +435,15 @@ class MainActivity : Activity() {
                         orientation = LinearLayout.HORIZONTAL
                         gravity = android.view.Gravity.CENTER
                         val title = TextView(this@MainActivity).apply {
-                            text = "GilrTano"; textSize = 25f
-                            typeface = android.graphics.Typeface.create("serif", android.graphics.Typeface.BOLD_ITALIC)
+                            text = "GILRTANO"; textSize = 29f
+                            typeface = android.graphics.Typeface.create("sans-serif-black", android.graphics.Typeface.BOLD_ITALIC)
                             setTextColor(Color.rgb(245, 242, 238))
                             setShadowLayer(dp(5).toFloat(), 0f, dp(1).toFloat(), Color.rgb(130, 18, 18))
                         }
                         val vpn = TextView(this@MainActivity).apply {
                             text = " VPN"; textSize = 25f
-                            typeface = android.graphics.Typeface.create("serif", android.graphics.Typeface.BOLD_ITALIC)
-                            setTextColor(Color.rgb(230, 38, 38))
+                            typeface = android.graphics.Typeface.create("sans-serif-black", android.graphics.Typeface.BOLD_ITALIC)
+                            setTextColor(Color.rgb(50, 245, 75))
                             setShadowLayer(dp(6).toFloat(), 0f, 0f, Color.rgb(170, 0, 0))
                         }
                         addView(title); addView(vpn)
@@ -499,20 +499,32 @@ class MainActivity : Activity() {
                         false
                     }
                 }
-                powerScene.addView(powerOrb, FrameLayout.LayoutParams(dp(112), dp(112)).apply {
-                    gravity = android.view.Gravity.CENTER_HORIZONTAL or android.view.Gravity.CENTER_VERTICAL
-                    topMargin = dp(100)
+                powerOrb.elevation = dp(12).toFloat()
+                powerScene.addView(powerOrb, FrameLayout.LayoutParams(dp(150), dp(150)).apply {
+                    gravity = android.view.Gravity.CENTER_HORIZONTAL or android.view.Gravity.BOTTOM
+                    bottomMargin = dp(10)
                 })
-                addView(powerScene, LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, dp(330)
-                ).apply { topMargin = dp(4); bottomMargin = dp(4) })
-
-                addView(status.apply {
-                    text = "●  Отключено"; textSize = 17f
+                status.apply {
+                    text = "●  Отключено"
+                    textSize = 15f
                     gravity = android.view.Gravity.CENTER
-                    setTextColor(Color.LTGRAY)
-                    setPadding(dp(8), dp(5), dp(8), dp(0))
-                })
+                    typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
+                    setTextColor(Color.rgb(80, 245, 105))
+                    setShadowLayer(dp(8).toFloat(), 0f, 0f, Color.rgb(0, 220, 50))
+                    setPadding(dp(8), dp(5), dp(8), dp(5))
+                    background = GradientDrawable().apply {
+                        setColor(0xCC050807.toInt())
+                        cornerRadius = dp(22).toFloat()
+                        setStroke(dp(1), Color.rgb(35, 180, 65))
+                    }
+                }
+                powerScene.addView(status, FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, dp(38),
+                    android.view.Gravity.CENTER_HORIZONTAL or android.view.Gravity.BOTTOM
+                ).apply { bottomMargin = dp(20) })
+                addView(powerScene, LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(390)
+                ).apply { topMargin = dp(0); bottomMargin = dp(2) })
                 connectionTimer = Chronometer(this@MainActivity).apply {
                     textSize = 14f
                     gravity = android.view.Gravity.CENTER
@@ -568,6 +580,7 @@ class MainActivity : Activity() {
                 }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(70)).apply {
                     topMargin = dp(8); bottomMargin = dp(8)
                 })
+                // Screenshot-inspired neon glass styling for the server and live metrics.
                 // Branded mode control: automatic failover or a directly selected Quattro profile.
                 addView(LinearLayout(this@MainActivity).apply {
                     orientation = LinearLayout.VERTICAL
