@@ -324,10 +324,20 @@ class MainActivity : Activity() {
                         }
                     })
                 })
-                // The animated tiger GIF is removed; use a normal connect button.
+                // Static tiger artwork from the app's bundled assets; no animated GIF.
+                addView(ImageView(this@MainActivity).apply {
+                    setImageResource(R.drawable.tiger_hero)
+                    scaleType = ImageView.ScaleType.FIT_CENTER
+                    adjustViewBounds = true
+                    contentDescription = "Тигр GilrTano с зелёными глазами"
+                }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(245)).apply {
+                    topMargin = dp(4); bottomMargin = dp(0)
+                })
+                val powerFrame = FrameLayout(this@MainActivity)
+                powerFrame.addView(connectButton, FrameLayout.LayoutParams(dp(184), dp(184), android.view.Gravity.CENTER))
+                addView(powerFrame, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(194)))
                 powerOrb = connectButton
                 connectButton.contentDescription = "Кнопка питания VPN"
-                addView(connectButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(76)).apply { topMargin = dp(18); bottomMargin = dp(8) })
                 addView(status.apply {
                     text = "●  Отключено"; textSize = 17f
                     gravity = android.view.Gravity.CENTER
@@ -494,6 +504,46 @@ class MainActivity : Activity() {
             insets
         }
         root.addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        val bottomNav = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER
+            background = GradientDrawable().apply {
+                setColor(Color.rgb(10, 10, 13))
+                cornerRadius = dp(20).toFloat()
+                setStroke(dp(1), Color.rgb(100, 25, 28))
+            }
+            setPadding(dp(4), dp(4), dp(4), dp(4))
+        }
+        val navItems = listOf("⌂\nГлавная", "▤\nСерверы", "▥\nТрафик", "⚙\nНастройки")
+        navItems.forEachIndexed { index, label ->
+            bottomNav.addView(Button(this).apply {
+                text = label
+                textSize = 11f
+                isAllCaps = false
+                setTextColor(if (index == 0) Color.rgb(60, 255, 95) else Color.LTGRAY)
+                background = GradientDrawable().apply {
+                    setColor(if (index == 0) Color.rgb(8, 38, 16) else Color.TRANSPARENT)
+                    cornerRadius = dp(16).toFloat()
+                    if (index == 0) setStroke(dp(1), Color.rgb(55, 225, 80))
+                }
+                setOnClickListener {
+                    when (index) {
+                        0 -> { settingsExpanded = false; findImportButtonsVisibility(); scroll.smoothScrollTo(0, 0) }
+                        1 -> { settingsExpanded = false; findImportButtonsVisibility(); showServerPicker() }
+                        2 -> { settingsExpanded = false; findImportButtonsVisibility(); scroll.smoothScrollTo(0, dp(560)) }
+                        3 -> {
+                            settingsExpanded = true
+                            settingsHeader.visibility = View.VISIBLE
+                            findImportButtonsVisibility()
+                            scroll.post { scroll.smoothScrollTo(0, scroll.getChildAt(0).height) }
+                        }
+                    }
+                }
+            }, LinearLayout.LayoutParams(0, dp(62), 1f))
+        }
+        root.addView(bottomNav, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(72)).apply {
+            leftMargin = dp(10); rightMargin = dp(10); bottomMargin = dp(5)
+        })
         setContentView(root)
         trafficHandler.removeCallbacks(trafficSample)
         trafficHandler.post(trafficSample)
@@ -501,17 +551,19 @@ class MainActivity : Activity() {
         installButtonFeedback()
         setPowerButtonLabel("ПОДКЛЮЧИТЬ")
         connectButton.apply {
-            textSize = 18f
+            textSize = 19f
             typeface = android.graphics.Typeface.DEFAULT_BOLD
             gravity = android.view.Gravity.CENTER
             setTextColor(Color.WHITE)
             isAllCaps = false
             background = GradientDrawable().apply {
-                setColor(Color.rgb(95, 10, 16))
-                cornerRadius = dp(18).toFloat()
-                setStroke(dp(1), Color.rgb(220, 42, 42))
+                shape = GradientDrawable.OVAL
+                setColor(Color.rgb(7, 24, 12))
+                setStroke(dp(4), Color.rgb(45, 245, 78))
             }
-            elevation = dp(10).toFloat()
+            elevation = dp(18).toFloat()
+            minWidth = dp(184)
+            minHeight = dp(184)
         }
         activeMode = prefs.getString("connection_mode", "auto") ?: "auto"
         autoMode = activeMode == "auto"
