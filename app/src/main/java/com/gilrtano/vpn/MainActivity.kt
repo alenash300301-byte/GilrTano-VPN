@@ -757,7 +757,7 @@ class MainActivity : Activity() {
         }
         val search = EditText(this).apply {
             hint = "Поиск сервера"
-            singleLine = true
+            setSingleLine(true)
             setTextColor(Color.WHITE)
             setHintTextColor(Color.GRAY)
             background = GradientDrawable().apply {
