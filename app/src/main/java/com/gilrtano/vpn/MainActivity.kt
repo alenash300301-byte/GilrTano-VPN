@@ -773,11 +773,12 @@ class MainActivity : Activity() {
         installButtonFeedback()
         setPowerButtonLabel("ПОДКЛЮЧИТЬ")
         connectButton.apply {
-            textSize = 19f
+            // Icon is drawn in the upper half by PowerOrbButtonView; keep a
+            // compact, centered caption in its own lower zone.
+            textSize = 15f
             typeface = android.graphics.Typeface.DEFAULT_BOLD
             gravity = android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL
-            setPadding(dp(8), dp(8), dp(8), dp(28))
-            textSize = 17f
+            setPadding(dp(10), dp(8), dp(10), dp(24))
             includeFontPadding = false
             maxLines = 1
             setTextColor(Color.WHITE)
