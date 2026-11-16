@@ -774,7 +774,54 @@ class MainActivity : Activity() {
         }
         val adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, nodes.map { it.name })
         list.adapter = adapter
+        val serverActions = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER
+        }
+        val sortButton = Button(this).apply { text = "По названию" }
+        val testAllButton = Button(this).apply { text = "Проверить все" }
+        var sortByName = false
+        sortButton.setOnClickListener {
+            sortByName = !sortByName
+            val ordered = if (sortByName) nodes.sortedBy { it.name.lowercase(java.util.Locale.ROOT) } else nodes
+            adapter.clear()
+            ordered.forEach { adapter.add(it.name) }
+            sortButton.text = if (sortByName) "Исходный порядок" else "По названию"
+        }
+        testAllButton.setOnClickListener {
+            if (nodes.isEmpty()) return@setOnClickListener
+            testAllButton.isEnabled = false
+            testAllButton.text = "Проверка…"
+            Thread {
+                val ranked = scanQuattroCandidates(nodes)
+                runOnUiThread {
+                    if (ranked.isNotEmpty()) {
+                        val rankedNodes = ranked.map { it.first }
+                        val rest = nodes.filterNot { n -> rankedNodes.any { it.uri == n.uri } }
+                        val sortedNodes = rankedNodes + rest
+                        if (activeFree) {
+                            freeNodes = sortedNodes
+                            saveNodes("free_nodes", freeNodes)
+                        } else {
+                            quattroNodes = sortedNodes
+                            saveNodes("quattro_nodes", quattroNodes)
+                        }
+                        adapter.clear()
+                        sortedNodes.forEach { adapter.add(it.name) }
+                        sortButton.text = "Лучшие по пингу"
+                        Toast.makeText(this@MainActivity, "Проверено: " + ranked.size + " серверов. Список отсортирован по задержке.", Toast.LENGTH_LONG).show()
+                    } else {
+                        Toast.makeText(this@MainActivity, "Рабочие серверы не найдены", Toast.LENGTH_LONG).show()
+                    }
+                    testAllButton.isEnabled = true
+                    testAllButton.text = "Проверить все"
+                }
+            }.start()
+        }
+        serverActions.addView(sortButton, LinearLayout.LayoutParams(0, dp(44), 1f).apply { rightMargin = dp(4) })
+        serverActions.addView(testAllButton, LinearLayout.LayoutParams(0, dp(44), 1f).apply { leftMargin = dp(4) })
         panel.addView(search, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)).apply { bottomMargin = dp(10) })
+        panel.addView(serverActions, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)))
         panel.addView(list, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(340)))
         val dialog = AlertDialog.Builder(this)
             .setTitle("Выбор сервера · ${nodes.size}")
