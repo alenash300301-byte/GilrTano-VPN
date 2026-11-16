@@ -23,8 +23,8 @@ import (
 
 var _ conn.Bind = (*clientBind)(nil)
 
-// clientBind — UDP-сокет к единственному peer'у (режим connect). В отличие от
-// оригинала байты 1–3 пакета не трогаются: в AWG там заголовок H1–H4, а не reserved.
+// clientBind — UDP-сокет к единственному peer'у. Для WARP reserved bytes
+// несут client_id; custom AWG H1-H4 is mutually exclusive with that mode.
 type clientBind struct {
 	ctx          context.Context
 	logger       logger.Logger
@@ -33,18 +33,20 @@ type clientBind struct {
 	bindDone     context.CancelFunc
 	dialer       N.Dialer
 	server       M.Socksaddr
+	reserved     []byte
 	connAccess   sync.Mutex
 	conn         *wireConn
 	done         chan struct{}
 }
 
-func newClientBind(ctx context.Context, logger logger.Logger, dialer N.Dialer, server M.Socksaddr) *clientBind {
+func newClientBind(ctx context.Context, logger logger.Logger, dialer N.Dialer, server M.Socksaddr, reserved []byte) *clientBind {
 	return &clientBind{
 		ctx:          ctx,
 		logger:       logger,
 		pauseManager: service.FromContext[pause.Manager](ctx),
 		dialer:       dialer,
 		server:       server,
+		reserved:     append([]byte(nil), reserved...),
 		done:         make(chan struct{}),
 	}
 }
@@ -112,6 +114,11 @@ func (c *clientBind) receive(packets [][]byte, sizes []int, eps []conn.Endpoint)
 		}
 		return
 	}
+	// Cloudflare echoes client_id in bytes 1..3 of each WireGuard packet.
+	// Clear it before AmneziaWG parses the standard message type.
+	if len(c.reserved) == 3 && n >= 4 && packets[0][0] >= 1 && packets[0][0] <= 4 {
+		packets[0][1], packets[0][2], packets[0][3] = 0, 0, 0
+	}
 	sizes[0] = n
 	eps[0] = remoteEndpoint(M.SocksaddrFromNet(addr).Unwrap().AddrPort())
 	count = 1
@@ -146,6 +153,11 @@ func (c *clientBind) Send(bufs [][]byte, ep conn.Endpoint) error {
 	}
 	destination := netip.AddrPort(ep.(remoteEndpoint))
 	for _, b := range bufs {
+		// WARP routes WireGuard sessions using the 24-bit client_id in bytes 1..3.
+		// Only touch standard WG message types; ordinary AWG profiles are unchanged.
+		if len(c.reserved) == 3 && len(b) >= 4 && b[0] >= 1 && b[0] <= 4 {
+			b[1], b[2], b[3] = c.reserved[0], c.reserved[1], c.reserved[2]
+		}
 		if _, err = udpConn.WriteTo(b, M.SocksaddrFromNetIP(destination).UDPAddr()); err != nil {
 			udpConn.Close()
 			return err
