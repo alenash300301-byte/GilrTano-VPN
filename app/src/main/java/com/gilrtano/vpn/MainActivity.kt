@@ -576,7 +576,6 @@ class MainActivity : Activity() {
         }
         val pageHost = FrameLayout(this)
         val serverPageScroll = android.widget.ScrollView(this)
-        val trafficPageScroll = android.widget.ScrollView(this)
         val settingsPageScroll = android.widget.ScrollView(this)
         fun page(title: String): LinearLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -603,7 +602,7 @@ class MainActivity : Activity() {
             isAllCaps = false
             setOnClickListener { action() }
         }
-        val serverPage = page("Серверы")
+        val serverPage = page("Прокси")
         val serverState = TextView(this).apply { textSize = 13f; setTextColor(Color.LTGRAY) }
         serverPage.addView(serverState)
         val proxySearch = EditText(this).apply {
@@ -757,43 +756,6 @@ class MainActivity : Activity() {
             else Toast.makeText(this@MainActivity, "Ссылка бесплатного резерва не задана", Toast.LENGTH_LONG).show()
         })
         profilesPage.addView(actionButton("Обновить список профилей") { refreshProfileCard(); updateServerPage() })
-        // Traffic remains a detail page reachable from the dashboard graph.
-        val trafficPage = page("Трафик")
-        trafficPage.addView(TextView(this).apply {
-            text = "Живые показатели подключения"
-            textSize = 13f; setTextColor(Color.LTGRAY); setPadding(0, 0, 0, dp(14))
-        })
-        fun metricCard(label: String): Pair<LinearLayout, TextView> {
-            val box = card()
-            box.addView(TextView(this).apply { text = label; textSize = 12f; setTextColor(Color.LTGRAY) })
-            val value = TextView(this).apply {
-                text = "—"; textSize = 23f
-                typeface = android.graphics.Typeface.DEFAULT_BOLD
-                setTextColor(Color.rgb(45, 245, 85)); setPadding(0, dp(5), 0, 0)
-            }
-            box.addView(value)
-            return Pair(box, value)
-        }
-        val down = metricCard("Входящая скорость")
-        val up = metricCard("Исходящая скорость")
-        val total = metricCard("Трафик приложения")
-        val trafficState = TextView(this).apply { text = "Ожидание подключения"; setTextColor(Color.LTGRAY); setPadding(0, dp(12), 0, dp(12)) }
-        trafficPage.addView(trafficState)
-        listOf(down.first, up.first, total.first).forEach {
-            trafficPage.addView(it, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(10) })
-        }
-        trafficPage.addView(TrafficWaveView(this), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(120)))
-        trafficPage.addView(TextView(this).apply {
-            text = "Примечание: скорость рассчитывается по сетевым счётчикам Android; общий объём — по UID приложения, а не по серверной статистике."
-            textSize = 11f; setTextColor(Color.GRAY); setPadding(0, dp(14), 0, 0)
-        })
-        trafficWaveAnchor.setOnClickListener {
-            for (i in 0 until pageHost.childCount) pageHost.getChildAt(i).visibility = if (i == 4) View.VISIBLE else View.GONE
-            down.second.text = downloadMetric.text
-            up.second.text = uploadMetric.text
-            total.second.text = trafficTotalMetric.text
-            trafficState.text = if (status.text.toString().contains("Подключено")) "VPN подключён" else "VPN отключён"
-        }
         val settingsPage = page("Настройки")
         settingsPage.addView(actionButton("Проверить обновления") { checkForAppUpdate() })
         settingsPage.addView(TextView(this).apply {
@@ -809,17 +771,32 @@ class MainActivity : Activity() {
         pageHost.addView(wrapPage(serverPage), FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         pageHost.addView(wrapPage(profilesPage), FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         pageHost.addView(wrapPage(settingsPage), FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-        pageHost.addView(wrapPage(trafficPage), FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        var currentPageIndex = 0
         fun showPage(index: Int) {
-            for (i in 0 until pageHost.childCount) pageHost.getChildAt(i).visibility = if (i == index) View.VISIBLE else View.GONE
+            if (index !in 0 until pageHost.childCount || index == currentPageIndex) return
+            val direction = if (index > currentPageIndex) 1f else -1f
+            val outgoing = pageHost.getChildAt(currentPageIndex)
+            val incoming = pageHost.getChildAt(index)
+            val travel = (pageHost.width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels).toFloat() * 0.25f
+            outgoing.animate().cancel()
+            incoming.animate().cancel()
+            incoming.visibility = View.VISIBLE
+            incoming.translationX = direction * travel
+            incoming.alpha = 0f
+            outgoing.animate().translationX(-direction * travel).alpha(0f)
+                .setDuration(135L).setInterpolator(DecelerateInterpolator())
+                .withEndAction {
+                    outgoing.visibility = View.GONE
+                    outgoing.translationX = 0f
+                    outgoing.alpha = 1f
+                }.start()
+            incoming.animate().translationX(0f).alpha(1f)
+                .setStartDelay(68L).setDuration(382L)
+                .setInterpolator(android.view.animation.PathInterpolator(0.65f, 0f, 0.35f, 1f))
+                .start()
+            currentPageIndex = index
             if (index == 1) updateServerPage()
             if (index == 2) refreshProfileCard()
-            if (index == 4) {
-                down.second.text = downloadMetric.text
-                up.second.text = uploadMetric.text
-                total.second.text = trafficTotalMetric.text
-                trafficState.text = if (status.text.toString().contains("Подключено")) "VPN подключён" else "VPN отключён"
-            }
         }
         root.addView(pageHost, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         val bottomNav = LinearLayout(this).apply {
@@ -832,17 +809,21 @@ class MainActivity : Activity() {
             }
             setPadding(dp(4), dp(4), dp(4), dp(4))
         }
-        val navItems = listOf("⌂\nПанель", "◎\nПрокси", "▤\nПрофили", "⚙\nНастройки")
+        val navItems = listOf("⌂\nГлавная", "◎\nПрокси", "▤\nПрофили", "⚙\nНастройки")
         val navButtons = mutableListOf<Button>()
         fun selectNav(selected: Int) {
             navButtons.forEachIndexed { i, button ->
                 val active = i == selected
+                button.animate().cancel()
+                button.animate().scaleX(if (active) 1.035f else 1f).scaleY(if (active) 1.035f else 1f)
+                    .setDuration(220L).setInterpolator(android.view.animation.OvershootInterpolator(1.15f)).start()
                 button.setTextColor(if (active) Color.rgb(60, 255, 95) else Color.LTGRAY)
                 button.background = GradientDrawable().apply {
                     setColor(if (active) Color.rgb(8, 38, 16) else Color.TRANSPARENT)
-                    cornerRadius = dp(16).toFloat()
+                    cornerRadius = dp(18).toFloat()
                     if (active) setStroke(dp(1), Color.rgb(55, 225, 80))
                 }
+                button.elevation = if (active) dp(5).toFloat() else 0f
             }
         }
         navItems.forEachIndexed { index, label ->
