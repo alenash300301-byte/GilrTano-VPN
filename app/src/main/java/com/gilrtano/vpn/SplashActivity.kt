@@ -7,7 +7,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.View
-import android.view.animation.AccelerateDecelerateInterpolator
+import android.view.animation.PathInterpolator
 import android.widget.ImageView
 
 class SplashActivity : Activity() {
@@ -31,15 +31,15 @@ class SplashActivity : Activity() {
 
         artwork.animate()
             .alpha(1f)
-            .setDuration(500L)
-            .setInterpolator(AccelerateDecelerateInterpolator())
+            .setDuration(450L)
+            .setInterpolator(PathInterpolator(0.2f, 0.0f, 0.0f, 1.0f))
             .start()
 
         handler.postDelayed({
             startActivity(Intent(this, MainActivity::class.java))
             overridePendingTransition(R.anim.gilrtano_fade_in, R.anim.gilrtano_fade_out)
             finish()
-        }, 1450L)
+        }, 1100L)
     }
 
     override fun onDestroy() {
