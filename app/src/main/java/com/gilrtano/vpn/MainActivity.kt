@@ -794,35 +794,10 @@ class MainActivity : Activity() {
             trafficState.text = if (status.text.toString().contains("Подключено")) "VPN подключён" else "VPN отключён"
         }
         val settingsPage = page("Настройки")
-        settingsPage.addView(TextView(this).apply {
-            text = "Управление источниками серверов"
-            textSize = 13f; setTextColor(Color.LTGRAY)
-        })
-        val primaryInput = EditText(this).apply {
-            hint = "Ссылка Quattro / YAML"
-            setText(prefs.getString("subscription_url", ""))
-            minLines = 2; maxLines = 4
-        }
-        val freeInput = EditText(this).apply {
-            hint = "Ссылка бесплатного резерва"
-            setText(prefs.getString("free_subscription_url", ""))
-            minLines = 2; maxLines = 4
-        }
-        settingsPage.addView(primaryInput)
-        settingsPage.addView(actionButton("Импортировать Quattro") { importFrom(primaryInput.text.toString().trim(), false) })
-        settingsPage.addView(actionButton("Выбрать DOCX Quattro") {
-            val pick = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-                addCategory(Intent.CATEGORY_OPENABLE)
-                type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            }
-            startActivityForResult(pick, docxRequestCode)
-        })
-        settingsPage.addView(freeInput)
-        settingsPage.addView(actionButton("Импортировать бесплатные серверы") { importFrom(freeInput.text.toString().trim(), true) })
         settingsPage.addView(actionButton("Проверить обновления") { checkForAppUpdate() })
         settingsPage.addView(TextView(this).apply {
-            text = "Подписки сохраняются локально. Используйте только доверенные источники."
-            textSize = 11f; setTextColor(Color.GRAY); setPadding(0, dp(18), 0, 0)
+            text = "Управление профилями, подписками и импортом находится во вкладке «Профили»."
+            textSize = 12f; setTextColor(Color.LTGRAY); setPadding(0, dp(18), 0, 0)
         })
         fun wrapPage(content: View): android.widget.ScrollView =
             android.widget.ScrollView(this).apply {
