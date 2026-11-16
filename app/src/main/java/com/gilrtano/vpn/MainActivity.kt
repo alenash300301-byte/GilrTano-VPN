@@ -760,7 +760,7 @@ class MainActivity : Activity() {
                     } else {
                         val notes = release.notes.trim().ifBlank { "Исправления ошибок и улучшения стабильности." }
                         AlertDialog.Builder(this)
-                            .setTitle("Доступна новая версия \${release.tag}")
+                            .setTitle("Доступна новая версия ${release.tag}")
                             .setMessage("Установлена версия $installed\n\nЧто нового:\n$notes\n\nAPK будет проверен по SHA-256 перед установкой.")
                             .setPositiveButton("Скачать и установить") { _, _ ->
                                 downloadAndInstallUpdate(release)
@@ -775,7 +775,7 @@ class MainActivity : Activity() {
                     updateButton.text = "Проверить обновления"
                     AlertDialog.Builder(this)
                         .setTitle("Не удалось проверить обновления")
-                        .setMessage("Проверьте подключение к интернету и попробуйте ещё раз.\n\nПричина: \${error.message ?: "неизвестная ошибка"}")
+                        .setMessage("Проверьте подключение к интернету и попробуйте ещё раз.\n\nПричина: ${error.message ?: "неизвестная ошибка"}")
                         .setPositiveButton("Закрыть", null)
                         .show()
                 }
@@ -793,7 +793,7 @@ class MainActivity : Activity() {
             setCancelable(false)
             show()
         }
-        val apk = java.io.File(cacheDir, "GilrTano-\${release.tag}.apk")
+        val apk = java.io.File(cacheDir, "GilrTano-${release.tag}.apk")
         updateExecutor.execute {
             try {
                 releaseUpdater.download(release, apk) { value ->
@@ -803,10 +803,10 @@ class MainActivity : Activity() {
                     progress.dismiss()
                     AlertDialog.Builder(this)
                         .setTitle("Обновление загружено")
-                        .setMessage("Файл успешно загружен и проверен. Установить версию \${release.tag}?")
+                        .setMessage("Файл успешно загружен и проверен. Установить версию ${release.tag}?")
                         .setPositiveButton("Установить") { _, _ ->
                             runCatching { releaseUpdater.install(apk) }.onFailure {
-                                Toast.makeText(this, "Не удалось запустить установку: \${it.message}", Toast.LENGTH_LONG).show()
+                                Toast.makeText(this, "Не удалось запустить установку: ${it.message}", Toast.LENGTH_LONG).show()
                             }
                         }
                         .setNegativeButton("Позже", null)
@@ -818,7 +818,7 @@ class MainActivity : Activity() {
                     progress.dismiss()
                     AlertDialog.Builder(this)
                         .setTitle("Ошибка обновления")
-                        .setMessage("Не удалось загрузить или проверить APK.\n\n\${error.message ?: "Неизвестная ошибка"}")
+                        .setMessage("Не удалось загрузить или проверить APK.\n\n${error.message ?: "Неизвестная ошибка"}")
                         .setPositiveButton("Закрыть", null)
                         .show()
                 }
@@ -845,7 +845,7 @@ class MainActivity : Activity() {
             PackageInstaller.STATUS_SUCCESS -> Toast.makeText(this, "GilrTano VPN успешно обновлён", Toast.LENGTH_LONG).show()
             else -> {
                 val message = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)
-                Toast.makeText(this, "Установка обновления не выполнена: \${message ?: "отменено"}", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "Установка обновления не выполнена: ${message ?: "отменено"}", Toast.LENGTH_LONG).show()
             }
         }
     }
