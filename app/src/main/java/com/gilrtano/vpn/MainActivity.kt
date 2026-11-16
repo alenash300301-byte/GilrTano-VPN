@@ -515,16 +515,7 @@ class MainActivity : Activity() {
                     gravity = android.view.Gravity.CENTER
                     setPadding(0, dp(3), 0, 0)
                 }, LinearLayout.LayoutParams.MATCH_PARENT, dp(20))
-                trafficWaveAnchor = TrafficWaveView(this@MainActivity).apply {
-                    contentDescription = "Открыть подробную статистику трафика"
-                    setOnClickListener {
-                        for (i in 0 until pageHost.childCount) pageHost.getChildAt(i).visibility = if (i == 4) View.VISIBLE else View.GONE
-                        down.second.text = downloadMetric.text
-                        up.second.text = uploadMetric.text
-                        total.second.text = trafficTotalMetric.text
-                        trafficState.text = if (status.text.toString().contains("Подключено")) "VPN подключён" else "VPN отключён"
-                    }
-                }
+                trafficWaveAnchor = TrafficWaveView(this@MainActivity)
                 addView(trafficWaveAnchor, LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, dp(58)
                 ).apply { topMargin = dp(8); bottomMargin = dp(8) })
@@ -805,6 +796,13 @@ class MainActivity : Activity() {
             text = "Примечание: скорость рассчитывается по сетевым счётчикам Android; общий объём — по UID приложения, а не по серверной статистике."
             textSize = 11f; setTextColor(Color.GRAY); setPadding(0, dp(14), 0, 0)
         })
+        trafficWaveAnchor.setOnClickListener {
+            for (i in 0 until pageHost.childCount) pageHost.getChildAt(i).visibility = if (i == 4) View.VISIBLE else View.GONE
+            down.second.text = downloadMetric.text
+            up.second.text = uploadMetric.text
+            total.second.text = trafficTotalMetric.text
+            trafficState.text = if (status.text.toString().contains("Подключено")) "VPN подключён" else "VPN отключён"
+        }
         val settingsPage = page("Настройки")
         settingsPage.addView(TextView(this).apply {
             text = "Управление источниками серверов"
