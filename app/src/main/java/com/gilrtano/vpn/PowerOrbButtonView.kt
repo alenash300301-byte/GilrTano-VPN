@@ -162,8 +162,10 @@ class PowerOrbButtonView @JvmOverloads constructor(
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         val cx = width / 2f
-        val cy = height / 2f
-        val radius = 19f * d
+        // Keep the power symbol in the upper half; the TextView label sits
+        // independently near the bottom of the orb.
+        val cy = height * 0.37f
+        val radius = 18f * d
         canvas.drawArc(RectF(cx-radius, cy-radius, cx+radius, cy+radius), 45f, 270f, false, glyphPaint)
         canvas.drawLine(cx, cy-radius-1f*d, cx, cy+1f*d, glyphPaint)
 
