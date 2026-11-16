@@ -152,7 +152,21 @@ object PortalGateImporter {
             "header_protection_key", "content_padding_addition", "rekey_after_time", "rekey_timeout",
             "reject_after_time", "keepalive_timeout", "max_handshake_attempts")
         val boolKeys = setOf("random_trailers", "disable_cookies")
-        (iface + peer).forEach { (key, value) ->
+        // AmneziaWG exports these AWG 3.x names in camel case (for example
+        // HeaderProtectionKey), while sing-box JSON uses snake_case.
+        val canonicalAliases = mapOf(
+            "headerprotectionkey" to "header_protection_key",
+            "contentpaddingaddition" to "content_padding_addition",
+            "rekeyaftertime" to "rekey_after_time",
+            "rekeytimeout" to "rekey_timeout",
+            "rejectaftertime" to "reject_after_time",
+            "keepalivetimeout" to "keepalive_timeout",
+            "maxhandshakeattempts" to "max_handshake_attempts",
+            "randomtrailers" to "random_trailers",
+            "disablecookies" to "disable_cookies"
+        )
+        (iface + peer).forEach { (rawKey, value) ->
+            val key = canonicalAliases[rawKey] ?: rawKey
             when {
                 key in intKeys -> value.toIntOrNull()?.let { amnezia.put(key, it) }
                 key in stringKeys && value.isNotBlank() -> amnezia.put(key, value)
@@ -182,7 +196,7 @@ object PortalGateImporter {
             .put("private_key", privateKey)
             .put("address", JSONArray(addresses))
             .put("peers", JSONArray().put(peerJson))
-            .put("awg", amnezia)
+            .put("amnezia", amnezia)
         iface["mtu"]?.toIntOrNull()?.let { endpointJson.put("mtu", it) }
         val dnsJson = JSONObject()
         if (dnsServers.isNotEmpty()) {
