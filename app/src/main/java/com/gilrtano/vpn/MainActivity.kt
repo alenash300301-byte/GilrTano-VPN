@@ -543,25 +543,30 @@ class MainActivity : Activity() {
                 addView(LinearLayout(this@MainActivity).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = android.view.Gravity.CENTER_VERTICAL
-                    background = GradientDrawable().apply {
-                        setColor(Color.rgb(10, 10, 12)); cornerRadius = dp(28).toFloat()
-                        setStroke(dp(1), Color.rgb(45, 45, 48))
+                    background = GradientDrawable(
+                        GradientDrawable.Orientation.TL_BR,
+                        intArrayOf(Color.rgb(24, 17, 19), Color.rgb(7, 9, 9), Color.rgb(20, 17, 18))
+                    ).apply {
+                        cornerRadius = dp(23).toFloat()
+                        setStroke(dp(1), Color.rgb(155, 43, 46))
                     }
-                    setPadding(dp(16), dp(10), dp(14), dp(10))
+                    elevation = dp(5).toFloat()
+                    setPadding(dp(16), dp(12), dp(14), dp(12))
                     setOnClickListener { showServerPicker() }
                     addView(TextView(this@MainActivity).apply {
-                        text = "🌐"; textSize = 25f; setTextColor(Color.WHITE)
+                        text = "🌍"; textSize = 27f; setTextColor(Color.WHITE)
                         setPadding(0, 0, dp(14), 0)
                     })
                     addView(LinearLayout(this@MainActivity).apply {
                         orientation = LinearLayout.VERTICAL
                         serverCardTitle = TextView(this@MainActivity).apply {
-                            text = "Автоматический сервер"; textSize = 16f
+                            text = "Автоматический сервер"; textSize = 17f
+                            typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
                             setTextColor(Color.WHITE)
                         }
                         serverCardSubtitle = TextView(this@MainActivity).apply {
-                            text = "Автовыбор"; textSize = 12f
-                            setTextColor(Color.LTGRAY)
+                            text = "Автовыбор"; textSize = 13f
+                            setTextColor(Color.rgb(195, 197, 202))
                         }
                         addView(serverCardTitle)
                         addView(serverCardSubtitle)
@@ -570,14 +575,16 @@ class MainActivity : Activity() {
                         orientation = LinearLayout.HORIZONTAL
                         gravity = android.view.Gravity.CENTER_VERTICAL
                         serverCardPing = TextView(this@MainActivity).apply {
-                            text = ""; textSize = 13f; setTextColor(Color.rgb(0, 230, 55))
+                            text = ""; textSize = 14f; typeface = android.graphics.Typeface.DEFAULT_BOLD
+                            setTextColor(Color.rgb(55, 245, 85))
+                            setShadowLayer(dp(5).toFloat(), 0f, 0f, Color.rgb(0, 180, 40))
                         }
                         addView(serverCardPing)
                         addView(TextView(this@MainActivity).apply {
                             text = "  ›"; textSize = 27f; setTextColor(Color.WHITE)
                         })
                     })
-                }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(70)).apply {
+                }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(82)).apply {
                     topMargin = dp(8); bottomMargin = dp(8)
                 })
                 // Screenshot-inspired neon glass styling for the server and live metrics.
@@ -633,9 +640,9 @@ class MainActivity : Activity() {
                             orientation = LinearLayout.VERTICAL
                             gravity = android.view.Gravity.CENTER
                             background = GradientDrawable().apply {
-                                setColor(Color.rgb(12, 12, 15))
+                                setColor(Color.rgb(8, 10, 10))
                                 cornerRadius = dp(16).toFloat()
-                                setStroke(dp(1), Color.rgb(48, 48, 52))
+                                setStroke(dp(1), Color.rgb(83, 45, 48))
                             }
                             addView(TextView(this@MainActivity).apply {
                                 text = title; textSize = 11f
@@ -661,9 +668,9 @@ class MainActivity : Activity() {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = android.view.Gravity.CENTER_VERTICAL
                     background = GradientDrawable().apply {
-                        setColor(Color.rgb(12, 12, 15))
+                        setColor(Color.rgb(8, 10, 10))
                         cornerRadius = dp(17).toFloat()
-                        setStroke(dp(1), Color.rgb(82, 35, 37))
+                        setStroke(dp(1), Color.rgb(145, 43, 47))
                     }
                     setPadding(dp(8), dp(9), dp(8), dp(9))
                     fun detail(label: String, initial: String): LinearLayout {
@@ -772,9 +779,9 @@ class MainActivity : Activity() {
             gravity = android.view.Gravity.CENTER
             setPadding(dp(7), dp(7), dp(7), dp(7))
             background = GradientDrawable().apply {
-                setColor(Color.rgb(15, 17, 21))
+                setColor(Color.rgb(8, 9, 11))
                 cornerRadius = dp(25).toFloat()
-                setStroke(dp(1), Color.rgb(48, 52, 60))
+                setStroke(dp(1), Color.rgb(112, 44, 48))
             }
             if (android.os.Build.VERSION.SDK_INT >= 21) elevation = dp(8).toFloat()
         }
@@ -782,12 +789,16 @@ class MainActivity : Activity() {
         fun updateNavSelection(selected: Int) {
             navViews.forEachIndexed { index, item ->
                 val active = index == selected
-                item.setTextColor(if (active) Color.rgb(242, 245, 250) else Color.rgb(151, 157, 168))
-                item.background = GradientDrawable().apply {
-                    setColor(if (active) Color.rgb(43, 47, 56) else Color.TRANSPARENT)
+                item.setTextColor(if (active) Color.rgb(100, 255, 125) else Color.rgb(170, 173, 180))
+                item.background = GradientDrawable(
+                    GradientDrawable.Orientation.TOP_BOTTOM,
+                    if (active) intArrayOf(Color.rgb(14, 45, 23), Color.rgb(5, 17, 10))
+                    else intArrayOf(Color.TRANSPARENT, Color.TRANSPARENT)
+                ).apply {
                     cornerRadius = dp(18).toFloat()
-                    if (active) setStroke(dp(1), Color.rgb(73, 79, 91))
+                    if (active) setStroke(dp(1), Color.rgb(45, 220, 82))
                 }
+                if (active) item.setShadowLayer(dp(8).toFloat(), 0f, 0f, Color.rgb(0, 150, 40))
                 item.alpha = if (active) 1f else 0.88f
             }
         }
