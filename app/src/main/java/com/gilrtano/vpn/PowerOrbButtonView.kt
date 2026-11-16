@@ -216,141 +216,66 @@ class PowerOrbButtonView @JvmOverloads constructor(
         return super.onTouchEvent(event)
     }
 
+    private val buttonArtwork by lazy {
+        context.getDrawable(R.drawable.file_000000004cb08210bfb53b4ce7ceb0dd)
+    }
+
     override fun onDraw(canvas: Canvas) {
-        // Draw the complete control as one coherent neon orb. The TextView's
-        // own text is intentionally empty: icon and caption are positioned here.
+        // Use the exact artwork uploaded to the repository. Clip its black
+        // square corners so the tiger background remains visible around the orb.
         super.onDraw(canvas)
-        val cx = width / 2f
-        val cy = height / 2f
-        val r = minOf(width, height) * 0.465f
-        val connected = state == State.CONNECTED
-        val connecting = state == State.CONNECTING
-        // Keep the reference's green glass identity in every state;
-        // connection state is communicated by the caption and subtle glow.
-        val neon = if (connecting) Color.rgb(255, 190, 70) else Color.rgb(90, 255, 78)
-        val inner = if (connecting) Color.rgb(30, 22, 5) else Color.rgb(2, 32, 12)
-
-        // Subtle breathing halo while idle, like a powered device at rest.
-        ringPaint.color = neon
-        ringPaint.alpha = (35 + breath * 45).toInt()
-        ringPaint.strokeWidth = (1.2f + breath * 1.2f) * d
-        canvas.drawCircle(cx, cy, r * (1.035f + breath * 0.025f), ringPaint)
-
-        // 3D extruded housing: cast shadow, dark sidewall and a beveled red rim.
-        val depthPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.rgb(12, 2, 5)
-            setShadowLayer(18f * d, 0f, 9f * d, Color.BLACK)
+        val side = minOf(width, height).toFloat()
+        if (side <= 0f) return
+        val left = (width - side) / 2f
+        val top = (height - side) / 2f
+        val save = canvas.save()
+        val clip = Path().apply {
+            addCircle(width / 2f, height / 2f, side * 0.5f, Path.Direction.CW)
         }
-        canvas.drawCircle(cx, cy + 5f*d, r * 1.01f, depthPaint)
-        depthPaint.clearShadowLayer()
-        depthPaint.shader = LinearGradient(cx, cy-r, cx, cy+r,
-            intArrayOf(Color.rgb(255, 150, 155), Color.rgb(95, 5, 16), Color.rgb(255, 35, 48), Color.rgb(38, 2, 8)),
-            floatArrayOf(0f, .28f, .72f, 1f), Shader.TileMode.CLAMP)
-        canvas.drawCircle(cx, cy, r, depthPaint)
-        depthPaint.shader = null
-
-        // Deep glass face with a directional reflection.
-        fillPaint.shader = android.graphics.RadialGradient(
-            cx-r*.22f, cy-r*.34f, r*1.65f,
-            intArrayOf(Color.rgb(46, 72, 50), Color.rgb(5, 25, 12), Color.BLACK),
-            floatArrayOf(0f, .42f, 1f), Shader.TileMode.CLAMP
+        canvas.clipPath(clip)
+        buttonArtwork.bounds = android.graphics.Rect(
+            left.toInt(), top.toInt(), (left + side).toInt(), (top + side).toInt()
         )
-        canvas.drawCircle(cx, cy, r * 0.91f, fillPaint)
-        fillPaint.shader = null
+        buttonArtwork.draw(canvas)
+        canvas.restoreToCount(save)
 
-        val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
-            strokeWidth = 5f * d
-            color = neon
-            setShadowLayer(16f * d, 0f, 0f, neon)
+        // The artwork contains an intentionally empty neon capsule. Draw the
+        // live VPN status there so it can change without editing the PNG.
+        val connecting = state == State.CONNECTING
+        captionPaint.textAlign = Paint.Align.CENTER
+        captionPaint.typeface = Typeface.create("sans-serif", Typeface.BOLD)
+        captionPaint.textSize = side * 0.060f
+        captionPaint.color = if (connecting) Color.rgb(255, 205, 90) else Color.rgb(125, 255, 95)
+        captionPaint.setShadowLayer(5f * d, 0f, 0f, captionPaint.color)
+        val label = caption
+        val maxWidth = side * 0.57f
+        var size = captionPaint.textSize
+        while (captionPaint.measureText(label) > maxWidth && size > side * 0.035f) {
+            size -= 0.5f * d
+            captionPaint.textSize = size
         }
-        canvas.drawCircle(cx, cy, r * 0.89f, glowPaint)
-        glowPaint.clearShadowLayer()
+        val baseline = top + side * 0.594f - (captionPaint.ascent() + captionPaint.descent()) / 2f
+        canvas.drawText(label, width / 2f, baseline, captionPaint)
+        captionPaint.clearShadowLayer()
 
-        // Metallic bevel: bright upper edge and shaded lower edge.
-        ringPaint.shader = LinearGradient(cx, cy-r, cx, cy+r,
-            intArrayOf(Color.rgb(255, 245, 235), Color.rgb(255, 45, 58), Color.rgb(75, 2, 12), Color.rgb(255, 75, 82)),
-            null, Shader.TileMode.CLAMP)
-        ringPaint.strokeWidth = 3.4f * d
-        canvas.drawCircle(cx, cy, r * 0.985f, ringPaint)
-        ringPaint.shader = null
-        ringPaint.color = Color.argb(210, 255, 220, 220)
-        ringPaint.strokeWidth = 1.1f * d
-        canvas.drawArc(RectF(cx-r*.95f, cy-r*.95f, cx+r*.95f, cy+r*.95f), 205f, 130f, false, ringPaint)
-        ringPaint.color = Color.argb(210, 45, 0, 5)
-        ringPaint.strokeWidth = 2.2f * d
-        canvas.drawArc(RectF(cx-r*.95f, cy-r*.95f, cx+r*.95f, cy+r*.95f), 25f, 130f, false, ringPaint)
-        ringPaint.color = neon
-        ringPaint.strokeWidth = 3f * d
-        ringPaint.setShadowLayer(8f*d, 0f, 0f, neon)
-        canvas.drawCircle(cx, cy, r * 0.84f, ringPaint)
-        ringPaint.clearShadowLayer()
-        ringPaint.color = Color.argb(120, 255, 255, 255)
-        ringPaint.strokeWidth = 1f * d
-        canvas.drawCircle(cx, cy, r * 0.77f, ringPaint)
-
-        // Specular highlight gives the glass face a rounded 3D finish.
-        val reflection = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
-            strokeWidth = 2.2f*d
-            color = Color.argb(105, 255, 255, 255)
-        }
-        canvas.drawArc(RectF(cx-r*.72f, cy-r*.72f, cx+r*.72f, cy+r*.72f),
-            215f, 105f, false, reflection)
-
-        // Expanding contact ripple while the finger is physically pressing the orb.
+        // Subtle breathing halo and animated contact ripple stay independent
+        // of the static artwork.
         if (pressAmount > 0.01f) {
             val ripplePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 style = Paint.Style.STROKE
-                color = neon
-                alpha = (190f * pressAmount).toInt()
-                strokeWidth = (2.5f + 2f * pressAmount) * d
-                setShadowLayer(8f*d, 0f, 0f, neon)
+                color = if (connecting) Color.rgb(255, 190, 70) else Color.rgb(90, 255, 78)
+                alpha = (150f * pressAmount).toInt()
+                strokeWidth = (2f + 2f * pressAmount) * d
             }
-            canvas.drawCircle(cx, cy, r * (0.84f + pressAmount * 0.12f), ripplePaint)
-            ripplePaint.clearShadowLayer()
+            canvas.drawCircle(width / 2f, height / 2f, side * (0.43f + pressAmount * 0.035f), ripplePaint)
         }
-
-        // Bright power glyph in the upper-middle of the orb.
-        val iconCx = cx
-        val iconCy = cy - r * 0.22f
-        val iconR = r * 0.30f
-        glyphPaint.color = if (connecting) Color.rgb(255, 205, 100) else Color.rgb(145, 255, 100)
-        glyphPaint.strokeWidth = 5f * d
-        glyphPaint.setShadowLayer(9f * d, 0f, 0f, glyphPaint.color)
-        canvas.drawArc(RectF(iconCx-iconR, iconCy-iconR, iconCx+iconR, iconCy+iconR),
-            135f, 270f, false, glyphPaint)
-        canvas.drawLine(iconCx, iconCy-iconR*1.32f, iconCx, iconCy+iconR*0.12f, glyphPaint)
-        glyphPaint.clearShadowLayer()
-
-        // Status capsule, sized to the text and kept inside the circular rim.
-        val labelSize = 14f * d
-        captionPaint.textSize = labelSize
-        captionPaint.color = if (connecting) Color.rgb(255, 205, 100) else Color.rgb(125, 255, 100)
-        captionPaint.setShadowLayer(5f * d, 0f, 0f, captionPaint.color)
-        val labelWidth = captionPaint.measureText(caption).coerceAtMost(r * 1.36f)
-        val plate = RectF(cx-labelWidth/2f-12f*d, cy+r*0.34f, cx+labelWidth/2f+12f*d, cy+r*0.66f)
-        fillPaint.color = Color.argb(205, 2, 8, 5)
-        canvas.drawRoundRect(plate, 18f*d, 18f*d, fillPaint)
-        captionPlatePaint.color = neon
-        captionPlatePaint.strokeWidth = 1.2f*d
-        captionPlatePaint.setShadowLayer(5f*d, 0f, 0f, neon)
-        canvas.drawRoundRect(plate, 18f*d, 18f*d, captionPlatePaint)
-        captionPlatePaint.clearShadowLayer()
-        val baseline = plate.centerY() - (captionPaint.ascent()+captionPaint.descent())/2f
-        canvas.drawText(caption, cx, baseline, captionPaint)
-        captionPaint.clearShadowLayer()
-
-        // Subtle moving highlight while connecting/connected.
-        if (state != State.DISCONNECTED && animationsAllowed) {
-            val angle = -90f + phase * 360f
-            val rad = Math.toRadians(angle.toDouble())
-            val hx = cx + cos(rad).toFloat() * r * 0.91f
-            val hy = cy + sin(rad).toFloat() * r * 0.91f
-            fillPaint.color = Color.WHITE
-            fillPaint.setShadowLayer(8f*d, 0f, 0f, neon)
-            canvas.drawCircle(hx, hy, 2.5f*d, fillPaint)
-            fillPaint.clearShadowLayer()
+        if (breath > 0f && state != State.CONNECTED) {
+            val halo = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                style = Paint.Style.STROKE
+                color = Color.argb((25 + breath * 35).toInt(), 95, 255, 85)
+                strokeWidth = 1.2f * d
+            }
+            canvas.drawCircle(width / 2f, height / 2f, side * (0.49f + breath * 0.006f), halo)
         }
     }
 }
