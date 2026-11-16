@@ -683,9 +683,7 @@ class MainActivity : Activity() {
                     addView(View(this@MainActivity).apply { setBackgroundColor(Color.rgb(58, 58, 64)) },
                         LinearLayout.LayoutParams(dp(1), dp(30)))
                     addView(detail("МАРШРУТ", if (autoMode) "PORTAL → QUATTRO" else "QUATTRO"), LinearLayout.LayoutParams(0, dp(43), 1.2f))
-                }, LinearLayout.LayoutParams.MATCH_PARENT, dp(62)).apply {
-                    topMargin = dp(8)
-                }
+                }, LinearLayout.LayoutParams.MATCH_PARENT, dp(62))
                 addView(TextView(this@MainActivity).apply {
                     text = "Скорость сети"
                     textSize = 10f
