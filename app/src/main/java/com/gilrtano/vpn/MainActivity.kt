@@ -805,8 +805,23 @@ class MainActivity : Activity() {
                         .setTitle("Обновление загружено")
                         .setMessage("Файл успешно загружен и проверен. Установить версию ${release.tag}?")
                         .setPositiveButton("Установить") { _, _ ->
-                            runCatching { releaseUpdater.install(apk) }.onFailure {
-                                Toast.makeText(this, "Не удалось запустить установку: ${it.message}", Toast.LENGTH_LONG).show()
+                            if (android.os.Build.VERSION.SDK_INT >= 26 &&
+                                !packageManager.canRequestPackageInstalls()) {
+                                AlertDialog.Builder(this)
+                                    .setTitle("Разрешение на установку")
+                                    .setMessage("Разрешите GilrTano VPN устанавливать обновления в настройках Android, затем вернитесь сюда и нажмите «Установить» ещё раз.")
+                                    .setPositiveButton("Открыть настройки") { _, _ ->
+                                        startActivity(Intent(
+                                            android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                                            Uri.parse("package:$packageName")
+                                        ))
+                                    }
+                                    .setNegativeButton("Отмена", null)
+                                    .show()
+                            } else {
+                                runCatching { releaseUpdater.install(apk) }.onFailure {
+                                    Toast.makeText(this, "Не удалось запустить установку: ${it.message}", Toast.LENGTH_LONG).show()
+                                }
                             }
                         }
                         .setNegativeButton("Позже", null)
