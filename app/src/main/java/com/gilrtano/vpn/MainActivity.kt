@@ -283,7 +283,7 @@ class MainActivity : Activity() {
                 // Верхняя зона: только кнопка уведомлений, без логотипа и короны.
                 addView(FrameLayout(this@MainActivity).apply {
                     val notificationButton = TextView(this@MainActivity).apply {
-                        text = "♧"
+                        text = "🔔"
                         textSize = 25f
                         gravity = android.view.Gravity.CENTER
                         setTextColor(Color.WHITE)
