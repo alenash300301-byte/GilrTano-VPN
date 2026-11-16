@@ -21,12 +21,13 @@ class EnergyOrbGLView(context: Context) : GLSurfaceView(context) {
 
     init {
         setEGLContextClientVersion(2)
+        // Request an alpha-capable EGL surface before creating the renderer.
+        setEGLConfigChooser(8, 8, 8, 8, 0, 0)
         holder.setFormat(PixelFormat.TRANSLUCENT)
         setZOrderMediaOverlay(true)
-        setEGLConfigChooser(8, 8, 8, 8, 0, 0)
         setRenderer(orbRenderer)
         renderMode = RENDERMODE_CONTINUOUSLY
-        setZOrderOnTop(false)
+        // Do not override media-overlay ordering with setZOrderOnTop(false).
         setBackgroundColor(android.graphics.Color.TRANSPARENT)
         isClickable = false
         importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
