@@ -61,6 +61,8 @@ class PowerOrbButtonView @JvmOverloads constructor(
     private var pressAmount = 0f
     private var breath = 0f
     private var animationsAllowed = true
+    var useGlArtwork: Boolean = false
+
 
     fun setCaption(value: String) {
         caption = value
@@ -233,10 +235,12 @@ class PowerOrbButtonView @JvmOverloads constructor(
             addCircle(width / 2f, height / 2f, side * 0.5f, Path.Direction.CW)
         }
         canvas.clipPath(clip)
-        buttonArtwork.bounds = android.graphics.Rect(
-            left.toInt(), top.toInt(), (left + side).toInt(), (top + side).toInt()
-        )
-        buttonArtwork.draw(canvas)
+        if (!useGlArtwork) {
+            buttonArtwork.bounds = android.graphics.Rect(
+                left.toInt(), top.toInt(), (left + side).toInt(), (top + side).toInt()
+            )
+            buttonArtwork.draw(canvas)
+        }
         canvas.restoreToCount(save)
 
         // The artwork contains an intentionally empty neon capsule. Draw the
