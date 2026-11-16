@@ -548,6 +548,7 @@ class MainActivity : Activity() {
         navItems.forEachIndexed { index, label ->
             bottomNav.addView(Button(this).apply {
                 text = label
+                contentDescription = "dashboard-nav"
                 textSize = 11f
                 isAllCaps = false
                 setTextColor(if (index == 0) Color.rgb(60, 255, 95) else Color.LTGRAY)
@@ -848,7 +849,7 @@ class MainActivity : Activity() {
             when (view) {
                 is Button -> {
                     // Preserve the circular hero power control; the other buttons use compact styling.
-                    if (view === connectButton) return
+                    if (view === connectButton || view.contentDescription == "dashboard-nav") return
                     view.setTextColor(Color.WHITE)
                     view.textSize = 13f
                     view.isAllCaps = false
@@ -873,7 +874,10 @@ class MainActivity : Activity() {
                     }
                 }
                 is TextView -> {
-                    if (view.currentTextColor != Color.WHITE) view.setTextColor(Color.LTGRAY)
+                    val isLiveMetric = (::pingMetric.isInitialized && view === pingMetric) ||
+                        (::downloadMetric.isInitialized && view === downloadMetric) ||
+                        (::uploadMetric.isInitialized && view === uploadMetric)
+                    if (!isLiveMetric && view.currentTextColor != Color.WHITE) view.setTextColor(Color.LTGRAY)
                 }
                 is Spinner -> {
                     view.setBackgroundColor(Color.rgb(24, 25, 28))
