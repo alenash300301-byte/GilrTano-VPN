@@ -192,34 +192,67 @@ class PowerOrbButtonView @JvmOverloads constructor(
         val neon = if (connecting) Color.rgb(255, 190, 70) else Color.rgb(90, 255, 78)
         val inner = if (connecting) Color.rgb(30, 22, 5) else Color.rgb(2, 32, 12)
 
-        // Dark glass center and layered outer halo.
+        // 3D extruded housing: cast shadow, dark sidewall and a beveled red rim.
+        val depthPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.rgb(12, 2, 5)
+            setShadowLayer(18f * d, 0f, 9f * d, Color.BLACK)
+        }
+        canvas.drawCircle(cx, cy + 5f*d, r * 1.01f, depthPaint)
+        depthPaint.clearShadowLayer()
+        depthPaint.shader = LinearGradient(cx, cy-r, cx, cy+r,
+            intArrayOf(Color.rgb(255, 150, 155), Color.rgb(95, 5, 16), Color.rgb(255, 35, 48), Color.rgb(38, 2, 8)),
+            floatArrayOf(0f, .28f, .72f, 1f), Shader.TileMode.CLAMP)
+        canvas.drawCircle(cx, cy, r, depthPaint)
+        depthPaint.shader = null
+
+        // Deep glass face with a directional reflection.
         fillPaint.shader = android.graphics.RadialGradient(
-            cx, cy, r, intArrayOf(Color.rgb(2, 10, 7), inner, Color.BLACK),
-            floatArrayOf(0f, 0.72f, 1f), Shader.TileMode.CLAMP
+            cx-r*.22f, cy-r*.34f, r*1.65f,
+            intArrayOf(Color.rgb(46, 72, 50), Color.rgb(5, 25, 12), Color.BLACK),
+            floatArrayOf(0f, .42f, 1f), Shader.TileMode.CLAMP
         )
-        canvas.drawCircle(cx, cy, r * 0.94f, fillPaint)
+        canvas.drawCircle(cx, cy, r * 0.91f, fillPaint)
         fillPaint.shader = null
 
         val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
             strokeWidth = 5f * d
             color = neon
-            setShadowLayer(13f * d, 0f, 0f, neon)
+            setShadowLayer(16f * d, 0f, 0f, neon)
         }
-        canvas.drawCircle(cx, cy, r * 0.91f, glowPaint)
+        canvas.drawCircle(cx, cy, r * 0.89f, glowPaint)
         glowPaint.clearShadowLayer()
 
-        ringPaint.color = Color.rgb(255, 45, 55)
-        ringPaint.strokeWidth = 2f * d
-        ringPaint.alpha = 220
-        canvas.drawCircle(cx, cy, r * 1.02f, ringPaint)
+        // Metallic bevel: bright upper edge and shaded lower edge.
+        ringPaint.shader = LinearGradient(cx, cy-r, cx, cy+r,
+            intArrayOf(Color.rgb(255, 245, 235), Color.rgb(255, 45, 58), Color.rgb(75, 2, 12), Color.rgb(255, 75, 82)),
+            null, Shader.TileMode.CLAMP)
+        ringPaint.strokeWidth = 3.4f * d
+        canvas.drawCircle(cx, cy, r * 0.985f, ringPaint)
+        ringPaint.shader = null
+        ringPaint.color = Color.argb(210, 255, 220, 220)
+        ringPaint.strokeWidth = 1.1f * d
+        canvas.drawArc(RectF(cx-r*.95f, cy-r*.95f, cx+r*.95f, cy+r*.95f), 205f, 130f, false, ringPaint)
+        ringPaint.color = Color.argb(210, 45, 0, 5)
+        ringPaint.strokeWidth = 2.2f * d
+        canvas.drawArc(RectF(cx-r*.95f, cy-r*.95f, cx+r*.95f, cy+r*.95f), 25f, 130f, false, ringPaint)
         ringPaint.color = neon
-        ringPaint.strokeWidth = 2.6f * d
-        ringPaint.alpha = 245
+        ringPaint.strokeWidth = 3f * d
+        ringPaint.setShadowLayer(8f*d, 0f, 0f, neon)
         canvas.drawCircle(cx, cy, r * 0.84f, ringPaint)
-        ringPaint.color = Color.argb(130, 255, 255, 255)
+        ringPaint.clearShadowLayer()
+        ringPaint.color = Color.argb(120, 255, 255, 255)
         ringPaint.strokeWidth = 1f * d
         canvas.drawCircle(cx, cy, r * 0.77f, ringPaint)
+
+        // Specular highlight gives the glass face a rounded 3D finish.
+        val reflection = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = 2.2f*d
+            color = Color.argb(105, 255, 255, 255)
+        }
+        canvas.drawArc(RectF(cx-r*.72f, cy-r*.72f, cx+r*.72f, cy+r*.72f),
+            215f, 105f, false, reflection)
 
         // Bright power glyph in the upper-middle of the orb.
         val iconCx = cx
