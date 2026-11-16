@@ -126,7 +126,7 @@ class FlClashNavigationDock(
     private fun positionIndicator(animate: Boolean) {
         if (width <= 0 || row.width <= 0) return
         val cellWidth = row.width.toFloat() / labels.size
-        val targetX = cellWidth * selectedIndex + dp(4)
+        val targetX = cellWidth * selectedIndex
         val targetWidth = (cellWidth - dp(8)).toInt().coerceAtLeast(0)
         val params = indicator.layoutParams
         if (params.width != targetWidth) {
