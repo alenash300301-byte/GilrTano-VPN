@@ -219,7 +219,9 @@ class MainActivity : Activity() {
                 val currentStatus = status.text.toString()
                 val isConnected = currentStatus.contains("Подключено")
                 val isConnecting = currentStatus.startsWith("Подключаю") ||
-                    currentStatus.startsWith("Запускаю") || currentStatus.startsWith("Запуск Xray") || currentStatus.startsWith("Переключаю")
+                    currentStatus.startsWith("Запускаю") || currentStatus.startsWith("Запуск Xray") ||
+                    currentStatus.startsWith("Запуск PORTAL") || currentStatus.startsWith("Запуск Quattro") ||
+                    currentStatus.startsWith("Переключаю")
                 if (isConnected || isConnecting) {
                     pendingConfig = null
                     status.text = if (isConnected) "Отключаю VPN…" else "Отменяю подключение…"
@@ -227,8 +229,32 @@ class MainActivity : Activity() {
                         .setAction(GilrTanoVpnService.ACTION_STOP))
                     return@setOnClickListener
                 }
-                // One-tap mode: request a fresh WARP/AmneziaWG profile from the
-                // same generator API used by the Cyberportal web UI, then start it.
+                // Explicit Quattro mode uses the selected Quattro profile.
+                // Automatic mode below uses PORTAL first and Quattro as fallback.
+                if (!autoMode) {
+                    val node = quattroNodes.getOrNull(servers.selectedItemPosition)
+                    if (node == null) {
+                        status.text = "Сначала импортируй профиль Quattro в настройках"
+                        return@setOnClickListener
+                    }
+                    val config = runCatching { GilrTanoVpnService.xrayConfigFromVless(node.uri) }
+                        .getOrElse {
+                            status.text = "Ошибка профиля Quattro: ${it.message}"
+                            return@setOnClickListener
+                        }
+                    pendingConfig = config
+                    pendingFallbackConfig = null
+                    pendingPreferredConfig = null
+                    pendingAutomatic = false
+                    pendingPortalAwg = false
+                    status.text = "Запрашиваю разрешение VPN для Quattro…"
+                    val permission = VpnService.prepare(this@MainActivity)
+                    if (permission != null) startActivityForResult(permission, requestCode)
+                    else startVpn(config)
+                    return@setOnClickListener
+                }
+
+                // One-tap automatic mode: fresh PORTAL/WARP first, Quattro if the generator is unavailable.
                 status.text = "Получаю новую конфигурацию WARP…"
                 connectButton.isEnabled = false
                 Thread {
@@ -262,21 +288,34 @@ class MainActivity : Activity() {
                                 }
                             }
                         }.getOrNull()
+                        val quattroFallback = quattroNodes.firstOrNull()
+                            ?.let { runCatching { GilrTanoVpnService.xrayConfigFromVless(it.uri) }.getOrNull() }
                         runOnUiThread {
                             connectButton.isEnabled = true
                             if (bundled != null) {
                                 pendingConfig = bundled.config
-                                pendingFallbackConfig = quattroNodes.firstOrNull()
-                                    ?.let { runCatching { GilrTanoVpnService.xrayConfigFromVless(it.uri) }.getOrNull() }
+                                pendingFallbackConfig = quattroFallback
                                 pendingPreferredConfig = null
                                 pendingAutomatic = true
                                 pendingPortalAwg = true
                                 status.text = "Генератор WARP недоступен. Запускаю резервный PORTAL…"
                                 val permission = VpnService.prepare(this@MainActivity)
                                 if (permission != null) startActivityForResult(permission, requestCode)
-                                else startWarpVpn(bundled.config, pendingFallbackConfig)
+                                else startWarpVpn(bundled.config, quattroFallback)
+                            } else if (quattroFallback != null) {
+                                // No public profile archive is bundled. If PORTAL generation
+                                // is down, keep the paid Quattro path usable instead of failing.
+                                pendingConfig = quattroFallback
+                                pendingFallbackConfig = null
+                                pendingPreferredConfig = null
+                                pendingAutomatic = false
+                                pendingPortalAwg = false
+                                status.text = "Генератор PORTAL недоступен. Подключаю Quattro…"
+                                val permission = VpnService.prepare(this@MainActivity)
+                                if (permission != null) startActivityForResult(permission, requestCode)
+                                else startVpn(quattroFallback)
                             } else {
-                                status.text = "WARP и резервный архив недоступны: ${e.message ?: "ошибка генератора"}"
+                                status.text = "PORTAL недоступен, а профиль Quattro не импортирован: ${e.message ?: "ошибка генератора"}"
                                 resetConnectButtonGlow()
                             }
                         }
