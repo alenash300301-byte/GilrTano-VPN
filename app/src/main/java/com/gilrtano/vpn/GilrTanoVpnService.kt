@@ -229,7 +229,7 @@ class GilrTanoVpnService : VpnService() {
                         Log.i(TAG, "${when { portalMode && boxMode -> "PORTAL AmneziaWG"; portalMode -> "PORTAL MASQUE"; boxMode -> "PORTAL GATE"; else -> "Quattro" }} status=$status $message")
                         if (status == 0L && !stopping) establishTun()
                         else if (status < 0L && !stopping) {
-                            if (automaticMode && advanceFallback("Основной протокол недоступен")) {
+                            if (automaticMode && advanceFallback("Основной протокол недоступен: ${message.take(140)}")) {
                                 return
                             } else {
                                 val failure = "Ошибка запуска ${if (boxMode) "PORTAL / AmneziaWG" else "Quattro / Xray"}: ${message.take(220)}"
