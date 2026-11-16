@@ -830,12 +830,61 @@ class MainActivity : Activity() {
                 val latency = measuredLatency[node.uri]
                 if (latency != null) "●  ${node.name}     ·  ${latency} мс" else "○  ${node.name}"
             }
-            list.adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, labels).apply {
-                setDropDownViewResource(android.R.layout.simple_list_item_1)
-            }
-            (list.adapter as? ArrayAdapter<String>)?.let { adapter ->
-                // Style each row through the standard Android text item.
-                adapter.notifyDataSetChanged()
+            list.adapter = object : android.widget.BaseAdapter() {
+                override fun getCount(): Int = visibleNodes.size
+                override fun getItem(position: Int): Any = visibleNodes[position]
+                override fun getItemId(position: Int): Long = position.toLong()
+                override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+                    val node = visibleNodes[position]
+                    val row = (convertView as? LinearLayout) ?: LinearLayout(this@MainActivity).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = android.view.Gravity.CENTER_VERTICAL
+                        setPadding(dp(14), dp(11), dp(14), dp(11))
+                        background = GradientDrawable().apply {
+                            setColor(Color.rgb(20, 20, 24))
+                            cornerRadius = dp(14).toFloat()
+                            setStroke(dp(1), Color.rgb(48, 48, 56))
+                        }
+                    }
+                    row.removeAllViews()
+                    val dot = TextView(this@MainActivity).apply {
+                        text = if (measuredLatency.containsKey(node.uri)) "●" else "○"
+                        textSize = 18f
+                        setTextColor(if (measuredLatency.containsKey(node.uri)) Color.rgb(55, 225, 100) else Color.GRAY)
+                        gravity = android.view.Gravity.CENTER
+                    }
+                    val nameColumn = LinearLayout(this@MainActivity).apply {
+                        orientation = LinearLayout.VERTICAL
+                        setPadding(dp(12), 0, dp(8), 0)
+                    }
+                    val name = TextView(this@MainActivity).apply {
+                        text = node.name
+                        textSize = 15f
+                        maxLines = 1
+                        ellipsize = android.text.TextUtils.TruncateAt.END
+                        typeface = android.graphics.Typeface.DEFAULT_BOLD
+                        setTextColor(Color.WHITE)
+                    }
+                    val subtitle = TextView(this@MainActivity).apply {
+                        text = if (measuredLatency.containsKey(node.uri)) "Проверен · доступность подтверждена" else "Нажми, чтобы подключиться"
+                        textSize = 11f
+                        setTextColor(Color.GRAY)
+                        setPadding(0, dp(3), 0, 0)
+                    }
+                    nameColumn.addView(name)
+                    nameColumn.addView(subtitle)
+                    val latency = TextView(this@MainActivity).apply {
+                        text = measuredLatency[node.uri]?.let { "$it мс" } ?: "—"
+                        textSize = 13f
+                        typeface = android.graphics.Typeface.DEFAULT_BOLD
+                        setTextColor(if (measuredLatency.containsKey(node.uri)) Color.rgb(70, 230, 110) else Color.LTGRAY)
+                        gravity = android.view.Gravity.CENTER
+                    }
+                    row.addView(dot, LinearLayout.LayoutParams(dp(22), ViewGroup.LayoutParams.WRAP_CONTENT))
+                    row.addView(nameColumn, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                    row.addView(latency, LinearLayout.LayoutParams(dp(58), ViewGroup.LayoutParams.WRAP_CONTENT))
+                    return row
+                }
             }
         }
         refreshList()
@@ -999,6 +1048,13 @@ class MainActivity : Activity() {
             setPadding(0, dp(12), 0, 0)
         }
         body.addView(state, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(10) })
+        val trafficNote = TextView(this).apply {
+            text = "Скорость показывает общий сетевой трафик устройства"
+            textSize = 11f
+            setTextColor(Color.GRAY)
+            setPadding(dp(3), 0, dp(3), dp(8))
+        }
+        body.addView(trafficNote)
         body.addView(grid, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(94)).apply { bottomMargin = dp(10) })
         body.addView(serverCard.first, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(9) })
         body.addView(modeCard.first, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(9) })
@@ -1031,6 +1087,16 @@ class MainActivity : Activity() {
                 downCard.second.text = if (::downloadMetric.isInitialized) downloadMetric.text else "0.0 Мбит/с"
                 upCard.second.text = if (::uploadMetric.isInitialized) uploadMetric.text else "0.0 Мбит/с"
                 pingCard.second.text = if (::pingMetric.isInitialized) pingMetric.text else "— мс"
+                val nowConnected = ::status.isInitialized && status.text.toString().contains("Подключено")
+                state.text = if (nowConnected) "●  ЗАЩИЩЁННОЕ СОЕДИНЕНИЕ" else "○  VPN ОТКЛЮЧЁН"
+                state.setTextColor(if (nowConnected) Color.rgb(42, 235, 92) else Color.LTGRAY)
+                state.background = GradientDrawable().apply {
+                    setColor(Color.rgb(18, 22, 19))
+                    cornerRadius = dp(14).toFloat()
+                    setStroke(dp(1), if (nowConnected) Color.rgb(35, 105, 55) else Color.rgb(55, 55, 60))
+                }
+                serverCard.second.text = activeNodes.getOrNull(servers.selectedItemPosition)?.name ?: "Автовыбор"
+                modeCard.second.text = if (autoMode) "Автоматический · PORTAL → Quattro" else if (activeFree) "Резервный" else "Quattro"
                 trafficHandler.postDelayed(this, 1000L)
             }
         }
