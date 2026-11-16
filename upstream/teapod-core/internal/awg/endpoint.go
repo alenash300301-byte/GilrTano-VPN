@@ -46,6 +46,7 @@ type Endpoint struct {
 	dialer    N.Dialer
 	ipcConfig string
 	server    M.Socksaddr
+	reserved  []byte
 	stack     *stackDevice
 	device    *device.Device
 	started   atomic.Bool
@@ -60,7 +61,18 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 	}
 	peer := options.Peers[0]
 	if len(peer.Reserved) != 0 {
-		return nil, E.New("awg: reserved is not supported")
+		if len(peer.Reserved) != 3 {
+			return nil, E.New("awg: reserved must contain exactly 3 bytes")
+		}
+		// Cloudflare WARP uses the three reserved WireGuard header bytes as
+		// its client ID. Do not combine them with custom AWG header transforms.
+		if options.Amnezia.H1 != "" || options.Amnezia.H2 != "" ||
+			options.Amnezia.H3 != "" || options.Amnezia.H4 != "" ||
+			options.Amnezia.S1 != 0 || options.Amnezia.S2 != 0 ||
+			options.Amnezia.S3 != 0 || options.Amnezia.S4 != 0 ||
+			options.Amnezia.HeaderProtectionKey != "" {
+			return nil, E.New("awg: WARP reserved bytes cannot be combined with custom AWG header protection")
+		}
 	}
 	if err := options.Amnezia.Validate(); err != nil {
 		return nil, err
@@ -94,6 +106,7 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 		dialer:    outboundDialer,
 		ipcConfig: ipcConfig,
 		server:    M.ParseSocksaddrHostPort(peer.Address, peer.Port),
+		reserved: append([]byte(nil), peer.Reserved...),
 		stack:     stack,
 	}, nil
 }
@@ -156,7 +169,7 @@ func (w *Endpoint) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	if stage != adapter.StartStatePostStart {
 		return nil
 	}
-	bind := newClientBind(w.ctx, w.logger, w.dialer, w.server)
+	bind := newClientBind(w.ctx, w.logger, w.dialer, w.server, w.reserved)
 	wgDevice := device.NewDevice(w.stack, bind, &device.Logger{
 		Verbosef: func(format string, args ...any) {
 			w.logger.Debug(fmt.Sprintf(strings.ToLower(format), args...))
