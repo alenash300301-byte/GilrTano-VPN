@@ -775,7 +775,11 @@ class MainActivity : Activity() {
         connectButton.apply {
             textSize = 19f
             typeface = android.graphics.Typeface.DEFAULT_BOLD
-            gravity = android.view.Gravity.CENTER
+            gravity = android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL
+            setPadding(dp(8), dp(8), dp(8), dp(28))
+            textSize = 17f
+            includeFontPadding = false
+            maxLines = 1
             setTextColor(Color.WHITE)
             isAllCaps = false
             background = GradientDrawable().apply {
@@ -853,13 +857,9 @@ class MainActivity : Activity() {
     }
 
     private fun setPowerButtonLabel(label: String) {
-        val full = "⏻   $label"
-        val styled = SpannableString(full)
-        styled.setSpan(
-            ForegroundColorSpan(Color.rgb(220, 32, 32)),
-            0, 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
-        )
-        connectButton.text = styled
+        // The power glyph is drawn by PowerOrbButtonView itself. Keep the
+        // label separate and anchored below it to avoid icon/text collisions.
+        connectButton.text = label
     }
 
     private fun igniteConnectButton() { connectButton.elevation = dp(12).toFloat() }
