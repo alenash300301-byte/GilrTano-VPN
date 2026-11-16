@@ -41,6 +41,8 @@ class EnergyOrbGLView(context: Context) : GLSurfaceView(context) {
         private var resolutionLocation = 0
         private lateinit var vertices: FloatBuffer
         private val start = System.nanoTime()
+        private var surfaceWidth = 1
+        private var surfaceHeight = 1
         private val vertexShader = """
             attribute vec2 aPosition;
             varying vec2 vUv;
@@ -124,6 +126,8 @@ class EnergyOrbGLView(context: Context) : GLSurfaceView(context) {
             vertices.put(data).position(0)
         }
         override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) {
+            surfaceWidth = max(1,width)
+            surfaceHeight = max(1,height)
             GLES20.glViewport(0,0,width,height)
         }
         override fun onDrawFrame(gl: GL10?) {
@@ -135,7 +139,7 @@ class EnergyOrbGLView(context: Context) : GLSurfaceView(context) {
             GLES20.glVertexAttribPointer(pos,2,GLES20.GL_FLOAT,false,0,vertices)
             GLES20.glUniform1f(timeLocation,(System.nanoTime()-start)/1_000_000_000f)
             GLES20.glUniform1f(stateLocation,state.get().toFloat())
-            GLES20.glUniform2f(resolutionLocation,max(1,width).toFloat(),max(1,height).toFloat())
+            GLES20.glUniform2f(resolutionLocation,surfaceWidth.toFloat(),surfaceHeight.toFloat())
             GLES20.glEnable(GLES20.GL_BLEND)
             GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA,GLES20.GL_ONE_MINUS_SRC_ALPHA)
             GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP,0,4)
