@@ -640,6 +640,7 @@ class MainActivity : Activity() {
             page.animate().cancel()
             page.translationX = 0f
             page.alpha = 1f
+            page.visibility = if (page === outgoing) View.VISIBLE else View.GONE
         }
         val direction = if (destination > currentPageIndex) 1f else -1f
         val distance = resources.displayMetrics.widthPixels * 0.25f
