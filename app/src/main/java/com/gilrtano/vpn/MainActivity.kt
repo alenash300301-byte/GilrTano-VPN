@@ -74,6 +74,13 @@ class MainActivity : Activity() {
     private lateinit var modeSelectorRow: LinearLayout
     private lateinit var serverCard: View
     private lateinit var navigationDock: FlClashNavigationDock
+    private lateinit var homePage: LinearLayout
+    private lateinit var proxyPage: LinearLayout
+    private lateinit var profilesPage: LinearLayout
+    private lateinit var settingsPage: LinearLayout
+    private lateinit var navigationPages: List<LinearLayout>
+    private lateinit var contentScrollView: android.widget.ScrollView
+    private var currentPageIndex = 0
     private lateinit var connectButton: Button
     private val fireDrawable = FireButtonDrawable()
     private var fireAnimator: ValueAnimator? = null
@@ -312,7 +319,20 @@ class MainActivity : Activity() {
                 orientation = LinearLayout.VERTICAL
                 gravity = android.view.Gravity.CENTER_HORIZONTAL
                 setPadding(dp(18), dp(12), dp(18), dp(18))
-                addView(LinearLayout(this@MainActivity).apply {
+                homePage = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL; gravity = android.view.Gravity.CENTER_HORIZONTAL }
+                proxyPage = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE }
+                profilesPage = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE }
+                settingsPage = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE }
+                navigationPages = listOf(homePage, proxyPage, profilesPage, settingsPage)
+                addView(homePage, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+                addView(proxyPage, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+                addView(profilesPage, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+                addView(settingsPage, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+                proxyPage.addView(TextView(this@MainActivity).apply { text = "ПРОКСИ"; textSize = 23f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE); setPadding(0, dp(8), 0, dp(18)) })
+                profilesPage.addView(TextView(this@MainActivity).apply { text = "ПРОФИЛИ"; textSize = 23f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE); setPadding(0, dp(8), 0, dp(8)) })
+                profilesPage.addView(TextView(this@MainActivity).apply { text = "Выбери источник подключения"; textSize = 13f; setTextColor(Color.LTGRAY); setPadding(0, 0, 0, dp(16)) })
+                settingsPage.addView(TextView(this@MainActivity).apply { text = "НАСТРОЙКИ"; textSize = 23f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE); setPadding(0, dp(8), 0, dp(18)) })
+                homePage.addView(LinearLayout(this@MainActivity).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = android.view.Gravity.CENTER_VERTICAL
                     addView(TextView(this@MainActivity).apply {
@@ -359,7 +379,7 @@ class MainActivity : Activity() {
                         ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
                     ))
                 }
-                addView(tigerScene, LinearLayout.LayoutParams(
+                homePage.addView(tigerScene, LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, dp(410)
                 ).apply { topMargin = dp(0); bottomMargin = dp(0) })
 
@@ -398,7 +418,7 @@ class MainActivity : Activity() {
                     gravity = android.view.Gravity.TOP or android.view.Gravity.CENTER_HORIZONTAL
                     topMargin = dp(242)
                 })
-                addView(status.apply {
+                homePage.addView(status.apply {
                     text = "●  Отключено"; textSize = 17f
                     gravity = android.view.Gravity.CENTER
                     setTextColor(Color.LTGRAY)
@@ -411,14 +431,14 @@ class MainActivity : Activity() {
                     format = "%s"
                     visibility = View.GONE
                 }
-                addView(connectionTimer, LinearLayout.LayoutParams(
+                homePage.addView(connectionTimer, LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, dp(22)
                 ))
                 // The central glowing orb is the primary connect/disconnect control.
                 // Keep the accessible action button as the click target, but remove its
                 // duplicate pill from the visual layout to match the approved reference.
                 connectButton.visibility = View.GONE
-                addView(connectButton, LinearLayout.LayoutParams(1, 1))
+                homePage.addView(connectButton, LinearLayout.LayoutParams(1, 1))
                 serverCard = LinearLayout(this@MainActivity).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = android.view.Gravity.CENTER_VERTICAL
@@ -457,16 +477,16 @@ class MainActivity : Activity() {
                         })
                     })
                 }
-                addView(serverCard, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(70)).apply {
+                proxyPage.addView(serverCard, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(70)).apply {
                     topMargin = dp(8); bottomMargin = dp(14)
                 })
-                addView(servers, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)))
+                proxyPage.addView(servers, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)))
                 servers.visibility = View.GONE
-                addView(pingStatus.apply { gravity = android.view.Gravity.CENTER_VERTICAL }, LinearLayout.LayoutParams.MATCH_PARENT, dp(1))
+                proxyPage.addView(pingStatus.apply { gravity = android.view.Gravity.CENTER_VERTICAL }, LinearLayout.LayoutParams.MATCH_PARENT, dp(34))
                 pingStatus.visibility = View.GONE
-                addView(bestFreeButton, LinearLayout.LayoutParams.MATCH_PARENT, dp(1))
+                proxyPage.addView(bestFreeButton, LinearLayout.LayoutParams.MATCH_PARENT, dp(44))
                 bestFreeButton.visibility = View.GONE
-                addView(checkPing, LinearLayout.LayoutParams.MATCH_PARENT, dp(1))
+                proxyPage.addView(checkPing, LinearLayout.LayoutParams.MATCH_PARENT, dp(44))
                 checkPing.visibility = View.GONE
                 modeSelectorRow = LinearLayout(this@MainActivity).apply {
                     orientation = LinearLayout.HORIZONTAL
@@ -492,22 +512,23 @@ class MainActivity : Activity() {
                         findImportButtonsVisibility()
                     }
                 }
-                addView(settingsHeader)
-                addView(modeSelectorRow, LinearLayout.LayoutParams.MATCH_PARENT, dp(48))
-                addView(primarySource, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-                addView(importPrimary)
-                addView(importDocx)
-                addView(freeSource, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-                addView(importFree)
-                addView(portalSource, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-                addView(importPortalButton)
-                addView(portalYamlButton)
-                addView(TextView(this@MainActivity).apply {
+                settingsPage.addView(settingsHeader)
+                profilesPage.addView(modeSelectorRow, LinearLayout.LayoutParams.MATCH_PARENT, dp(48))
+                settingsPage.addView(primarySource, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                settingsPage.addView(importPrimary)
+                settingsPage.addView(importDocx)
+                settingsPage.addView(freeSource, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                settingsPage.addView(importFree)
+                settingsPage.addView(portalSource, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                settingsPage.addView(importPortalButton)
+                settingsPage.addView(portalYamlButton)
+                settingsPage.addView(TextView(this@MainActivity).apply {
                     text = "Бесплатные серверы предоставляются сторонними операторами."
                     textSize = 10f; setTextColor(Color.GRAY); gravity = android.view.Gravity.CENTER
                     setPadding(0, dp(12), 0, dp(8))
                 })
             })
+            contentScrollView = this
         }
         // Respect Android system bars so the brand header and bottom navigation
         // never sit underneath the clock or gesture handle.
@@ -532,30 +553,8 @@ class MainActivity : Activity() {
             setBackgroundColor(Color.rgb(28, 28, 30))
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)))
         navigationDock = FlClashNavigationDock(this) { destination ->
-            fun animateTo(anchor: View) {
-                scroll.post {
-                    val target = anchor.top.coerceAtLeast(0)
-                    ValueAnimator.ofInt(scroll.scrollY, target).apply {
-                        duration = 450L
-                        interpolator = android.view.animation.PathInterpolator(0.2f, 0f, 0f, 1f)
-                        addUpdateListener { scroll.scrollTo(0, it.animatedValue as Int) }
-                        start()
-                    }
-                }
-            }
-            when (destination) {
-                0 -> animateTo(scroll.getChildAt(0))
-                1 -> {
-                    animateTo(serverCard)
-                    scroll.postDelayed({ if (!isFinishing && !isDestroyed) showServerPicker() }, 220L)
-                }
-                2 -> {
-                    settingsExpanded = true
-                    findImportButtonsVisibility()
-                    animateTo(modeSelectorRow)
-                }
-                3 -> showSettingsDialog()
-            }
+            if (destination == 3) settingsExpanded = true
+            showNavigationPage(destination)
         }
         root.addView(navigationDock, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, dp(74)
@@ -626,15 +625,53 @@ class MainActivity : Activity() {
         updateServerCard(false)
     }
 
+    private fun showNavigationPage(destination: Int) {
+        if (!::navigationPages.isInitialized || destination !in navigationPages.indices) return
+        if (destination == currentPageIndex) {
+            if (destination == 3) {
+                settingsExpanded = true
+                findImportButtonsVisibility()
+            }
+            return
+        }
+        val outgoing = navigationPages[currentPageIndex]
+        val incoming = navigationPages[destination]
+        navigationPages.forEach { page ->
+            page.animate().cancel()
+            page.translationX = 0f
+            page.alpha = 1f
+        }
+        val direction = if (destination > currentPageIndex) 1f else -1f
+        val distance = resources.displayMetrics.widthPixels * 0.25f
+        incoming.visibility = View.VISIBLE
+        incoming.alpha = 0f
+        incoming.translationX = direction * distance
+        outgoing.animate().alpha(0f).translationX(-direction * distance)
+            .setDuration(450L)
+            .setInterpolator(android.view.animation.PathInterpolator(0.2f, 0f, 0f, 1f))
+            .withEndAction {
+                if (currentPageIndex == destination) {
+                    outgoing.visibility = View.GONE
+                    outgoing.translationX = 0f
+                    outgoing.alpha = 1f
+                }
+            }.start()
+        incoming.animate().alpha(1f).translationX(0f)
+            .setDuration(450L)
+            .setInterpolator(android.view.animation.PathInterpolator(0.2f, 0f, 0f, 1f))
+            .start()
+        currentPageIndex = destination
+        contentScrollView.scrollTo(0, 0)
+        navigationDock.setSelectedIndex(destination, false)
+        findImportButtonsVisibility()
+    }
+
     private fun showServerPicker() {
         val nodes = activeNodes
         if (nodes.isEmpty()) {
             settingsExpanded = true
+            showNavigationPage(3)
             findImportButtonsVisibility()
-            val content = findViewById<ViewGroup>(android.R.id.content)
-            val root = content.getChildAt(0) as? ViewGroup
-            val scroll = root?.getChildAt(0) as? android.widget.ScrollView
-            scroll?.post { scroll.smoothScrollTo(0, settingsHeader.top) }
             Toast.makeText(this, "Добавь сервер в настройках", Toast.LENGTH_LONG).show()
             return
         }
@@ -1045,24 +1082,22 @@ class MainActivity : Activity() {
     }
 
     private fun findImportButtonsVisibility() {
-        val content = findViewById<ViewGroup>(android.R.id.content)
-        val root = content.getChildAt(0) as? LinearLayout ?: return
-        val scroll = root.getChildAt(0) as? android.widget.ScrollView ?: return
-        val page = scroll.getChildAt(0) as? ViewGroup ?: return
-        settingsHeader.visibility = if (settingsExpanded) View.VISIBLE else View.GONE
-        modeSelectorRow.visibility = if (settingsExpanded) View.VISIBLE else View.GONE
-        primarySource.visibility = if (settingsExpanded && !activeFree && !activePortal) View.VISIBLE else View.GONE
-        freeSource.visibility = if (settingsExpanded && activeFree && !activePortal) View.VISIBLE else View.GONE
-        portalSource.visibility = if (settingsExpanded && activePortal) View.VISIBLE else View.GONE
-        importPortalButton.visibility = if (settingsExpanded && activePortal) View.VISIBLE else View.GONE
-        portalYamlButton.visibility = if (settingsExpanded && activePortal) View.VISIBLE else View.GONE
-        bestFreeButton.visibility = if (settingsExpanded && activeFree) View.VISIBLE else View.GONE
-        checkPing.visibility = if (settingsExpanded) View.VISIBLE else View.GONE
-        for (i in 0 until page.childCount) {
-            val child = page.getChildAt(i)
+        if (!::settingsHeader.isInitialized || !::modeSelectorRow.isInitialized) return
+        settingsHeader.visibility = if (currentPageIndex == 3) View.VISIBLE else View.GONE
+        modeSelectorRow.visibility = if (currentPageIndex == 2) View.VISIBLE else View.GONE
+        primarySource.visibility = if (currentPageIndex == 3 && settingsExpanded && !activeFree && !activePortal) View.VISIBLE else View.GONE
+        freeSource.visibility = if (currentPageIndex == 3 && settingsExpanded && activeFree && !activePortal) View.VISIBLE else View.GONE
+        portalSource.visibility = if (currentPageIndex == 3 && settingsExpanded && activePortal) View.VISIBLE else View.GONE
+        importPortalButton.visibility = if (currentPageIndex == 3 && settingsExpanded && activePortal) View.VISIBLE else View.GONE
+        portalYamlButton.visibility = if (currentPageIndex == 3 && settingsExpanded && activePortal) View.VISIBLE else View.GONE
+        bestFreeButton.visibility = if (currentPageIndex == 1 && activeFree) View.VISIBLE else View.GONE
+        checkPing.visibility = if (currentPageIndex == 1) View.VISIBLE else View.GONE
+        pingStatus.visibility = if (currentPageIndex == 1) View.VISIBLE else View.GONE
+        for (i in 0 until settingsPage.childCount) {
+            val child = settingsPage.getChildAt(i)
             if (child is Button) {
                 val label = child.text.toString()
-                val show = settingsExpanded && (
+                val show = currentPageIndex == 3 && settingsExpanded && (
                     (!activePortal && !activeFree && (label == "Импортировать Quattro" || label == "Выбрать DOCX Quattro")) ||
                     (!activePortal && activeFree && label == "Импортировать бесплатные серверы") ||
                     (activePortal && (label == "Импортировать Portal" || label == "Выбрать WARP YAML"))
@@ -1072,7 +1107,6 @@ class MainActivity : Activity() {
                 }
             }
         }
-        pingStatus.visibility = if (settingsExpanded) View.VISIBLE else View.GONE
     }
 
     private fun importFrom(source: String, isFree: Boolean) {
