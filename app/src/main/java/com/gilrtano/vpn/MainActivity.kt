@@ -458,14 +458,24 @@ class MainActivity : Activity() {
                         }
                     })
                 })
-                // Clean connection hero: old animated tiger GIF removed.
-                // The standalone power control remains the primary VPN action.
+                // Main-screen hero reuses the exact tiger artwork from the splash.
+                // The old animated GIF stays removed; the splash PNG is shown statically.
                 val powerScene = FrameLayout(this@MainActivity).apply {
                     background = GradientDrawable(
                         GradientDrawable.Orientation.TOP_BOTTOM,
                         intArrayOf(Color.rgb(8, 8, 10), Color.BLACK)
                     ).apply { cornerRadius = dp(18).toFloat() }
+                    clipToOutline = true
                 }
+                val heroTiger = ImageView(this@MainActivity).apply {
+                    setImageResource(R.drawable.gilrtano_splash)
+                    scaleType = ImageView.ScaleType.FIT_CENTER
+                    contentDescription = "Тигр GilrTano"
+                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+                }
+                powerScene.addView(heroTiger, FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
+                ))
                 powerOrb = PowerOrbButtonView(this@MainActivity).apply {
                     text = ""
                     gravity = android.view.Gravity.CENTER
@@ -489,11 +499,12 @@ class MainActivity : Activity() {
                         false
                     }
                 }
-                powerScene.addView(powerOrb, FrameLayout.LayoutParams(dp(132), dp(132)).apply {
-                    gravity = android.view.Gravity.CENTER
+                powerScene.addView(powerOrb, FrameLayout.LayoutParams(dp(112), dp(112)).apply {
+                    gravity = android.view.Gravity.CENTER_HORIZONTAL or android.view.Gravity.CENTER_VERTICAL
+                    topMargin = dp(100)
                 })
                 addView(powerScene, LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, dp(250)
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(330)
                 ).apply { topMargin = dp(4); bottomMargin = dp(4) })
 
                 addView(status.apply {
