@@ -558,7 +558,7 @@ class MainActivity : Activity() {
                 }
                 setOnClickListener {
                     when (index) {
-                        0 -> { settingsExpanded = false; findImportButtonsVisibility(); scroll.smoothScrollTo(0, 0) }
+                        0 -> { settingsExpanded = false; servers.visibility = View.GONE; findImportButtonsVisibility(); scroll.smoothScrollTo(0, 0) }
                         1 -> {
                             settingsExpanded = false
                             findImportButtonsVisibility()
@@ -566,7 +566,7 @@ class MainActivity : Activity() {
                             modeSelectorRow.visibility = View.VISIBLE
                             showServerPicker()
                         }
-                        2 -> { settingsExpanded = false; findImportButtonsVisibility(); scroll.smoothScrollTo(0, dp(560)) }
+                        2 -> { settingsExpanded = false; servers.visibility = View.GONE; findImportButtonsVisibility(); scroll.smoothScrollTo(0, dp(560)) }
                         3 -> {
                             settingsExpanded = true
                             settingsHeader.visibility = View.VISIBLE
@@ -656,7 +656,12 @@ class MainActivity : Activity() {
     private fun updatePowerOrb(connected: Boolean) {
         if (!::powerOrb.isInitialized) return
         (powerOrb as? PowerOrbButtonView)?.setConnected(connected)
-        powerOrb.setTextColor(if (connected) Color.rgb(0, 255, 48) else Color.WHITE)
+        powerOrb.setTextColor(if (connected) Color.rgb(90, 255, 120) else Color.WHITE)
+        powerOrb.background = GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(if (connected) Color.rgb(5, 32, 13) else Color.rgb(28, 8, 10))
+            setStroke(dp(4), if (connected) Color.rgb(45, 255, 90) else Color.rgb(225, 38, 45))
+        }
         powerOrb.elevation = dp(if (connected) 20 else 12).toFloat()
         powerOrb.invalidate()
     }
