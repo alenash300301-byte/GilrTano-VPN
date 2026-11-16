@@ -186,7 +186,7 @@ class GilrTanoVpnService : VpnService() {
         consecutiveProbeFailures = 0
         val (config, isBox) = fallbackChain[next]
         val label = if (isBox) "PORTAL AmneziaWG ${next + 1}/${fallbackChain.size}" else "Quattro"
-        broadcastStatus("$reason. Переключаюсь на $label…")
+        broadcastStatus("Переключаюсь… $reason. Выбираю $label")
         switchTunnel(config, isBox, isBox)
         return true
     }
