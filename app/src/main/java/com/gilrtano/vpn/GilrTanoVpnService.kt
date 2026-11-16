@@ -70,7 +70,38 @@ class GilrTanoVpnService : VpnService() {
                         // Reuse every profile imported in PORTAL GATE. The Activity and
                         // VPN service share this process, so no private-key list needs to
                         // be passed through Binder extras or written to public source files.
-                        val importedProfiles = PortalGateSession.profiles.map { profile ->
+                        val sessionProfiles = PortalGateSession.profiles.ifEmpty {
+                            // Restore persisted user imports after Android has recreated the
+                            // app process; URI permissions were persisted by PortalGateActivity.
+                            val prefs = getSharedPreferences("portal_gate", MODE_PRIVATE)
+                            val savedUris = listOfNotNull(
+                                prefs.getString("awg_archive_uri", null),
+                                prefs.getString("masque_archive_uri", null),
+                                prefs.getString("archive_uri", null)
+                            ).distinct()
+                            savedUris.flatMap { saved ->
+                                runCatching {
+                                    val uri = android.net.Uri.parse(saved)
+                                    val displayName = contentResolver.query(
+                                        uri,
+                                        arrayOf(android.provider.OpenableColumns.DISPLAY_NAME),
+                                        null, null, null
+                                    )?.use { cursor ->
+                                        if (cursor.moveToFirst()) cursor.getString(0) else ""
+                                    }.orEmpty()
+                                    contentResolver.openInputStream(uri)?.use { input ->
+                                        if (displayName.endsWith(".yaml", true) || displayName.endsWith(".yml", true)) {
+                                            PortalGateMasqueImporter.parseYaml(input)
+                                        } else {
+                                            PortalGateImporter.parseZip(input)
+                                        }
+                                    } ?: emptyList()
+                                }.onFailure { error ->
+                                    Log.w(TAG, "Could not restore saved PORTAL import", error)
+                                }.getOrDefault(emptyList())
+                            }.also { restored -> PortalGateSession.profiles = restored }
+                        }
+                        val importedProfiles = sessionProfiles.map { profile ->
                             val useSingBox = runCatching {
                                 val root = JSONObject(profile.config)
                                 root.has("endpoints") && !root.has("outbounds")
