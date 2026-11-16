@@ -84,7 +84,9 @@ jobs:
           gradle --no-daemon assembleRelease
           APK="app/build/outputs/apk/release/app-release.apk"
           test -s "$APK"
-          jarsigner -verify "$APK"
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort | tail -n1)
+          test -n "$APKSIGNER"
+          "$APKSIGNER" verify --verbose "$APK"
           sha256sum "$APK" > app/build/outputs/apk/release/SHA256SUMS.txt
 
       - name: Publish GitHub Release
