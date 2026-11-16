@@ -702,10 +702,16 @@ class MainActivity : Activity() {
                 isFillViewport = true
                 addView(content, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
             }
+        // Only the Home page is visible on first launch. Keep the other tab
+        // roots hidden so their profile/import controls cannot bleed through
+        // the transparent tiger dashboard before the user opens that tab.
+        val proxyPageView = wrapPage(serverPage).apply { visibility = View.GONE }
+        val profilesPageView = wrapPage(profilesPage).apply { visibility = View.GONE }
+        val settingsPageView = wrapPage(settingsPage).apply { visibility = View.GONE }
         pageHost.addView(scroll, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-        pageHost.addView(wrapPage(serverPage), FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-        pageHost.addView(wrapPage(profilesPage), FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-        pageHost.addView(wrapPage(settingsPage), FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        pageHost.addView(proxyPageView, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        pageHost.addView(profilesPageView, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        pageHost.addView(settingsPageView, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         var currentPageIndex = 0
         var pageTransitionGeneration = 0
         fun showPage(index: Int) {
