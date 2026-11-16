@@ -72,6 +72,9 @@ class MainActivity : Activity() {
     private lateinit var uploadMetric: TextView
     private lateinit var sessionMetric: TextView
     private lateinit var trafficTotalMetric: TextView
+    private lateinit var routeMetric: TextView
+    private var sessionRxStart = TrafficStats.getTotalRxBytes()
+    private var sessionTxStart = TrafficStats.getTotalTxBytes()
     private val trafficHandler = Handler(Looper.getMainLooper())
     private var lastRxBytes = TrafficStats.getTotalRxBytes()
     private var lastTxBytes = TrafficStats.getTotalTxBytes()
@@ -106,6 +109,8 @@ class MainActivity : Activity() {
                 else -> message
             }
             if (message.startsWith("Подключено")) {
+                sessionRxStart = TrafficStats.getTotalRxBytes()
+                sessionTxStart = TrafficStats.getTotalTxBytes()
                 if (message.contains("бесплатный резерв")) activeFree = true
                 else if (message.contains("Quattro")) activeFree = false
                 refreshMode()
@@ -667,6 +672,7 @@ class MainActivity : Activity() {
                                 setPadding(0, dp(3), 0, 0)
                                 if (label == "СЕССИЯ") sessionMetric = this
                                 if (label == "ТРАФИК") trafficTotalMetric = this
+                                if (label == "МАРШРУТ") routeMetric = this
                             })
                         }
                     }
@@ -676,7 +682,7 @@ class MainActivity : Activity() {
                     addView(detail("ТРАФИК", "—"), LinearLayout.LayoutParams(0, dp(43), 1f))
                     addView(View(this@MainActivity).apply { setBackgroundColor(Color.rgb(58, 58, 64)) },
                         LinearLayout.LayoutParams(dp(1), dp(30)))
-                    addView(detail("МАРШРУТ", "PORTAL → QUATTRO"), LinearLayout.LayoutParams(0, dp(43), 1.2f))
+                    addView(detail("МАРШРУТ", if (autoMode) "PORTAL → QUATTRO" else "QUATTRO"), LinearLayout.LayoutParams(0, dp(43), 1.2f))
                 }, LinearLayout.LayoutParams.MATCH_PARENT, dp(62)).apply {
                     topMargin = dp(8)
                 }
@@ -880,6 +886,7 @@ class MainActivity : Activity() {
             }
         }
         activeMode = prefs.getString("connection_mode", "auto") ?: "auto"
+        if (::routeMetric.isInitialized) routeMetric.text = if (activeMode == "auto") "PORTAL → QUATTRO" else "QUATTRO"
         // Fresh installs start in the one-tap PORTAL → Quattro mode.
         // Migrate any old public/free mode preference back to automatic mode.
         if (activeMode == "free") activeMode = "auto"
@@ -1527,7 +1534,9 @@ class MainActivity : Activity() {
                     sessionMetric.text = if (connected && ::connectionTimer.isInitialized) connectionTimer.text.toString() else "00:00"
                 }
                 if (::trafficTotalMetric.isInitialized) {
-                    val total = if (connected && rx >= 0 && tx >= 0) rx + tx else 0L
+                    val total = if (connected && rx >= 0 && tx >= 0) {
+                        (rx - sessionRxStart).coerceAtLeast(0L) + (tx - sessionTxStart).coerceAtLeast(0L)
+                    } else 0L
                     trafficTotalMetric.text = if (total >= 1_073_741_824L)
                         String.format(java.util.Locale.US, "%.2f ГБ", total / 1_073_741_824.0)
                     else String.format(java.util.Locale.US, "%.0f МБ", total / 1_048_576.0)
