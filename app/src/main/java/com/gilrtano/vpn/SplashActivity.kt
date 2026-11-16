@@ -61,6 +61,9 @@ class SplashActivity : Activity() {
             FrameLayout.LayoutParams.MATCH_PARENT
         ))
         setContentView(root)
+        // Tap anywhere on the splash to enter the app immediately.
+        root.isClickable = true
+        root.setOnClickListener { openMain() }
 
         artwork.animate()
             .alpha(1f)
@@ -71,12 +74,13 @@ class SplashActivity : Activity() {
             .start()
 
         effects.start()
-        handler.postDelayed({ openMain() }, 3400L)
+        handler.postDelayed({ openMain() }, 3000L)
     }
 
     private fun openMain() {
         if (launched || isFinishing) return
         launched = true
+        handler.removeCallbacksAndMessages(null)
         val intent = Intent(this, MainActivity::class.java)
         startActivity(intent)
         overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out)
