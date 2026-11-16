@@ -329,7 +329,7 @@ class MainActivity : Activity() {
                 // Static tiger artwork from the app's bundled assets; no animated GIF.
                 addView(ImageView(this@MainActivity).apply {
                     setImageResource(R.drawable.tiger_hero)
-                    scaleType = ImageView.ScaleType.FIT_CENTER
+                    scaleType = ImageView.ScaleType.CENTER_CROP
                     adjustViewBounds = true
                     contentDescription = "Тигр GilrTano с зелёными глазами"
                 }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(245)).apply {
