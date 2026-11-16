@@ -740,114 +740,180 @@ class MainActivity : Activity() {
     }
 
     private fun showServerPicker() {
-        val nodes = activeNodes
-        if (nodes.isEmpty()) {
+        val initialNodes = activeNodes
+        if (initialNodes.isEmpty()) {
             settingsExpanded = true
             findImportButtonsVisibility()
             val content = findViewById<ViewGroup>(android.R.id.content)
-            val root = content.getChildAt(0) as? ViewGroup
+            val root = content?.getChildAt(0) as? ViewGroup
             val scroll = root?.getChildAt(0) as? android.widget.ScrollView
             scroll?.post { scroll.smoothScrollTo(0, settingsHeader.top) }
             Toast.makeText(this, "Добавь сервер в настройках", Toast.LENGTH_LONG).show()
             return
         }
-        val panel = LinearLayout(this).apply {
+
+        // Full-screen server catalogue: keeps the tiger dashboard intact and gives
+        // server management its own usable space on phones.
+        val dialog = android.app.Dialog(this)
+        val page = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(8), dp(18), dp(4))
+            setPadding(dp(18), dp(12), dp(18), dp(12))
+            setBackgroundColor(Color.rgb(8, 8, 10))
         }
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+        }
+        val title = TextView(this).apply {
+            text = "СЕРВЕРЫ  ·  ${initialNodes.size}"
+            textSize = 20f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(Color.WHITE)
+        }
+        val close = TextView(this).apply {
+            text = "✕"
+            textSize = 22f
+            gravity = android.view.Gravity.CENTER
+            setTextColor(Color.LTGRAY)
+            isClickable = true
+            setPadding(dp(14), dp(8), dp(8), dp(8))
+            setOnClickListener { dialog.dismiss() }
+        }
+        header.addView(title, LinearLayout.LayoutParams(0, dp(48), 1f))
+        header.addView(close, LinearLayout.LayoutParams(dp(48), dp(48)))
         val search = EditText(this).apply {
-            hint = "Поиск сервера"
+            hint = "Поиск сервера или страны"
             setSingleLine(true)
+            textSize = 15f
             setTextColor(Color.WHITE)
             setHintTextColor(Color.GRAY)
             background = GradientDrawable().apply {
                 setColor(Color.rgb(24, 24, 28))
                 cornerRadius = dp(14).toFloat()
-                setStroke(dp(1), Color.rgb(70, 70, 76))
+                setStroke(dp(1), Color.rgb(64, 64, 72))
             }
             setPadding(dp(14), dp(10), dp(14), dp(10))
         }
-        val list = android.widget.ListView(this).apply {
-            divider = GradientDrawable().apply { setColor(Color.rgb(42, 42, 46)); setSize(1, dp(1)) }
-            dividerHeight = dp(1)
-            isTextFilterEnabled = true
-        }
-        val adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, nodes.map { it.name })
-        list.adapter = adapter
-        val serverActions = LinearLayout(this).apply {
+        val actions = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = android.view.Gravity.CENTER
         }
-        val sortButton = Button(this).apply { text = "По названию" }
-        val testAllButton = Button(this).apply { text = "Проверить все" }
-        var sortByName = false
-        sortButton.setOnClickListener {
-            sortByName = !sortByName
-            val ordered = if (sortByName) nodes.sortedBy { it.name.lowercase(java.util.Locale.ROOT) } else nodes
-            adapter.clear()
-            ordered.forEach { adapter.add(it.name) }
-            sortButton.text = if (sortByName) "Исходный порядок" else "По названию"
+        fun actionButton(label: String) = Button(this).apply {
+            text = label
+            isAllCaps = false
+            textSize = 12f
+            setTextColor(Color.WHITE)
+            background = GradientDrawable().apply {
+                setColor(Color.rgb(30, 30, 35))
+                cornerRadius = dp(12).toFloat()
+                setStroke(dp(1), Color.rgb(58, 58, 66))
+            }
         }
-        testAllButton.setOnClickListener {
-            if (nodes.isEmpty()) return@setOnClickListener
-            testAllButton.isEnabled = false
-            testAllButton.text = "Проверка…"
+        val sortButton = actionButton("По названию")
+        val testButton = actionButton("Проверить все")
+        actions.addView(sortButton, LinearLayout.LayoutParams(0, dp(46), 1f).apply { rightMargin = dp(5) })
+        actions.addView(testButton, LinearLayout.LayoutParams(0, dp(46), 1f).apply { leftMargin = dp(5) })
+
+        val list = android.widget.ListView(this).apply {
+            divider = GradientDrawable().apply { setColor(Color.rgb(38, 38, 44)); setSize(1, dp(1)) }
+            dividerHeight = dp(1)
+            cacheColorHint = Color.TRANSPARENT
+            setBackgroundColor(Color.TRANSPARENT)
+        }
+        var orderedNodes = initialNodes.toList()
+        var visibleNodes = orderedNodes
+        val measuredLatency = mutableMapOf<String, Long>()
+        fun refreshList() {
+            val query = search.text.toString().trim()
+            visibleNodes = orderedNodes.filter { it.name.contains(query, ignoreCase = true) }
+            val labels = visibleNodes.map { node ->
+                val latency = measuredLatency[node.uri]
+                if (latency != null) "●  ${node.name}     ·  ${latency} мс" else "○  ${node.name}"
+            }
+            list.adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, labels).apply {
+                setDropDownViewResource(android.R.layout.simple_list_item_1)
+            }
+            (list.adapter as? ArrayAdapter<String>)?.let { adapter ->
+                // Style each row through the standard Android text item.
+                adapter.notifyDataSetChanged()
+            }
+        }
+        refreshList()
+        search.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) { refreshList() }
+            override fun afterTextChanged(s: android.text.Editable?) {}
+        })
+        sortButton.setOnClickListener {
+            orderedNodes = if (sortButton.text == "По названию") {
+                sortButton.text = "Исходный порядок"
+                orderedNodes.sortedBy { it.name.lowercase(java.util.Locale.ROOT) }
+            } else {
+                sortButton.text = "По названию"
+                initialNodes
+            }
+            refreshList()
+        }
+        testButton.setOnClickListener {
+            testButton.isEnabled = false
+            sortButton.isEnabled = false
+            testButton.text = "Проверка…"
+            val sourceNodes = orderedNodes
             Thread {
-                val ranked = scanQuattroCandidates(nodes)
+                val ranked = scanQuattroCandidates(sourceNodes)
                 runOnUiThread {
+                    if (!dialog.isShowing) return@runOnUiThread
                     if (ranked.isNotEmpty()) {
                         val rankedNodes = ranked.map { it.first }
-                        val rest = nodes.filterNot { n -> rankedNodes.any { it.uri == n.uri } }
-                        val sortedNodes = rankedNodes + rest
+                        measuredLatency.clear()
+                        ranked.forEach { measuredLatency[it.first.uri] = it.second }
+                        val rest = sourceNodes.filterNot { node -> rankedNodes.any { it.uri == node.uri } }
+                        orderedNodes = rankedNodes + rest
                         if (activeFree) {
-                            freeNodes = sortedNodes
+                            freeNodes = orderedNodes
                             saveNodes("free_nodes", freeNodes)
                         } else {
-                            quattroNodes = sortedNodes
+                            quattroNodes = orderedNodes
                             saveNodes("quattro_nodes", quattroNodes)
                         }
-                        adapter.clear()
-                        sortedNodes.forEach { adapter.add(it.name) }
+                        title.text = "СЕРВЕРЫ  ·  ${orderedNodes.size}"
                         sortButton.text = "Лучшие по пингу"
-                        Toast.makeText(this@MainActivity, "Проверено: " + ranked.size + " серверов. Список отсортирован по задержке.", Toast.LENGTH_LONG).show()
+                        Toast.makeText(this@MainActivity, "Рабочих серверов найдено: ${ranked.size}", Toast.LENGTH_LONG).show()
+                        refreshList()
                     } else {
                         Toast.makeText(this@MainActivity, "Рабочие серверы не найдены", Toast.LENGTH_LONG).show()
                     }
-                    testAllButton.isEnabled = true
-                    testAllButton.text = "Проверить все"
+                    testButton.isEnabled = true
+                    sortButton.isEnabled = true
+                    testButton.text = "Проверить все"
                 }
             }.start()
         }
-        serverActions.addView(sortButton, LinearLayout.LayoutParams(0, dp(44), 1f).apply { rightMargin = dp(4) })
-        serverActions.addView(testAllButton, LinearLayout.LayoutParams(0, dp(44), 1f).apply { leftMargin = dp(4) })
-        panel.addView(search, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)).apply { bottomMargin = dp(10) })
-        panel.addView(serverActions, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)))
-        panel.addView(list, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(340)))
-        val dialog = AlertDialog.Builder(this)
-            .setTitle("Выбор сервера · ${nodes.size}")
-            .setView(panel)
-            .setNegativeButton("Закрыть", null)
-            .create()
-        search.addTextChangedListener(object : android.text.TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) { adapter.filter.filter(s) }
-            override fun afterTextChanged(s: android.text.Editable?) {}
-        })
         list.setOnItemClickListener { _, _, position, _ ->
-            val selectedName = adapter.getItem(position) ?: return@setOnItemClickListener
-            val originalIndex = activeNodes.indexOfFirst { it.name == selectedName }
-            if (originalIndex >= 0) {
-                servers.setSelection(originalIndex)
+            val selected = visibleNodes.getOrNull(position) ?: return@setOnItemClickListener
+            val currentIndex = activeNodes.indexOfFirst { it.uri == selected.uri }
+            if (currentIndex >= 0) {
+                servers.setSelection(currentIndex)
                 val key = if (activeFree) "free_selected" else "quattro_selected"
-                prefs.edit().putInt(key, originalIndex).apply()
-                serverCardTitle.text = nodes[originalIndex].name
+                prefs.edit().putInt(key, currentIndex).apply()
+                serverCardTitle.text = selected.name
                 serverCardSubtitle.text = if (activeFree) "Бесплатный резерв" else "Quattro"
-                serverCardPing.text = ""
-                pingStatus.text = "Пинг: —"
+                serverCardPing.text = measuredLatency[selected.uri]?.let { "${it} мс" } ?: ""
+                pingStatus.text = measuredLatency[selected.uri]?.let { "Пинг: ${it} мс" } ?: "Пинг: —"
             }
             dialog.dismiss()
         }
+        page.addView(header)
+        page.addView(search, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(50)).apply { topMargin = dp(8); bottomMargin = dp(10) })
+        page.addView(actions, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)).apply { bottomMargin = dp(8) })
+        page.addView(list, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        dialog.setContentView(page)
+        dialog.window?.let { window ->
+            window.setBackgroundDrawableResource(android.R.color.transparent)
+            window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        }
         dialog.show()
+        dialog.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
     }
 
     private fun showConnectionDetails() {
