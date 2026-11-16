@@ -24,7 +24,6 @@ import android.widget.Chronometer
 import android.os.SystemClock
 import android.os.Handler
 import android.os.Looper
-import android.net.TrafficStats
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ImageView
@@ -73,13 +72,8 @@ class MainActivity : Activity() {
     private lateinit var bestFreeButton: Button
     private lateinit var checkPing: Button
     private lateinit var modeSelectorRow: LinearLayout
-    private lateinit var pingMetric: TextView
-    private lateinit var downloadMetric: TextView
-    private lateinit var uploadMetric: TextView
-    private val trafficHandler = Handler(Looper.getMainLooper())
-    private var lastRxBytes = TrafficStats.getTotalRxBytes()
-    private var lastTxBytes = TrafficStats.getTotalTxBytes()
-    private var lastTrafficSample = SystemClock.elapsedRealtime()
+    private lateinit var serverCard: View
+    private lateinit var navigationDock: FlClashNavigationDock
     private lateinit var connectButton: Button
     private val fireDrawable = FireButtonDrawable()
     private var fireAnimator: ValueAnimator? = null
@@ -425,7 +419,7 @@ class MainActivity : Activity() {
                 // duplicate pill from the visual layout to match the approved reference.
                 connectButton.visibility = View.GONE
                 addView(connectButton, LinearLayout.LayoutParams(1, 1))
-                addView(LinearLayout(this@MainActivity).apply {
+                serverCard = LinearLayout(this@MainActivity).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = android.view.Gravity.CENTER_VERTICAL
                     background = GradientDrawable().apply {
@@ -462,51 +456,10 @@ class MainActivity : Activity() {
                             text = "  ›"; textSize = 27f; setTextColor(Color.WHITE)
                         })
                     })
-                }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(70)).apply {
+                }
+                addView(serverCard, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(70)).apply {
                     topMargin = dp(8); bottomMargin = dp(14)
                 })
-                // Three compact live-metric cards and the neon traffic trace from the approved reference.
-                addView(LinearLayout(this@MainActivity).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = android.view.Gravity.CENTER
-                    fun metric(title: String, value: String, unit: String = ""): LinearLayout {
-                        return LinearLayout(this@MainActivity).apply {
-                            orientation = LinearLayout.VERTICAL
-                            gravity = android.view.Gravity.CENTER
-                            background = GradientDrawable().apply {
-                                setColor(Color.rgb(12, 12, 15))
-                                cornerRadius = dp(16).toFloat()
-                                setStroke(dp(1), Color.rgb(48, 48, 52))
-                            }
-                            addView(TextView(this@MainActivity).apply {
-                                text = title; textSize = 11f
-                                setTextColor(Color.LTGRAY)
-                            })
-                            addView(TextView(this@MainActivity).apply {
-                                text = value + unit; textSize = 14f
-                                typeface = android.graphics.Typeface.DEFAULT_BOLD
-                                setTextColor(Color.rgb(30, 238, 65))
-                                setPadding(0, dp(3), 0, 0)
-                                if (title == "Пинг") pingMetric = this
-                                if (title == "Входящий") downloadMetric = this
-                                if (title == "Исходящий") uploadMetric = this
-                            })
-                        }
-                    }
-                    addView(metric("Пинг", "—", " мс"), LinearLayout.LayoutParams(0, dp(62), 1f).apply { rightMargin = dp(6) })
-                    addView(metric("Входящий", "—", " Мбит/с"), LinearLayout.LayoutParams(0, dp(62), 1f).apply { leftMargin = dp(3); rightMargin = dp(3) })
-                    addView(metric("Исходящий", "—", " Мбит/с"), LinearLayout.LayoutParams(0, dp(62), 1f).apply { leftMargin = dp(6) })
-                }, LinearLayout.LayoutParams.MATCH_PARENT, dp(62))
-                addView(TextView(this@MainActivity).apply {
-                    text = "Скорость сети"
-                    textSize = 10f
-                    setTextColor(Color.GRAY)
-                    gravity = android.view.Gravity.CENTER
-                    setPadding(0, dp(3), 0, 0)
-                }, LinearLayout.LayoutParams.MATCH_PARENT, dp(20))
-                addView(TrafficWaveView(this@MainActivity), LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, dp(58)
-                ).apply { topMargin = dp(8); bottomMargin = dp(8) })
                 addView(servers, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)))
                 servers.visibility = View.GONE
                 addView(pingStatus.apply { gravity = android.view.Gravity.CENTER_VERTICAL }, LinearLayout.LayoutParams.MATCH_PARENT, dp(1))
@@ -578,9 +531,36 @@ class MainActivity : Activity() {
         root.addView(View(this).apply {
             setBackgroundColor(Color.rgb(28, 28, 30))
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)))
+        navigationDock = FlClashNavigationDock(this) { destination ->
+            fun animateTo(anchor: View) {
+                scroll.post {
+                    val target = anchor.top.coerceAtLeast(0)
+                    ValueAnimator.ofInt(scroll.scrollY, target).apply {
+                        duration = 450L
+                        interpolator = android.view.animation.PathInterpolator(0.2f, 0f, 0f, 1f)
+                        addUpdateListener { scroll.scrollTo(0, it.animatedValue as Int) }
+                        start()
+                    }
+                }
+            }
+            when (destination) {
+                0 -> animateTo(scroll.getChildAt(0))
+                1 -> {
+                    animateTo(serverCard)
+                    scroll.postDelayed({ if (!isFinishing && !isDestroyed) showServerPicker() }, 220L)
+                }
+                2 -> {
+                    settingsExpanded = true
+                    findImportButtonsVisibility()
+                    animateTo(modeSelectorRow)
+                }
+                3 -> showSettingsDialog()
+            }
+        }
+        root.addView(navigationDock, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, dp(74)
+        ).apply { leftMargin = dp(12); rightMargin = dp(12) })
         setContentView(root)
-        trafficHandler.removeCallbacks(trafficSample)
-        trafficHandler.post(trafficSample)
         styleDarkInterface()
         installButtonFeedback()
         setPowerButtonLabel("ПОДКЛЮЧИТЬ")
@@ -794,7 +774,6 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
-        trafficHandler.removeCallbacks(trafficSample)
         fireAnimator?.cancel()
         super.onDestroy()
     }
@@ -1094,26 +1073,6 @@ class MainActivity : Activity() {
             }
         }
         pingStatus.visibility = if (settingsExpanded) View.VISIBLE else View.GONE
-    }
-
-    private val trafficSample = object : Runnable {
-        override fun run() {
-            if (::downloadMetric.isInitialized && ::uploadMetric.isInitialized) {
-                val now = SystemClock.elapsedRealtime()
-                val rx = TrafficStats.getTotalRxBytes()
-                val tx = TrafficStats.getTotalTxBytes()
-                val seconds = ((now - lastTrafficSample).coerceAtLeast(1L)) / 1000.0
-                val down = if (rx >= 0 && lastRxBytes >= 0) ((rx - lastRxBytes).coerceAtLeast(0L) * 8.0 / seconds / 1_000_000.0) else 0.0
-                val up = if (tx >= 0 && lastTxBytes >= 0) ((tx - lastTxBytes).coerceAtLeast(0L) * 8.0 / seconds / 1_000_000.0) else 0.0
-                val connected = ::status.isInitialized && status.text.toString().contains("Подключено")
-                downloadMetric.text = String.format(java.util.Locale.US, "%.1f Мбит/с", if (connected) down else 0.0)
-                uploadMetric.text = String.format(java.util.Locale.US, "%.1f Мбит/с", if (connected) up else 0.0)
-                lastRxBytes = rx
-                lastTxBytes = tx
-                lastTrafficSample = now
-            }
-            trafficHandler.postDelayed(this, 1000L)
-        }
     }
 
     private fun importFrom(source: String, isFree: Boolean) {
