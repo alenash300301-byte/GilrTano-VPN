@@ -63,6 +63,15 @@ class GilrTanoVpnService : VpnService() {
                     // exceed it, crashing the app before the generated WARP is attempted.
                     // Load the bundled archive inside this service process instead.
                     fallbackChain = emptyList()
+                    // Quattro profiles are passed as a compact JSON chain, not a huge Binder parcel.
+                    val suppliedQuattroChain = runCatching {
+                        val raw = intent.getStringExtra(EXTRA_FALLBACK_CHAIN).orEmpty()
+                        val array = org.json.JSONArray(raw)
+                        (0 until array.length()).mapNotNull { index ->
+                            array.optString(index).takeIf { it.isNotBlank() && it != config }
+                                ?.let { FallbackCandidate(it, false, false) }
+                        }
+                    }.getOrDefault(emptyList())
                     // MainActivity starts generated WARP with ACTION_START + EXTRA_PORTAL,
                     // while the dedicated PORTAL screen uses ACTION_START_PORTAL. Load the
                     // bundled failover archive for BOTH entry points; checking only the action
@@ -135,8 +144,11 @@ class GilrTanoVpnService : VpnService() {
                     }
                     if (!fallbackConfig.isNullOrBlank() && fallbackConfig != config &&
                         fallbackChain.none { it.config == fallbackConfig }) {
-                        // Explicit Quattro is appended after PORTAL candidates as the final fallback.
+                        // Keep the best measured Quattro node first, followed by the remaining tested nodes.
                         fallbackChain = fallbackChain + FallbackCandidate(fallbackConfig!!, fallbackBoxMode, false)
+                    }
+                    suppliedQuattroChain.forEach { candidate ->
+                        if (fallbackChain.none { it.config == candidate.config }) fallbackChain = fallbackChain + candidate
                     }
                     fallbackIndex = -1
                     preferredConfig = intent.getStringExtra(EXTRA_PREFERRED_CONFIG)
