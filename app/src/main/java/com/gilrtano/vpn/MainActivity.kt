@@ -630,7 +630,7 @@ class MainActivity : Activity() {
                 addView(settingsHeader)
                 portalGateButton.visibility = View.GONE
                 addView(portalGateButton)
-                addView(modeSelectorRow, LinearLayout.LayoutParams.MATCH_PARENT, dp(48))
+                // Mode selector is already attached inside the home-screen mode card above.
                 addView(primarySource, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
                 addView(importPrimary)
                 addView(importDocx)
