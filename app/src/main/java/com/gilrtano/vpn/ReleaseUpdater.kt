@@ -34,10 +34,11 @@ class ReleaseUpdater(private val context: Context) {
             val json = connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
             val release = JSONObject(json)
             val tag = release.optString("tag_name")
-            val assets = release.optJSONArray("assets") ?: return null
+            val assets = release.optJSONArray("assets") ?: throw IllegalStateException("В релизе нет файлов для обновления")
             val apkAssets = (0 until assets.length()).mapNotNull { assets.optJSONObject(it) }
                 .filter { it.optString("name").endsWith(".apk", ignoreCase = true) }
-            if (tag.isBlank() || apkAssets.isEmpty()) return null
+            if (tag.isBlank()) throw IllegalStateException("У релиза не указан номер версии")
+            if (apkAssets.isEmpty()) throw IllegalStateException("Последний релиз GitHub пока не содержит APK приложения")
 
             val selected = apkAssets.firstOrNull {
                 it.optString("name").contains("universal", true)
