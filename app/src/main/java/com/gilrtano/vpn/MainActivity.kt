@@ -317,14 +317,15 @@ class MainActivity : Activity() {
                     setOrbState(EnergyOrbGLView.OrbState.IDLE)
                 }
                 heroFrame.addView(energyOrb, FrameLayout.LayoutParams(dp(190), dp(190), android.view.Gravity.CENTER).apply {
-                    topMargin = dp(58)
+                    // Move the animated halo down with the power control to match the lower reference position.
+                    topMargin = dp(170)
                 })
                 connectButton.useGlArtwork = true
                 connectButton.background = android.graphics.drawable.ColorDrawable(Color.TRANSPARENT)
                 heroFrame.addView(connectButton, FrameLayout.LayoutParams(dp(174), dp(174),
                     android.view.Gravity.CENTER).apply {
-                    // Lower the orb over the tiger's muzzle, matching the reference composition.
-                    topMargin = dp(58)
+                    // Place the power button lower, beneath the tiger's muzzle as in the reference.
+                    topMargin = dp(170)
                 })
                 addView(heroFrame, LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, dp(390)
