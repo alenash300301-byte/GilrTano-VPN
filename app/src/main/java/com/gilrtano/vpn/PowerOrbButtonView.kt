@@ -219,7 +219,7 @@ class PowerOrbButtonView @JvmOverloads constructor(
     }
 
     private val buttonArtwork by lazy {
-        context.getDrawable(R.drawable.file_000000004cb08210bfb53b4ce7ceb0dd)
+        requireNotNull(context.getDrawable(R.drawable.file_000000004cb08210bfb53b4ce7ceb0dd))
     }
 
     override fun onDraw(canvas: Canvas) {
