@@ -617,7 +617,7 @@ class MainActivity : Activity() {
         serverPage.addView(serverState)
         val proxySearch = EditText(this).apply {
             hint = "Поиск серверов"
-            singleLine = true
+            isSingleLine = true
             setTextColor(Color.WHITE)
             setHintTextColor(Color.GRAY)
             background = GradientDrawable().apply {
