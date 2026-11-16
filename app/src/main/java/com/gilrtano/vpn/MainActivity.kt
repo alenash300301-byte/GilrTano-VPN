@@ -277,6 +277,7 @@ class MainActivity : Activity() {
             setOnClickListener { checkForAppUpdate() }
         }
 
+        lateinit var trafficWaveAnchor: View
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.rgb(5, 5, 7))
@@ -514,7 +515,8 @@ class MainActivity : Activity() {
                     gravity = android.view.Gravity.CENTER
                     setPadding(0, dp(3), 0, 0)
                 }, LinearLayout.LayoutParams.MATCH_PARENT, dp(20))
-                addView(TrafficWaveView(this@MainActivity), LinearLayout.LayoutParams(
+                trafficWaveAnchor = TrafficWaveView(this@MainActivity)
+                addView(trafficWaveAnchor, LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, dp(58)
                 ).apply { topMargin = dp(8); bottomMargin = dp(8) })
                 addView(servers, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)))
@@ -619,20 +621,33 @@ class MainActivity : Activity() {
                 setOnClickListener {
                     selectNav(index)
                     when (index) {
-                        0 -> { settingsExpanded = false; servers.visibility = View.GONE; findImportButtonsVisibility(); scroll.smoothScrollTo(0, 0) }
+                        0 -> {
+                            settingsExpanded = false
+                            servers.visibility = View.GONE
+                            findImportButtonsVisibility()
+                            settingsHeader.text = "Настройки и импорт  ›"
+                            scroll.smoothScrollTo(0, 0)
+                        }
                         1 -> {
                             settingsExpanded = false
                             findImportButtonsVisibility()
                             servers.visibility = View.VISIBLE
                             modeSelectorRow.visibility = View.VISIBLE
+                            scroll.post { scroll.smoothScrollTo(0, serverCardTitle.top.coerceAtLeast(0)) }
                             showServerPicker()
                         }
-                        2 -> { settingsExpanded = false; servers.visibility = View.GONE; findImportButtonsVisibility(); scroll.smoothScrollTo(0, dp(560)) }
+                        2 -> {
+                            settingsExpanded = false
+                            servers.visibility = View.GONE
+                            findImportButtonsVisibility()
+                            scroll.post { scroll.smoothScrollTo(0, trafficWaveAnchor.top.coerceAtLeast(0)) }
+                        }
                         3 -> {
                             settingsExpanded = true
                             settingsHeader.visibility = View.VISIBLE
+                            settingsHeader.text = "Настройки и импорт  ⌄"
                             findImportButtonsVisibility()
-                            scroll.post { scroll.smoothScrollTo(0, scroll.getChildAt(0).height) }
+                            scroll.post { scroll.smoothScrollTo(0, settingsHeader.top.coerceAtLeast(0)) }
                         }
                     }
                 }
