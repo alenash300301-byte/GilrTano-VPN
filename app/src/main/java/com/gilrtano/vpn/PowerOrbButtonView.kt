@@ -187,16 +187,10 @@ class PowerOrbButtonView @JvmOverloads constructor(
         val r = minOf(width, height) * 0.465f
         val connected = state == State.CONNECTED
         val connecting = state == State.CONNECTING
-        val neon = when {
-            connected -> Color.rgb(80, 255, 72)
-            connecting -> Color.rgb(255, 176, 55)
-            else -> Color.rgb(255, 54, 65)
-        }
-        val inner = when {
-            connected -> Color.rgb(2, 35, 12)
-            connecting -> Color.rgb(35, 23, 5)
-            else -> Color.rgb(30, 5, 9)
-        }
+        // Keep the reference's green glass identity in every state;
+        // connection state is communicated by the caption and subtle glow.
+        val neon = if (connecting) Color.rgb(255, 190, 70) else Color.rgb(90, 255, 78)
+        val inner = if (connecting) Color.rgb(30, 22, 5) else Color.rgb(2, 32, 12)
 
         // Dark glass center and layered outer halo.
         fillPaint.shader = android.graphics.RadialGradient(
@@ -215,7 +209,7 @@ class PowerOrbButtonView @JvmOverloads constructor(
         canvas.drawCircle(cx, cy, r * 0.91f, glowPaint)
         glowPaint.clearShadowLayer()
 
-        ringPaint.color = if (connected) Color.rgb(255, 45, 47) else Color.rgb(190, 34, 43)
+        ringPaint.color = Color.rgb(255, 45, 55)
         ringPaint.strokeWidth = 2f * d
         ringPaint.alpha = 220
         canvas.drawCircle(cx, cy, r * 1.02f, ringPaint)
@@ -231,7 +225,7 @@ class PowerOrbButtonView @JvmOverloads constructor(
         val iconCx = cx
         val iconCy = cy - r * 0.22f
         val iconR = r * 0.30f
-        glyphPaint.color = if (connected) Color.rgb(130, 255, 82) else if (connecting) Color.rgb(255, 190, 80) else Color.WHITE
+        glyphPaint.color = if (connecting) Color.rgb(255, 205, 100) else Color.rgb(145, 255, 100)
         glyphPaint.strokeWidth = 5f * d
         glyphPaint.setShadowLayer(9f * d, 0f, 0f, glyphPaint.color)
         canvas.drawArc(RectF(iconCx-iconR, iconCy-iconR, iconCx+iconR, iconCy+iconR),
@@ -242,7 +236,7 @@ class PowerOrbButtonView @JvmOverloads constructor(
         // Status capsule, sized to the text and kept inside the circular rim.
         val labelSize = 14f * d
         captionPaint.textSize = labelSize
-        captionPaint.color = if (connected) Color.rgb(125, 255, 100) else if (connecting) Color.rgb(255, 195, 90) else Color.WHITE
+        captionPaint.color = if (connecting) Color.rgb(255, 205, 100) else Color.rgb(125, 255, 100)
         captionPaint.setShadowLayer(5f * d, 0f, 0f, captionPaint.color)
         val labelWidth = captionPaint.measureText(caption).coerceAtMost(r * 1.36f)
         val plate = RectF(cx-labelWidth/2f-12f*d, cy+r*0.34f, cx+labelWidth/2f+12f*d, cy+r*0.66f)
