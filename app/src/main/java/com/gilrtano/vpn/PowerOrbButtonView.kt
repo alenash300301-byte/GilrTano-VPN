@@ -14,6 +14,7 @@ import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
 import android.view.animation.DecelerateInterpolator
+import android.view.animation.OvershootInterpolator
 import android.view.animation.PathInterpolator
 import android.widget.TextView
 import android.animation.AnimatorSet
@@ -55,6 +56,10 @@ class PowerOrbButtonView @JvmOverloads constructor(
     private var pulse: ValueAnimator? = null
     private var morphAnimator: ValueAnimator? = null
     private var pressAnimator: AnimatorSet? = null
+    private var pressFeedback: ValueAnimator? = null
+    private var idleBreath: ValueAnimator? = null
+    private var pressAmount = 0f
+    private var breath = 0f
     private var animationsAllowed = true
 
     fun setCaption(value: String) {
@@ -111,6 +116,18 @@ class PowerOrbButtonView @JvmOverloads constructor(
         invalidate()
     }
 
+    private fun startIdleBreath() {
+        idleBreath?.cancel()
+        idleBreath = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 2200L
+            repeatCount = ValueAnimator.INFINITE
+            repeatMode = ValueAnimator.REVERSE
+            interpolator = android.view.animation.AccelerateDecelerateInterpolator()
+            addUpdateListener { breath = it.animatedValue as Float; invalidate() }
+            start()
+        }
+    }
+
     private fun startMotion(durationMs: Long, continuous: Boolean) {
         pulse = ValueAnimator.ofFloat(0f, 1f).apply {
             duration = durationMs
@@ -130,6 +147,7 @@ class PowerOrbButtonView @JvmOverloads constructor(
             ) > 0f
         }.getOrDefault(true)
         if (animationsAllowed) {
+            startIdleBreath()
             when (state) {
                 State.CONNECTING -> startMotion(1000L, true)
                 State.CONNECTED -> startMotion(1100L, false)
@@ -142,6 +160,8 @@ class PowerOrbButtonView @JvmOverloads constructor(
         pulse?.cancel()
         morphAnimator?.cancel()
         pressAnimator?.cancel()
+        pressFeedback?.cancel()
+        idleBreath?.cancel()
         super.onDetachedFromWindow()
     }
 
@@ -150,27 +170,45 @@ class PowerOrbButtonView @JvmOverloads constructor(
             MotionEvent.ACTION_DOWN -> {
                 performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
                 pressAnimator?.cancel()
+                pressFeedback?.cancel()
+                pressFeedback = ValueAnimator.ofFloat(pressAmount, 1f).apply {
+                    duration = 110L
+                    interpolator = DecelerateInterpolator()
+                    addUpdateListener { pressAmount = it.animatedValue as Float; invalidate() }
+                    start()
+                }
                 pressAnimator = AnimatorSet().apply {
                     playTogether(
-                        ObjectAnimator.ofFloat(this@PowerOrbButtonView, View.SCALE_X, scaleX, 0.94f),
-                        ObjectAnimator.ofFloat(this@PowerOrbButtonView, View.SCALE_Y, scaleY, 0.94f),
-                        ObjectAnimator.ofFloat(this@PowerOrbButtonView, View.TRANSLATION_Z, translationZ, 5f * d)
+                        ObjectAnimator.ofFloat(this@PowerOrbButtonView, View.SCALE_X, scaleX, 0.925f),
+                        ObjectAnimator.ofFloat(this@PowerOrbButtonView, View.SCALE_Y, scaleY, 0.925f),
+                        ObjectAnimator.ofFloat(this@PowerOrbButtonView, View.TRANSLATION_Z, translationZ, -3f * d),
+                        ObjectAnimator.ofFloat(this@PowerOrbButtonView, View.ROTATION_X, rotationX, 2.2f),
+                        ObjectAnimator.ofFloat(this@PowerOrbButtonView, View.ROTATION_Y, rotationY, -1.5f)
                     )
-                    duration = 90L
-                    interpolator = DecelerateInterpolator()
+                    duration = 105L
+                    interpolator = DecelerateInterpolator(2f)
                     start()
                 }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 pressAnimator?.cancel()
+                pressFeedback?.cancel()
+                pressFeedback = ValueAnimator.ofFloat(pressAmount, 0f).apply {
+                    duration = 360L
+                    interpolator = OvershootInterpolator(1.8f)
+                    addUpdateListener { pressAmount = it.animatedValue as Float; invalidate() }
+                    start()
+                }
                 pressAnimator = AnimatorSet().apply {
                     playTogether(
                         ObjectAnimator.ofFloat(this@PowerOrbButtonView, View.SCALE_X, scaleX, 1f),
                         ObjectAnimator.ofFloat(this@PowerOrbButtonView, View.SCALE_Y, scaleY, 1f),
-                        ObjectAnimator.ofFloat(this@PowerOrbButtonView, View.TRANSLATION_Z, translationZ, 0f)
+                        ObjectAnimator.ofFloat(this@PowerOrbButtonView, View.TRANSLATION_Z, translationZ, 0f),
+                        ObjectAnimator.ofFloat(this@PowerOrbButtonView, View.ROTATION_X, rotationX, 0f),
+                        ObjectAnimator.ofFloat(this@PowerOrbButtonView, View.ROTATION_Y, rotationY, 0f)
                     )
-                    duration = 180L
-                    interpolator = DecelerateInterpolator()
+                    duration = 360L
+                    interpolator = OvershootInterpolator(1.35f)
                     start()
                 }
             }
@@ -191,6 +229,12 @@ class PowerOrbButtonView @JvmOverloads constructor(
         // connection state is communicated by the caption and subtle glow.
         val neon = if (connecting) Color.rgb(255, 190, 70) else Color.rgb(90, 255, 78)
         val inner = if (connecting) Color.rgb(30, 22, 5) else Color.rgb(2, 32, 12)
+
+        // Subtle breathing halo while idle, like a powered device at rest.
+        ringPaint.color = neon
+        ringPaint.alpha = (35 + breath * 45).toInt()
+        ringPaint.strokeWidth = (1.2f + breath * 1.2f) * d
+        canvas.drawCircle(cx, cy, r * (1.035f + breath * 0.025f), ringPaint)
 
         // 3D extruded housing: cast shadow, dark sidewall and a beveled red rim.
         val depthPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -253,6 +297,19 @@ class PowerOrbButtonView @JvmOverloads constructor(
         }
         canvas.drawArc(RectF(cx-r*.72f, cy-r*.72f, cx+r*.72f, cy+r*.72f),
             215f, 105f, false, reflection)
+
+        // Expanding contact ripple while the finger is physically pressing the orb.
+        if (pressAmount > 0.01f) {
+            val ripplePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                style = Paint.Style.STROKE
+                color = neon
+                alpha = (190f * pressAmount).toInt()
+                strokeWidth = (2.5f + 2f * pressAmount) * d
+                setShadowLayer(8f*d, 0f, 0f, neon)
+            }
+            canvas.drawCircle(cx, cy, r * (0.84f + pressAmount * 0.12f), ripplePaint)
+            ripplePaint.clearShadowLayer()
+        }
 
         // Bright power glyph in the upper-middle of the orb.
         val iconCx = cx
