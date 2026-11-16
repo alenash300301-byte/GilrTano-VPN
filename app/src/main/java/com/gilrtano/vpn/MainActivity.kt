@@ -49,8 +49,6 @@ import java.util.concurrent.TimeUnit
 class MainActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var powerOrb: TextView
-    private lateinit var tigerFlames: TigerFlameOverlayView
-    private val powerOrbDrawable = PowerOrbDrawable()
     private lateinit var connectionTimer: Chronometer
     private lateinit var serverCardTitle: TextView
     private lateinit var serverCardSubtitle: TextView
@@ -79,8 +77,6 @@ class MainActivity : Activity() {
     private var lastTxBytes = TrafficStats.getTotalTxBytes()
     private var lastTrafficSample = SystemClock.elapsedRealtime()
     private lateinit var connectButton: Button
-    private val fireDrawable = FireButtonDrawable()
-    private var fireAnimator: ValueAnimator? = null
     @Volatile private var scanningFree = false
     private var activeFree = false
     private var settingsExpanded = false
@@ -328,58 +324,10 @@ class MainActivity : Activity() {
                         }
                     })
                 })
-                // The uploaded GIF is the complete hero composition: tiger, realistic fire and orb.
-                val tigerScene = FrameLayout(this@MainActivity).apply {
-                    setBackgroundColor(Color.BLACK)
-                    tigerFlames = TigerFlameOverlayView(this@MainActivity).apply {
-                        visibility = View.VISIBLE
-                        isClickable = false
-                        isFocusable = false
-                        contentDescription = "Тигр с анимированным огнём"
-                    }
-                    addView(tigerFlames, FrameLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
-                    ))
-                }
-                addView(tigerScene, LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, dp(410)
-                ).apply { topMargin = dp(0); bottomMargin = dp(0) })
-
-                // Transparent hit target sits over the power symbol already rendered in the GIF.
-                powerOrb = PowerOrbButtonView(this@MainActivity).apply {
-                    text = ""
-                    gravity = android.view.Gravity.CENTER
-                    setTextColor(Color.TRANSPARENT)
-                    background = null
-                    alpha = 0f
-                    elevation = dp(14).toFloat()
-                    setLayerType(View.LAYER_TYPE_SOFTWARE, null)
-                }
-                powerOrb.setOnClickListener { connectButton.performClick() }
-                powerOrb.setOnTouchListener { _, event ->
-                    if (event.actionMasked == MotionEvent.ACTION_DOWN &&
-                        !status.text.toString().contains("Подключено")) {
-                        tigerFlames.setActive(true)
-                        if (fireAnimator?.isRunning != true) {
-                            fireAnimator = ValueAnimator.ofFloat(0f, (Math.PI * 2).toFloat()).apply {
-                                duration = 900L
-                                repeatCount = ValueAnimator.INFINITE
-                                addUpdateListener {
-                                    val phase = it.animatedValue as Float
-                                    powerOrbDrawable.setPhase(phase)
-                                    tigerFlames.setPhase(phase)
-                                }
-                                start()
-                            }
-                        }
-                    }
-                    false
-                }
-                powerOrb.contentDescription = "Кнопка питания VPN"
-                tigerScene.addView(powerOrb, FrameLayout.LayoutParams(dp(132), dp(132)).apply {
-                    gravity = android.view.Gravity.TOP or android.view.Gravity.CENTER_HORIZONTAL
-                    topMargin = dp(242)
-                })
+                // The animated tiger GIF is removed; use a normal connect button.
+                powerOrb = connectButton
+                connectButton.contentDescription = "Кнопка питания VPN"
+                addView(connectButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(76)).apply { topMargin = dp(18); bottomMargin = dp(8) })
                 addView(status.apply {
                     text = "●  Отключено"; textSize = 17f
                     gravity = android.view.Gravity.CENTER
@@ -399,8 +347,6 @@ class MainActivity : Activity() {
                 // The central glowing orb is the primary connect/disconnect control.
                 // Keep the accessible action button as the click target, but remove its
                 // duplicate pill from the visual layout to match the approved reference.
-                connectButton.visibility = View.GONE
-                addView(connectButton, LinearLayout.LayoutParams(1, 1))
                 addView(LinearLayout(this@MainActivity).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = android.view.Gravity.CENTER_VERTICAL
@@ -560,53 +506,12 @@ class MainActivity : Activity() {
             gravity = android.view.Gravity.CENTER
             setTextColor(Color.WHITE)
             isAllCaps = false
-            background = fireDrawable
-            elevation = 12f
-            // Subtle fire pulse only while the user presses the power button.
-            setOnTouchListener { view, event ->
-                val pressed = event.actionMasked == MotionEvent.ACTION_DOWN
-                val released = event.actionMasked == MotionEvent.ACTION_UP ||
-                    event.actionMasked == MotionEvent.ACTION_CANCEL
-                if (pressed || released) {
-                    if (pressed && !status.text.toString().contains("Подключено")) {
-                        if (::tigerFlames.isInitialized) tigerFlames.setActive(true)
-                        fireDrawable.setPressed(true)
-                        if (fireAnimator?.isRunning != true) {
-                            fireAnimator = ValueAnimator.ofFloat(0f, (Math.PI * 2).toFloat()).apply {
-                                duration = 900L
-                                repeatCount = ValueAnimator.INFINITE
-                                addUpdateListener {
-                val phase = it.animatedValue as Float
-                fireDrawable.setPhase(phase)
-                powerOrbDrawable.setPhase(phase)
-                if (::tigerFlames.isInitialized) tigerFlames.setPhase(phase)
+            background = GradientDrawable().apply {
+                setColor(Color.rgb(95, 10, 16))
+                cornerRadius = dp(18).toFloat()
+                setStroke(dp(1), Color.rgb(220, 42, 42))
             }
-                                start()
-                            }
-                        }
-                    } else if (released && !status.text.toString().startsWith("Подключено")) {
-                        fireAnimator?.cancel()
-                        fireAnimator = null
-                        fireDrawable.setPressed(false)
-                        fireDrawable.setPhase(0f)
-                    }
-                    val targetScale = if (pressed) 0.975f else 1f
-                    val targetElevation = if (pressed) dp(18).toFloat() else dp(12).toFloat()
-                    AnimatorSet().apply {
-                        playTogether(
-                            ObjectAnimator.ofFloat(view, View.SCALE_X, targetScale),
-                            ObjectAnimator.ofFloat(view, View.SCALE_Y, targetScale),
-                            ObjectAnimator.ofFloat(view, View.TRANSLATION_Z, if (pressed) dp(6).toFloat() else 0f)
-                        )
-                        duration = if (pressed) 85L else 150L
-                        interpolator = DecelerateInterpolator()
-                        start()
-                    }
-                    fireDrawable.invalidateSelf()
-                    view.elevation = targetElevation
-                }
-                false
-            }
+            elevation = dp(10).toFloat()
         }
         activeMode = prefs.getString("connection_mode", "auto") ?: "auto"
         autoMode = activeMode == "auto"
@@ -662,9 +567,7 @@ class MainActivity : Activity() {
 
     private fun updatePowerOrb(connected: Boolean) {
         if (!::powerOrb.isInitialized) return
-        powerOrbDrawable.setConnected(connected)
         (powerOrb as? PowerOrbButtonView)?.setConnected(connected)
-        if (::tigerFlames.isInitialized) tigerFlames.setActive(connected)
         powerOrb.setTextColor(if (connected) Color.rgb(0, 255, 48) else Color.WHITE)
         powerOrb.elevation = dp(if (connected) 20 else 12).toFloat()
         powerOrb.invalidate()
@@ -680,40 +583,8 @@ class MainActivity : Activity() {
         connectButton.text = styled
     }
 
-    // Flame tongues move continuously only while VPN is genuinely connected.
-    private fun igniteConnectButton() {
-        fireDrawable.setPressed(false)
-        fireDrawable.setConnected(true)
-        if (fireAnimator?.isRunning == true) return
-        fireAnimator = ValueAnimator.ofFloat(0f, (Math.PI * 2).toFloat()).apply {
-            duration = 1250L
-            repeatCount = ValueAnimator.INFINITE
-            interpolator = android.view.animation.LinearInterpolator()
-            addUpdateListener {
-                val phase = it.animatedValue as Float
-                fireDrawable.setPhase(phase)
-                powerOrbDrawable.setPhase(phase)
-                if (::tigerFlames.isInitialized) tigerFlames.setPhase(phase)
-            }
-            start()
-        }
-        connectButton.elevation = dp(16).toFloat()
-    }
-
-    private fun resetConnectButtonGlow() {
-        fireAnimator?.cancel()
-        fireAnimator = null
-        fireDrawable.setPressed(false)
-        fireDrawable.setConnected(false)
-        fireDrawable.setPhase(0f)
-        powerOrbDrawable.setPhase(0f)
-        if (::tigerFlames.isInitialized) tigerFlames.setPhase(0f)
-        connectButton.animate().cancel()
-        connectButton.scaleX = 1f
-        connectButton.scaleY = 1f
-        connectButton.elevation = dp(10).toFloat()
-    }
-
+    private fun igniteConnectButton() { connectButton.elevation = dp(12).toFloat() }
+    private fun resetConnectButtonGlow() { connectButton.elevation = dp(10).toFloat() }
     private fun installButtonFeedback() {
         fun visit(group: ViewGroup) {
             for (i in 0 until group.childCount) {
@@ -867,7 +738,6 @@ class MainActivity : Activity() {
 
     override fun onDestroy() {
         trafficHandler.removeCallbacks(trafficSample)
-        fireAnimator?.cancel()
         updateExecutor.shutdownNow()
         super.onDestroy()
     }
@@ -1249,7 +1119,6 @@ class MainActivity : Activity() {
                         }
                         status.setTextColor(Color.LTGRAY)
                         updatePowerOrb(false)
-                        if (::tigerFlames.isInitialized) tigerFlames.setActive(false)
                         if (::connectionTimer.isInitialized) {
                             connectionTimer.stop()
                             connectionTimer.visibility = View.GONE
