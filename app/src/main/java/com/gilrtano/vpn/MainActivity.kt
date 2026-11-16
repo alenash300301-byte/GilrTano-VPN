@@ -358,7 +358,7 @@ class MainActivity : Activity() {
                     gravity = android.view.Gravity.CENTER
                     setTextColor(Color.WHITE)
                     format = "%s"
-                    visibility = View.GONE
+                    visibility = View.VISIBLE
                 }
                 // Connection duration is displayed in the lower live-statistics panel.
                 // The timer remains driven by the existing VPN status receiver.
@@ -593,19 +593,31 @@ class MainActivity : Activity() {
             setPadding(dp(4), dp(4), dp(4), dp(4))
         }
         val navItems = listOf("⌂\nГлавная", "▤\nСерверы", "▥\nТрафик", "⚙\nНастройки")
+        val navButtons = mutableListOf<Button>()
+        fun selectNav(selected: Int) {
+            navButtons.forEachIndexed { i, button ->
+                val active = i == selected
+                button.setTextColor(if (active) Color.rgb(60, 255, 95) else Color.LTGRAY)
+                button.background = GradientDrawable().apply {
+                    setColor(if (active) Color.rgb(8, 38, 16) else Color.TRANSPARENT)
+                    cornerRadius = dp(16).toFloat()
+                    if (active) setStroke(dp(1), Color.rgb(55, 225, 80))
+                }
+            }
+        }
         navItems.forEachIndexed { index, label ->
-            bottomNav.addView(Button(this).apply {
+            val navButton = Button(this).apply {
                 text = label
                 contentDescription = "dashboard-nav"
                 textSize = 11f
                 isAllCaps = false
-                setTextColor(if (index == 0) Color.rgb(60, 255, 95) else Color.LTGRAY)
+                setTextColor(Color.LTGRAY)
                 background = GradientDrawable().apply {
-                    setColor(if (index == 0) Color.rgb(8, 38, 16) else Color.TRANSPARENT)
+                    setColor(Color.TRANSPARENT)
                     cornerRadius = dp(16).toFloat()
-                    if (index == 0) setStroke(dp(1), Color.rgb(55, 225, 80))
                 }
                 setOnClickListener {
+                    selectNav(index)
                     when (index) {
                         0 -> { settingsExpanded = false; servers.visibility = View.GONE; findImportButtonsVisibility(); scroll.smoothScrollTo(0, 0) }
                         1 -> {
@@ -624,8 +636,11 @@ class MainActivity : Activity() {
                         }
                     }
                 }
-            }, LinearLayout.LayoutParams(0, dp(62), 1f))
+            }
+            navButtons.add(navButton)
+            bottomNav.addView(navButton, LinearLayout.LayoutParams(0, dp(62), 1f))
         }
+        selectNav(0)
         root.addView(bottomNav, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(72)).apply {
             leftMargin = dp(10); rightMargin = dp(10); bottomMargin = dp(5)
         })
