@@ -652,7 +652,73 @@ class MainActivity : Activity() {
         serverPage.addView(serverModes)
         serverPage.addView(actionButton("Проверить пинг") { measureSelectedPing() })
         serverPage.addView(actionButton("Найти лучший бесплатный сервер") { refreshFreeServersAndFindBest() })
-        // pingStatus already belongs to the home dashboard; do not attach it twice.
+        // First-class profiles tab backed by the existing Quattro/YAML/DOCX import logic.
+        val profilesPage = page("Профили")
+        val profileActions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        profileActions.addView(actionButton("↻ Обновить") {
+            val url = prefs.getString("subscription_url", "").orEmpty()
+            if (url.isNotBlank()) importFrom(url, false)
+            else Toast.makeText(this@MainActivity, "Сначала добавьте ссылку Quattro", Toast.LENGTH_LONG).show()
+        }, LinearLayout.LayoutParams(0, dp(46), 1f).apply { rightMargin = dp(5) })
+        profileActions.addView(actionButton("＋ Добавить") {
+            val field = EditText(this@MainActivity).apply {
+                hint = "Ссылка Quattro или Clash YAML"
+                setText(prefs.getString("subscription_url", ""))
+                setSingleLine(true)
+            }
+            AlertDialog.Builder(this@MainActivity).setTitle("Добавить профиль").setView(field)
+                .setNegativeButton("Отмена", null)
+                .setPositiveButton("Импортировать") { _, _ ->
+                    val value = field.text.toString().trim()
+                    prefs.edit().putString("subscription_url", value).apply()
+                    importFrom(value, false)
+                }.show()
+        }, LinearLayout.LayoutParams(0, dp(46), 1f).apply { leftMargin = dp(5) })
+        profilesPage.addView(profileActions)
+        val profileCard = card()
+        profileCard.background = GradientDrawable().apply {
+            setColor(Color.rgb(31, 32, 36)); cornerRadius = dp(24).toFloat()
+            setStroke(dp(1), Color.rgb(62, 65, 76))
+        }
+        val profileTitle = TextView(this).apply {
+            text = "🔥 Quattro VPN"; textSize = 18f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE)
+        }
+        val profileUsage = TextView(this).apply { textSize = 13f; setTextColor(Color.LTGRAY); setPadding(0, dp(8), 0, 0) }
+        val profileState = TextView(this).apply { textSize = 12f; setTextColor(Color.rgb(169, 184, 255)); setPadding(0, dp(5), 0, 0) }
+        profileCard.addView(profileTitle); profileCard.addView(profileUsage); profileCard.addView(profileState)
+        profilesPage.addView(profileCard, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = dp(18); bottomMargin = dp(14)
+        })
+        fun refreshProfileCard() {
+            profileUsage.text = "Серверов загружено: ${quattroNodes.size}"
+            profileState.text = if (quattroNodes.isNotEmpty()) "✓ Профиль доступен · ${if (activeFree) "сейчас выбран FREE" else "Quattro"}" else "Профиль ещё не импортирован"
+        }
+        refreshProfileCard()
+        profilesPage.addView(actionButton("Импортировать Quattro") {
+            val value = prefs.getString("subscription_url", "").orEmpty()
+            if (value.isNotBlank()) importFrom(value, false)
+            else Toast.makeText(this@MainActivity, "Добавьте ссылку через кнопку «Добавить»", Toast.LENGTH_LONG).show()
+        })
+        profilesPage.addView(actionButton("Импортировать Clash YAML") {
+            val value = prefs.getString("subscription_url", "").orEmpty()
+            if (value.isNotBlank()) importFrom(value, false)
+            else Toast.makeText(this@MainActivity, "Добавьте ссылку YAML через кнопку «Добавить»", Toast.LENGTH_LONG).show()
+        })
+        profilesPage.addView(actionButton("Выбрать DOCX Quattro") {
+            val pick = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            }
+            startActivityForResult(pick, docxRequestCode)
+        })
+        profilesPage.addView(actionButton("Импортировать бесплатный резерв") {
+            val value = prefs.getString("free_subscription_url", "").orEmpty()
+            if (value.isNotBlank()) importFrom(value, true)
+            else Toast.makeText(this@MainActivity, "Ссылка бесплатного резерва не задана", Toast.LENGTH_LONG).show()
+        })
+        profilesPage.addView(actionButton("Обновить список профилей") { refreshProfileCard(); updateServerPage() })
+        // Traffic remains a detail page reachable from the dashboard graph.
         val trafficPage = page("Трафик")
         trafficPage.addView(TextView(this).apply {
             text = "Живые показатели подключения"
@@ -720,12 +786,14 @@ class MainActivity : Activity() {
             }
         pageHost.addView(scroll, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         pageHost.addView(wrapPage(serverPage), FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-        pageHost.addView(wrapPage(trafficPage), FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        pageHost.addView(wrapPage(profilesPage), FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         pageHost.addView(wrapPage(settingsPage), FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        pageHost.addView(wrapPage(trafficPage), FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         fun showPage(index: Int) {
             for (i in 0 until pageHost.childCount) pageHost.getChildAt(i).visibility = if (i == index) View.VISIBLE else View.GONE
             if (index == 1) updateServerPage()
-            if (index == 2) {
+            if (index == 2) refreshProfileCard()
+            if (index == 4) {
                 down.second.text = downloadMetric.text
                 up.second.text = uploadMetric.text
                 total.second.text = trafficTotalMetric.text
@@ -743,7 +811,7 @@ class MainActivity : Activity() {
             }
             setPadding(dp(4), dp(4), dp(4), dp(4))
         }
-        val navItems = listOf("⌂\nГлавная", "▤\nСерверы", "▥\nТрафик", "⚙\nНастройки")
+        val navItems = listOf("⌂\nПанель", "◎\nПрокси", "▤\nПрофили", "⚙\nНастройки")
         val navButtons = mutableListOf<Button>()
         fun selectNav(selected: Int) {
             navButtons.forEachIndexed { i, button ->
