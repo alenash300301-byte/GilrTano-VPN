@@ -153,12 +153,14 @@ func (c *clientBind) Send(bufs [][]byte, ep conn.Endpoint) error {
 	}
 	destination := netip.AddrPort(ep.(remoteEndpoint))
 	for _, b := range bufs {
+		packet := b
 		// WARP routes WireGuard sessions using the 24-bit client_id in bytes 1..3.
-		// Only touch standard WG message types; ordinary AWG profiles are unchanged.
+		// Copy before editing: the AWG device may recycle its original packet buffer.
 		if len(c.reserved) == 3 && len(b) >= 4 && b[0] >= 1 && b[0] <= 4 {
-			b[1], b[2], b[3] = c.reserved[0], c.reserved[1], c.reserved[2]
+			packet = append([]byte(nil), b...)
+			packet[1], packet[2], packet[3] = c.reserved[0], c.reserved[1], c.reserved[2]
 		}
-		if _, err = udpConn.WriteTo(b, M.SocksaddrFromNetIP(destination).UDPAddr()); err != nil {
+		if _, err = udpConn.WriteTo(packet, M.SocksaddrFromNetIP(destination).UDPAddr()); err != nil {
 			udpConn.Close()
 			return err
 		}
