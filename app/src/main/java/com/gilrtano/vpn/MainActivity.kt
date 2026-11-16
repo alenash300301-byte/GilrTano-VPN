@@ -1461,6 +1461,7 @@ class MainActivity : Activity() {
     }
 
     private fun refreshMode() {
+        if (::routeMetric.isInitialized) routeMetric.text = if (autoMode) "PORTAL → QUATTRO" else "QUATTRO"
         autoTab.isEnabled = !autoMode
         quattroTab.isEnabled = autoMode
         autoTab.alpha = if (autoMode) 1f else 0.72f
