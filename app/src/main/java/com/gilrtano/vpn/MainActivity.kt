@@ -835,7 +835,7 @@ class MainActivity : Activity() {
         })
         list.setOnItemClickListener { _, _, position, _ ->
             val selectedName = adapter.getItem(position) ?: return@setOnItemClickListener
-            val originalIndex = nodes.indexOfFirst { it.name == selectedName }
+            val originalIndex = activeNodes.indexOfFirst { it.name == selectedName }
             if (originalIndex >= 0) {
                 servers.setSelection(originalIndex)
                 val key = if (activeFree) "free_selected" else "quattro_selected"
