@@ -276,6 +276,7 @@ class MainActivity : Activity() {
         }
         val scroll = android.widget.ScrollView(this).apply {
             isFillViewport = true
+            setBackgroundColor(Color.TRANSPARENT)
             addView(LinearLayout(this@MainActivity).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = android.view.Gravity.CENTER_HORIZONTAL
@@ -311,8 +312,8 @@ class MainActivity : Activity() {
                     clipToPadding = false
                 }
                 heroFrame.addView(connectButton, FrameLayout.LayoutParams(dp(174), dp(174),
-                    android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL).apply {
-                    bottomMargin = dp(12)
+                    android.view.Gravity.CENTER).apply {
+                    // Keep the power control centered over the tiger artwork.
                 })
                 addView(heroFrame, LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, dp(390)
@@ -342,11 +343,18 @@ class MainActivity : Activity() {
                     gravity = android.view.Gravity.CENTER_VERTICAL
                     background = GradientDrawable(
                         GradientDrawable.Orientation.LEFT_RIGHT,
-                        intArrayOf(Color.rgb(16, 10, 12), Color.rgb(7, 8, 10), Color.rgb(18, 8, 10))
+                        intArrayOf(
+                            Color.rgb(72, 12, 18),
+                            Color.rgb(20, 10, 14),
+                            Color.rgb(7, 13, 10),
+                            Color.rgb(10, 48, 20)
+                        )
                     ).apply {
                         cornerRadius = dp(24).toFloat()
-                        setStroke(dp(1), Color.rgb(125, 34, 39))
+                        setStroke(dp(1), Color.rgb(115, 190, 82))
                     }
+                    // Raised glass-like server card with warm red and cool green edge lighting.
+                    elevation = dp(16).toFloat()
                     setPadding(dp(16), dp(10), dp(14), dp(10))
                     setOnClickListener { showServerPicker() }
                     addView(TextView(this@MainActivity).apply {
@@ -474,8 +482,18 @@ class MainActivity : Activity() {
         }
         // Respect Android system bars so the brand header and bottom navigation
         // never sit underneath the clock or gesture handle.
-        window.statusBarColor = Color.rgb(5, 5, 7)
-        window.navigationBarColor = Color.rgb(5, 5, 6)
+        // Draw the tiger artwork behind both Android system bars as well as app content.
+        @Suppress("DEPRECATION")
+        window.decorView.systemUiVisibility =
+            View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+            View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+            View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+        window.statusBarColor = Color.TRANSPARENT
+        window.navigationBarColor = Color.TRANSPARENT
+        if (android.os.Build.VERSION.SDK_INT >= 29) {
+            window.isStatusBarContrastEnforced = false
+            window.isNavigationBarContrastEnforced = false
+        }
         root.setOnApplyWindowInsetsListener { view, insets ->
             val bars = if (android.os.Build.VERSION.SDK_INT >= 30) {
                 insets.getInsets(android.view.WindowInsets.Type.systemBars())
@@ -490,11 +508,12 @@ class MainActivity : Activity() {
             view.setPadding(0, bars.top, 0, bars.bottom)
             insets
         }
-        val pageHost = FrameLayout(this)
-        val serverPageScroll = android.widget.ScrollView(this)
-        val settingsPageScroll = android.widget.ScrollView(this)
+        val pageHost = FrameLayout(this).apply { setBackgroundColor(Color.TRANSPARENT) }
+        val serverPageScroll = android.widget.ScrollView(this).apply { setBackgroundColor(Color.TRANSPARENT) }
+        val settingsPageScroll = android.widget.ScrollView(this).apply { setBackgroundColor(Color.TRANSPARENT) }
         fun page(title: String): LinearLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.TRANSPARENT)
             setPadding(dp(18), dp(22), dp(18), dp(28))
             addView(TextView(this@MainActivity).apply {
                 text = title
@@ -733,10 +752,13 @@ class MainActivity : Activity() {
         })
         // Полноэкранный фон тигра. CENTER_CROP сохраняет пропорции без чёрных полос.
         val screenFrame = FrameLayout(this).apply {
+            // Background is the bottom-most full-window layer; CENTER_CROP preserves
+            // the source aspect ratio and fills the screen without letterboxing.
             addView(ImageView(this@MainActivity).apply {
                 setImageResource(R.drawable.tiger_hero)
                 scaleType = ImageView.ScaleType.CENTER_CROP
                 contentDescription = "Полноэкранный фон GilrTano"
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
             }, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
             addView(root, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         }
