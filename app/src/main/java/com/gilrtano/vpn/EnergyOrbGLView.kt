@@ -43,8 +43,6 @@ class EnergyOrbGLView(context: Context) : GLSurfaceView(context) {
         private val start = System.nanoTime()
         private var surfaceWidth = 1
         private var surfaceHeight = 1
-        private var surfaceWidth = 1
-        private var surfaceHeight = 1
         private val vertexShader = """
             attribute vec2 aPosition;
             varying vec2 vUv;
