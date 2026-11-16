@@ -353,8 +353,54 @@ class MainActivity : Activity() {
             setOnClickListener { refreshFreeServersAndFindBest() }
         }
         checkPing = Button(this).apply {
-            text = "Проверить пинг"
+            text = "ПРОВЕРИТЬ ЗАДЕРЖКУ"
             setOnClickListener { measureSelectedPing() }
+        }
+
+        // FlClashX-inspired settings surfaces: restrained glass-like cards,
+        // compact typography and subtle borders. Existing actions remain unchanged.
+        fun stylePanelButton(button: Button, accent: Boolean = false) {
+            button.isAllCaps = false
+            button.textSize = 15f
+            button.typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
+            button.setTextColor(Color.rgb(238, 240, 245))
+            button.minimumHeight = dp(54)
+            button.setPadding(dp(18), dp(12), dp(18), dp(12))
+            button.background = GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(
+                    if (accent) Color.rgb(48, 28, 30) else Color.rgb(29, 31, 37),
+                    if (accent) Color.rgb(27, 19, 22) else Color.rgb(19, 21, 26)
+                )
+            ).apply {
+                cornerRadius = dp(17).toFloat()
+                setStroke(dp(1), if (accent) Color.rgb(126, 49, 53) else Color.rgb(61, 65, 74))
+            }
+            if (android.os.Build.VERSION.SDK_INT >= 21) button.elevation = dp(2).toFloat()
+        }
+        stylePanelButton(checkPing)
+        stylePanelButton(portalGateButton, true)
+        primarySource.apply {
+            textSize = 14f
+            setTextColor(Color.rgb(240, 242, 247))
+            setHintTextColor(Color.rgb(137, 143, 154))
+            setPadding(dp(16), dp(13), dp(16), dp(13))
+            background = GradientDrawable().apply {
+                setColor(Color.rgb(20, 22, 27))
+                cornerRadius = dp(15).toFloat()
+                setStroke(dp(1), Color.rgb(58, 63, 73))
+            }
+        }
+        freeSource.apply {
+            textSize = 14f
+            setTextColor(Color.rgb(240, 242, 247))
+            setHintTextColor(Color.rgb(137, 143, 154))
+            setPadding(dp(16), dp(13), dp(16), dp(13))
+            background = GradientDrawable().apply {
+                setColor(Color.rgb(20, 22, 27))
+                cornerRadius = dp(15).toFloat()
+                setStroke(dp(1), Color.rgb(58, 63, 73))
+            }
         }
 
         val root = LinearLayout(this).apply {
@@ -613,13 +659,17 @@ class MainActivity : Activity() {
                 addView(checkPing, LinearLayout.LayoutParams.MATCH_PARENT, dp(1))
                 checkPing.visibility = View.GONE
                 settingsHeader = TextView(this@MainActivity).apply {
-                    text = "Настройки и импорт  ›"; textSize = 20f
-                    typeface = android.graphics.Typeface.DEFAULT_BOLD
-                    setTextColor(Color.WHITE); setPadding(dp(16), dp(14), dp(12), dp(12))
-                    background = GradientDrawable().apply {
-                        setColor(Color.rgb(14, 8, 9)); cornerRadius = dp(18).toFloat()
-                        setStroke(dp(1), Color.rgb(150, 24, 24))
+                    text = "Настройки и импорт     ⌄"; textSize = 17f
+                    typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
+                    setTextColor(Color.rgb(245, 246, 250)); setPadding(dp(18), dp(17), dp(16), dp(17))
+                    background = GradientDrawable(
+                        GradientDrawable.Orientation.TOP_BOTTOM,
+                        intArrayOf(Color.rgb(34, 36, 43), Color.rgb(20, 22, 27))
+                    ).apply {
+                        cornerRadius = dp(18).toFloat()
+                        setStroke(dp(1), Color.rgb(66, 70, 80))
                     }
+                    if (android.os.Build.VERSION.SDK_INT >= 21) elevation = dp(3).toFloat()
                     visibility = View.GONE
                     setOnClickListener {
                         settingsExpanded = !settingsExpanded
@@ -637,9 +687,9 @@ class MainActivity : Activity() {
                 addView(freeSource, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
                 addView(importFree)
                 addView(TextView(this@MainActivity).apply {
-                    text = "Бесплатные серверы предоставляются сторонними операторами."
-                    textSize = 10f; setTextColor(Color.GRAY); gravity = android.view.Gravity.CENTER
-                    setPadding(0, dp(12), 0, dp(8))
+                    text = "Бесплатные серверы предоставляются сторонними операторами"
+                    textSize = 11f; setTextColor(Color.rgb(139, 145, 156)); gravity = android.view.Gravity.CENTER
+                    setPadding(dp(8), dp(16), dp(8), dp(12))
                 })
             })
         }
