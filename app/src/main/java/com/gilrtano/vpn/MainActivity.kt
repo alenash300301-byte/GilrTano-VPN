@@ -48,6 +48,7 @@ import java.util.concurrent.TimeUnit
 class MainActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var powerOrb: PowerOrbButtonView
+    private lateinit var energyOrb: EnergyOrbGLView
     private lateinit var connectionTimer: Chronometer
     private lateinit var serverCardTitle: TextView
     private lateinit var serverCardSubtitle: TextView
@@ -120,6 +121,7 @@ class MainActivity : Activity() {
             } else if (message.startsWith("Подключаю") || message.startsWith("Запускаю") || message.startsWith("Запуск Xray") || message.startsWith("Переключаю")) {
                 status.setTextColor(Color.rgb(255, 166, 55))
                 connectButton.setState(PowerOrbButtonView.State.CONNECTING)
+                if (::energyOrb.isInitialized) energyOrb.setOrbState(EnergyOrbGLView.OrbState.CONNECTING)
                 // Keep the ignition animation visible while the tunnel is starting.
             }
             val busy = message.startsWith("Подключаю") || message.startsWith("Запускаю") || message.startsWith("Запуск Xray") || message.startsWith("Переключаю")
@@ -311,6 +313,14 @@ class MainActivity : Activity() {
                     clipChildren = false
                     clipToPadding = false
                 }
+                energyOrb = EnergyOrbGLView(this@MainActivity).apply {
+                    setOrbState(EnergyOrbGLView.OrbState.IDLE)
+                }
+                heroFrame.addView(energyOrb, FrameLayout.LayoutParams(dp(190), dp(190), android.view.Gravity.CENTER).apply {
+                    topMargin = dp(58)
+                })
+                connectButton.useGlArtwork = true
+                connectButton.background = android.graphics.drawable.ColorDrawable(Color.TRANSPARENT)
                 heroFrame.addView(connectButton, FrameLayout.LayoutParams(dp(174), dp(174),
                     android.view.Gravity.CENTER).apply {
                     // Lower the orb over the tiger's muzzle, matching the reference composition.
@@ -849,11 +859,7 @@ class MainActivity : Activity() {
         if (!::powerOrb.isInitialized) return
         powerOrb.setState(if (connected) PowerOrbButtonView.State.CONNECTED else PowerOrbButtonView.State.DISCONNECTED)
         powerOrb.setTextColor(if (connected) Color.rgb(90, 255, 120) else Color.WHITE)
-        powerOrb.background = GradientDrawable().apply {
-            shape = GradientDrawable.OVAL
-            setColor(if (connected) Color.rgb(5, 32, 13) else Color.rgb(28, 8, 10))
-            setStroke(dp(4), if (connected) Color.rgb(45, 255, 90) else Color.rgb(225, 38, 45))
-        }
+        if (::energyOrb.isInitialized) energyOrb.setOrbState(if (connected) EnergyOrbGLView.OrbState.CONNECTED else EnergyOrbGLView.OrbState.IDLE)
         powerOrb.elevation = dp(if (connected) 20 else 12).toFloat()
         powerOrb.invalidate()
     }
