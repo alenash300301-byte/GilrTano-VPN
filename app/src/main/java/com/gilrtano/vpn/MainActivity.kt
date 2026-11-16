@@ -317,18 +317,18 @@ class MainActivity : Activity() {
                     setOrbState(EnergyOrbGLView.OrbState.IDLE)
                 }
                 heroFrame.addView(energyOrb, FrameLayout.LayoutParams(dp(190), dp(190), android.view.Gravity.CENTER).apply {
-                    // Move the animated halo down with the power control to match the lower reference position.
-                    topMargin = dp(170)
+                    // Keep the entire GLES orb inside the hero viewport.
+                    topMargin = dp(150)
                 })
                 connectButton.useGlArtwork = true
                 connectButton.background = android.graphics.drawable.ColorDrawable(Color.TRANSPARENT)
                 heroFrame.addView(connectButton, FrameLayout.LayoutParams(dp(174), dp(174),
                     android.view.Gravity.CENTER).apply {
-                    // Place the power button lower, beneath the tiger's muzzle as in the reference.
-                    topMargin = dp(170)
+                    // Lower the control while keeping its complete hit area visible.
+                    topMargin = dp(150)
                 })
                 addView(heroFrame, LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, dp(390)
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(500)
                 ).apply { topMargin = dp(2); bottomMargin = dp(4) })
                 powerOrb = connectButton
                 connectButton.contentDescription = "Кнопка питания VPN"
