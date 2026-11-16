@@ -383,7 +383,7 @@ class MainActivity : Activity() {
                     addView(stat("Состояние", "VPN"), LinearLayout.LayoutParams(0, dp(48), 1f))
                     addView(stat("Трафик приложения", "0,00 ГБ"), LinearLayout.LayoutParams(0, dp(48), 1f))
                     addView(stat("Протокол", "QUATTRO"), LinearLayout.LayoutParams(0, dp(48), 1f))
-                }, LinearLayout.LayoutParams.MATCH_PARENT, dp(66).apply { topMargin = dp(8) })
+                }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(66)).apply { topMargin = dp(8) })
                 // The central glowing orb is the primary connect/disconnect control.
                 // Keep the accessible action button as the click target, but remove its
                 // duplicate pill from the visual layout to match the approved reference.
