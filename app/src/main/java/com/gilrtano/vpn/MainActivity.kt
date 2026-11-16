@@ -48,7 +48,7 @@ import java.util.concurrent.TimeUnit
 
 class MainActivity : Activity() {
     private lateinit var status: TextView
-    private lateinit var powerOrb: TextView
+    private lateinit var powerOrb: PowerOrbButtonView
     private lateinit var connectionTimer: Chronometer
     private lateinit var serverCardTitle: TextView
     private lateinit var serverCardSubtitle: TextView
@@ -78,7 +78,7 @@ class MainActivity : Activity() {
     private var lastRxBytes = TrafficStats.getTotalRxBytes()
     private var lastTxBytes = TrafficStats.getTotalTxBytes()
     private var lastTrafficSample = SystemClock.elapsedRealtime()
-    private lateinit var connectButton: Button
+    private lateinit var connectButton: PowerOrbButtonView
     @Volatile private var scanningFree = false
     private var activeFree = false
     private var settingsExpanded = false
@@ -127,6 +127,7 @@ class MainActivity : Activity() {
                 resetConnectButtonGlow()
             } else if (message.startsWith("Подключаю") || message.startsWith("Запускаю") || message.startsWith("Запуск Xray") || message.startsWith("Переключаю")) {
                 status.setTextColor(Color.rgb(255, 166, 55))
+                connectButton.setState(PowerOrbButtonView.State.CONNECTING)
                 // Keep the ignition animation visible while the tunnel is starting.
             }
             val busy = message.startsWith("Подключаю") || message.startsWith("Запускаю") || message.startsWith("Запуск Xray") || message.startsWith("Переключаю")
@@ -210,7 +211,7 @@ class MainActivity : Activity() {
             text = "Импортировать бесплатные серверы"
             setOnClickListener { importFrom(freeSource.text.toString().trim(), true) }
         }
-        connectButton = Button(this).apply {
+        connectButton = PowerOrbButtonView(this).apply {
             text = "⏻\nПОДКЛЮЧИТЬ"
             setOnClickListener {
                 val currentStatus = status.text.toString()
@@ -943,7 +944,7 @@ class MainActivity : Activity() {
 
     private fun updatePowerOrb(connected: Boolean) {
         if (!::powerOrb.isInitialized) return
-        (powerOrb as? PowerOrbButtonView)?.setConnected(connected)
+        powerOrb.setState(if (connected) PowerOrbButtonView.State.CONNECTED else PowerOrbButtonView.State.DISCONNECTED)
         powerOrb.setTextColor(if (connected) Color.rgb(90, 255, 120) else Color.WHITE)
         powerOrb.background = GradientDrawable().apply {
             shape = GradientDrawable.OVAL
@@ -1623,6 +1624,7 @@ class MainActivity : Activity() {
         preferredConfig?.let { intent.putExtra(GilrTanoVpnService.EXTRA_PREFERRED_CONFIG, it) }
         startForegroundService(intent)
         status.text = "Запускаю VPN…"
+        connectButton.setState(PowerOrbButtonView.State.CONNECTING)
     }
 
     @Deprecated("Deprecated by Android API")
