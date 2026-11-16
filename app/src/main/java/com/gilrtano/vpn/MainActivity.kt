@@ -847,6 +847,8 @@ class MainActivity : Activity() {
         fun style(view: android.view.View) {
             when (view) {
                 is Button -> {
+                    // Preserve the circular hero power control; the other buttons use compact styling.
+                    if (view === connectButton) return
                     view.setTextColor(Color.WHITE)
                     view.textSize = 13f
                     view.isAllCaps = false
