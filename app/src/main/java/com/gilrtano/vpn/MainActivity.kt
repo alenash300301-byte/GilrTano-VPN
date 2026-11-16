@@ -652,7 +652,7 @@ class MainActivity : Activity() {
         serverPage.addView(serverModes)
         serverPage.addView(actionButton("Проверить пинг") { measureSelectedPing() })
         serverPage.addView(actionButton("Найти лучший бесплатный сервер") { refreshFreeServersAndFindBest() })
-        serverPage.addView(pingStatus)
+        // pingStatus already belongs to the home dashboard; do not attach it twice.
         val trafficPage = page("Трафик")
         trafficPage.addView(TextView(this).apply {
             text = "Живые показатели подключения"
