@@ -550,19 +550,9 @@ class MainActivity : Activity() {
                         findImportButtonsVisibility()
                     }
                 }
-                addView(settingsHeader)
-                addView(updateButton)
-                addView(modeSelectorRow, LinearLayout.LayoutParams.MATCH_PARENT, dp(48))
-                addView(primarySource, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-                addView(importPrimary)
-                addView(importDocx)
-                addView(freeSource, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-                addView(importFree)
-                addView(TextView(this@MainActivity).apply {
-                    text = "Бесплатные серверы предоставляются сторонними операторами."
-                    textSize = 10f; setTextColor(Color.GRAY); gravity = android.view.Gravity.CENTER
-                    setPadding(0, dp(12), 0, dp(8))
-                })
+                // Subscription management and imports live exclusively in the
+                // dedicated «Профили» and «Настройки» tabs. Keep the dashboard
+                // focused on connection status and live network information.
             })
         }
         // Respect Android system bars so the brand header and bottom navigation
