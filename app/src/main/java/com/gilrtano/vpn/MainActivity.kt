@@ -272,7 +272,7 @@ class MainActivity : Activity() {
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.rgb(5, 5, 7))
+            setBackgroundColor(Color.TRANSPARENT)
         }
         val scroll = android.widget.ScrollView(this).apply {
             isFillViewport = true
@@ -280,57 +280,36 @@ class MainActivity : Activity() {
                 orientation = LinearLayout.VERTICAL
                 gravity = android.view.Gravity.CENTER_HORIZONTAL
                 setPadding(dp(18), dp(12), dp(18), dp(18))
-                addView(LinearLayout(this@MainActivity).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = android.view.Gravity.CENTER_VERTICAL
-                    addView(TextView(this@MainActivity).apply {
-                        text = "☰"; textSize = 27f; setTextColor(Color.WHITE)
-                        setPadding(dp(4), 0, dp(10), 0)
-                        setOnClickListener {
-                            settingsExpanded = !settingsExpanded
-                            settingsHeader.visibility = if (settingsExpanded) View.VISIBLE else View.GONE
-                            findImportButtonsVisibility()
-                        }
-                    })
-                    addView(LinearLayout(this@MainActivity).apply {
-                        orientation = LinearLayout.HORIZONTAL
+                // Верхняя зона: только кнопка уведомлений, без логотипа и короны.
+                addView(FrameLayout(this@MainActivity).apply {
+                    val notificationButton = TextView(this@MainActivity).apply {
+                        text = "♧"
+                        textSize = 25f
                         gravity = android.view.Gravity.CENTER
-                        val title = TextView(this@MainActivity).apply {
-                            text = "GilrTano"; textSize = 25f
-                            typeface = android.graphics.Typeface.create("serif", android.graphics.Typeface.BOLD_ITALIC)
-                            setTextColor(Color.rgb(245, 242, 238))
-                            setShadowLayer(dp(5).toFloat(), 0f, dp(1).toFloat(), Color.rgb(130, 18, 18))
+                        setTextColor(Color.WHITE)
+                        contentDescription = "Уведомления"
+                        background = GradientDrawable().apply {
+                            setColor(Color.argb(145, 10, 10, 13))
+                            cornerRadius = dp(24).toFloat()
+                            setStroke(dp(1), Color.rgb(125, 34, 39))
                         }
-                        val vpn = TextView(this@MainActivity).apply {
-                            text = " VPN"; textSize = 25f
-                            typeface = android.graphics.Typeface.create("serif", android.graphics.Typeface.BOLD_ITALIC)
-                            setTextColor(Color.rgb(230, 38, 38))
-                            setShadowLayer(dp(6).toFloat(), 0f, 0f, Color.rgb(170, 0, 0))
-                        }
-                        addView(title); addView(vpn)
-                    }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-                    addView(TextView(this@MainActivity).apply {
-                        text = "⚙"; textSize = 25f; setTextColor(Color.WHITE)
+                        setPadding(dp(14), dp(7), dp(14), dp(7))
                         setOnClickListener {
-                            settingsExpanded = true
-                            settingsHeader.visibility = View.VISIBLE
-                            findImportButtonsVisibility()
-                            root.post { (root.parent as? android.widget.ScrollView)?.smoothScrollTo(0, root.height) }
+                            AlertDialog.Builder(this@MainActivity)
+                                .setTitle("Уведомления")
+                                .setMessage("Новых уведомлений нет")
+                                .setPositiveButton("ОК", null)
+                                .show()
                         }
-                    })
-                })
+                    }
+                    addView(notificationButton, FrameLayout.LayoutParams(dp(52), dp(46),
+                        android.view.Gravity.TOP or android.view.Gravity.END))
+                }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(50)))
                 // Hero composition: full-width tiger artwork with the live VPN power control layered over it.
                 val heroFrame = FrameLayout(this@MainActivity).apply {
                     clipChildren = false
                     clipToPadding = false
                 }
-                heroFrame.addView(ImageView(this@MainActivity).apply {
-                    setImageResource(R.drawable.tiger_hero)
-                    scaleType = ImageView.ScaleType.CENTER_CROP
-                    contentDescription = "Тигр GilrTano с зелёными глазами"
-                }, FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
-                ))
                 heroFrame.addView(connectButton, FrameLayout.LayoutParams(dp(174), dp(174),
                     android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL).apply {
                     bottomMargin = dp(12)
@@ -752,7 +731,16 @@ class MainActivity : Activity() {
         ).apply {
             leftMargin = dp(14); rightMargin = dp(14); bottomMargin = dp(8)
         })
-        setContentView(root)
+        // Полноэкранный фон тигра. CENTER_CROP сохраняет пропорции без чёрных полос.
+        val screenFrame = FrameLayout(this).apply {
+            addView(ImageView(this@MainActivity).apply {
+                setImageResource(R.drawable.tiger_hero)
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                contentDescription = "Полноэкранный фон GilrTano"
+            }, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+            addView(root, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        }
+        setContentView(screenFrame)
         styleDarkInterface()
         installButtonFeedback()
         setPowerButtonLabel("ПОДКЛЮЧИТЬ")
