@@ -87,6 +87,7 @@ class MainActivity : Activity() {
     private var pendingPreferredConfig: String? = null
     private var pendingAutomatic = false
     private var pendingPortalAwg = false
+    private var pendingFallbackChain: List<String> = emptyList()
     private val requestCode = 4101
     private val docxRequestCode = 4102
 
@@ -289,6 +290,8 @@ class MainActivity : Activity() {
                             pendingPreferredConfig = null
                             pendingAutomatic = true
                             pendingPortalAwg = true
+                            pendingFallbackChain = (if (rankedQuattro.isNotEmpty()) rankedQuattro.map { it.first } else discoveredQuattro)
+                                .mapNotNull { node -> runCatching { GilrTanoVpnService.xrayConfigFromVless(node.uri) }.getOrNull() }
                             connectButton.isEnabled = true
                             status.text = "WARP создан. Запрашиваю разрешение VPN…"
                             val permission = VpnService.prepare(this@MainActivity)
@@ -319,6 +322,7 @@ class MainActivity : Activity() {
                                 pendingPreferredConfig = null
                                 pendingAutomatic = true
                                 pendingPortalAwg = true
+                                pendingFallbackChain = quattroNodes.mapNotNull { node -> runCatching { GilrTanoVpnService.xrayConfigFromVless(node.uri) }.getOrNull() }
                                 status.text = "Генератор WARP недоступен. Запускаю резервный PORTAL…"
                                 val permission = VpnService.prepare(this@MainActivity)
                                 if (permission != null) startActivityForResult(permission, requestCode)
@@ -1335,7 +1339,7 @@ class MainActivity : Activity() {
         }.start()
     }
 
-    private fun startWarpVpn(config: String, fallbackQuattro: String?) {
+    private fun startWarpVpn(config: String, fallbackQuattro: String?, fallbackChain: List<String> = emptyList()) {
         val intent = Intent(this, GilrTanoVpnService::class.java)
             .setAction(GilrTanoVpnService.ACTION_START_PORTAL)
             .putExtra(GilrTanoVpnService.EXTRA_CONFIG, config)
@@ -1344,6 +1348,7 @@ class MainActivity : Activity() {
             .putExtra(GilrTanoVpnService.EXTRA_AUTO, true)
             .putExtra(GilrTanoVpnService.EXTRA_FALLBACK_CONFIG, fallbackQuattro)
             .putExtra(GilrTanoVpnService.EXTRA_FALLBACK_ENGINE_BOX, false)
+            .putExtra(GilrTanoVpnService.EXTRA_FALLBACK_CHAIN, JSONArray(fallbackChain).toString())
         startForegroundService(intent)
         status.text = "Запускаю сгенерированный WARP. Резервный архив загружает VPN-служба…"
     }
@@ -1370,19 +1375,21 @@ class MainActivity : Activity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == this.requestCode && resultCode == RESULT_OK) {
             pendingConfig?.let {
-                if (pendingPortalAwg) startWarpVpn(it, pendingFallbackConfig)
+                if (pendingPortalAwg) startWarpVpn(it, pendingFallbackConfig, pendingFallbackChain)
                 else startVpn(it, pendingFallbackConfig, pendingPreferredConfig, pendingAutomatic)
                 pendingConfig = null
                 pendingFallbackConfig = null
                 pendingPreferredConfig = null
                 pendingAutomatic = false
                 pendingPortalAwg = false
+                pendingFallbackChain = emptyList()
             } ?: run { status.text = "Подключение отменено" }
         } else if (requestCode == this.requestCode) {
             pendingConfig = null
             pendingFallbackConfig = null
             pendingPreferredConfig = null
             pendingPortalAwg = false
+            pendingFallbackChain = emptyList()
             connectButton.isEnabled = true
             status.text = "Разрешение VPN не предоставлено"
         } else if (requestCode == docxRequestCode && resultCode == RESULT_OK) {
