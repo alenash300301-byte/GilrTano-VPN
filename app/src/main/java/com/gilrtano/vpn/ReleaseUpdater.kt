@@ -133,8 +133,16 @@ class ReleaseUpdater(private val context: Context) {
         } finally {
             connection.disconnect()
         }
-        val actual = MessageDigest.getInstance("SHA-256").digest(destination.readBytes())
-            .joinToString("") { "%02x".format(it) }
+        val digest = MessageDigest.getInstance("SHA-256")
+        destination.inputStream().use { input ->
+            val buffer = ByteArray(64 * 1024)
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                digest.update(buffer, 0, count)
+            }
+        }
+        val actual = digest.digest().joinToString("") { "%02x".format(it) }
         if (!actual.equals(release.sha256, ignoreCase = true)) {
             destination.delete()
             throw SecurityException("Контрольная сумма APK не совпала. Файл удалён.")
@@ -150,6 +158,7 @@ class ReleaseUpdater(private val context: Context) {
         val params = android.content.pm.PackageInstaller.SessionParams(
             android.content.pm.PackageInstaller.SessionParams.MODE_FULL_INSTALL
         )
+        params.setAppPackageName(context.packageName)
         val sessionId = packageInstaller.createSession(params)
         try {
             packageInstaller.openSession(sessionId).use { session ->
