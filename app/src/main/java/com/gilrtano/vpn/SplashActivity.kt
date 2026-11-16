@@ -6,6 +6,8 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RadialGradient
+import android.graphics.LinearGradient
+import android.graphics.RectF
 import android.graphics.Shader
 import android.os.Bundle
 import android.os.Handler
@@ -15,40 +17,46 @@ import android.view.WindowManager
 import android.view.animation.DecelerateInterpolator
 import android.widget.FrameLayout
 import android.widget.ImageView
+import android.animation.ValueAnimator
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
+import kotlin.math.min
 
 /**
- * Branded launch reveal. Uses the uploaded high-resolution final GilrTano tiger artwork,
- * fades it in, gently pulses the eye highlights, then crossfades to the app.
+ * GilrTano cinematic launch scene.
+ * The uploaded PNG remains the hero artwork; lightweight Canvas layers animate
+ * eye light and a restrained metallic-logo glint without a heavy video.
  */
 class SplashActivity : Activity() {
     private val handler = Handler(Looper.getMainLooper())
     private var launched = false
+    private var eyePulse: ValueAnimator? = null
+    private var logoGlint: ValueAnimator? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.statusBarColor = Color.BLACK
         window.navigationBarColor = Color.BLACK
-        window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LAYOUT_STABLE
         window.setBackgroundDrawableResource(android.R.color.black)
-        window.setFlags(
-            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
-        )
+        window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LAYOUT_STABLE
 
         val root = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
         val artwork = ImageView(this).apply {
             setImageResource(R.drawable.gilrtano_splash)
             scaleType = ImageView.ScaleType.FIT_CENTER
             alpha = 0f
-            contentDescription = "GilrTano tiger"
+            scaleX = 1.025f
+            scaleY = 1.025f
+            contentDescription = "GilrTano"
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
         }
         root.addView(artwork, FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
             FrameLayout.LayoutParams.MATCH_PARENT
         ))
 
-        val eyes = EyePulseView()
-        root.addView(eyes, FrameLayout.LayoutParams(
+        val effects = CinematicEffectsView()
+        root.addView(effects, FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
             FrameLayout.LayoutParams.MATCH_PARENT
         ))
@@ -56,61 +64,117 @@ class SplashActivity : Activity() {
 
         artwork.animate()
             .alpha(1f)
-            .setDuration(1150L)
-            .setInterpolator(DecelerateInterpolator())
+            .scaleX(1f)
+            .scaleY(1f)
+            .setDuration(1450L)
+            .setInterpolator(DecelerateInterpolator(1.6f))
             .start()
-        eyes.startPulse()
-        handler.postDelayed({ openMain() }, 2350L)
+
+        effects.start()
+        handler.postDelayed({ openMain() }, 3400L)
     }
 
     private fun openMain() {
         if (launched || isFinishing) return
         launched = true
-        startActivity(Intent(this, MainActivity::class.java))
+        val intent = Intent(this, MainActivity::class.java)
+        startActivity(intent)
         overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out)
         finish()
     }
 
+    override fun onPause() {
+        eyePulse?.pause()
+        logoGlint?.pause()
+        super.onPause()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        eyePulse?.resume()
+        logoGlint?.resume()
+    }
+
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
+        eyePulse?.cancel()
+        logoGlint?.cancel()
         super.onDestroy()
     }
 
-    private inner class EyePulseView : View(this@SplashActivity) {
+    private inner class CinematicEffectsView : View(this@SplashActivity) {
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-        private var phase = 0f
-        private val pulse = android.animation.ValueAnimator.ofFloat(0.22f, 0.72f).apply {
-            duration = 1250L
-            repeatMode = android.animation.ValueAnimator.REVERSE
-            repeatCount = android.animation.ValueAnimator.INFINITE
-            addUpdateListener {
-                phase = it.animatedValue as Float
-                invalidate()
+        private var eyeIntensity = 0.25f
+        private var glintPosition = -0.2f
+        private val imageRect = RectF()
+        private val drawable = resources.getDrawable(R.drawable.gilrtano_splash, theme)
+        private val imageWidth = drawable.intrinsicWidth.toFloat().coerceAtLeast(1f)
+        private val imageHeight = drawable.intrinsicHeight.toFloat().coerceAtLeast(1f)
+
+        fun start() {
+            eyePulse = ValueAnimator.ofFloat(0.18f, 0.78f).apply {
+                duration = 1350L
+                repeatMode = ValueAnimator.REVERSE
+                repeatCount = ValueAnimator.INFINITE
+                addUpdateListener {
+                    eyeIntensity = it.animatedValue as Float
+                    invalidate()
+                }
+                start()
+            }
+            logoGlint = ValueAnimator.ofFloat(-0.25f, 1.25f).apply {
+                duration = 2300L
+                startDelay = 900L
+                repeatCount = ValueAnimator.INFINITE
+                addUpdateListener {
+                    glintPosition = it.animatedValue as Float
+                    invalidate()
+                }
+                start()
             }
         }
 
-        fun startPulse() { pulse.start() }
-
         override fun onDraw(canvas: Canvas) {
             super.onDraw(canvas)
-            val w = width.toFloat()
-            val h = height.toFloat()
-            // Subtle green halo aligned with the tiger eyes in the centered artwork.
-            val radius = (w * 0.075f).coerceAtLeast(24f)
-            val cy = h * 0.365f
-            drawGlow(canvas, w * 0.365f, cy, radius)
-            drawGlow(canvas, w * 0.635f, cy, radius)
+            val scale = min(width / imageWidth, height / imageHeight)
+            val drawW = imageWidth * scale
+            val drawH = imageHeight * scale
+            val left = (width - drawW) / 2f
+            val top = (height - drawH) / 2f
+            imageRect.set(left, top, left + drawW, top + drawH)
+
+            // Eye centers are mapped to the actual FIT_CENTER image bounds,
+            // so the green glow stays aligned on different phone aspect ratios.
+            val eyeY = top + drawH * 0.285f
+            val eyeRadius = drawW * 0.085f
+            drawEyeGlow(canvas, left + drawW * 0.335f, eyeY, eyeRadius)
+            drawEyeGlow(canvas, left + drawW * 0.665f, eyeY, eyeRadius)
+
+            // A fine red-white reflection travels across the metallic wordmark.
+            // It is intentionally subtle so the original lettering remains legible.
+            val bandTop = top + drawH * 0.735f
+            val bandBottom = top + drawH * 0.865f
+            val sweepX = left + drawW * glintPosition
+            val halfWidth = drawW * 0.11f
+            paint.shader = LinearGradient(
+                sweepX - halfWidth, 0f, sweepX + halfWidth, 0f,
+                intArrayOf(Color.TRANSPARENT, Color.argb(34, 255, 55, 55), Color.argb(72, 255, 235, 225), Color.argb(34, 255, 55, 55), Color.TRANSPARENT),
+                null, Shader.TileMode.CLAMP
+            )
+            canvas.drawRect(left, bandTop, left + drawW, bandBottom, paint)
+            paint.shader = null
         }
 
-        private fun drawGlow(canvas: Canvas, x: Float, y: Float, radius: Float) {
-            paint.alpha = (phase * 115f).toInt().coerceIn(0, 115)
+        private fun drawEyeGlow(canvas: Canvas, x: Float, y: Float, radius: Float) {
+            paint.alpha = (eyeIntensity * 150f).toInt().coerceIn(0, 150)
             paint.shader = RadialGradient(
                 x, y, radius,
-                intArrayOf(Color.argb(170, 20, 255, 70), Color.TRANSPARENT),
-                floatArrayOf(0f, 1f), Shader.TileMode.CLAMP
+                intArrayOf(Color.argb(185, 20, 255, 75), Color.argb(75, 0, 255, 45), Color.TRANSPARENT),
+                floatArrayOf(0f, 0.42f, 1f), Shader.TileMode.CLAMP
             )
             canvas.drawCircle(x, y, radius, paint)
             paint.shader = null
+            paint.alpha = 255
         }
     }
 }
