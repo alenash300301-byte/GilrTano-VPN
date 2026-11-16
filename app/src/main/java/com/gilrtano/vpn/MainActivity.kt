@@ -615,19 +615,6 @@ class MainActivity : Activity() {
         val serverPage = page("Серверы")
         val serverState = TextView(this).apply { textSize = 13f; setTextColor(Color.LTGRAY) }
         serverPage.addView(serverState)
-        val serverModes = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        serverModes.addView(actionButton("АВТО") { switchToAuto(); updateServerPage() },
-            LinearLayout.LayoutParams(0, dp(48), 1f))
-        serverModes.addView(actionButton("QUATTRO") { switchMode(false); updateServerPage() },
-            LinearLayout.LayoutParams(0, dp(48), 1f))
-        serverModes.addView(actionButton("FREE") { switchMode(true); updateServerPage() },
-            LinearLayout.LayoutParams(0, dp(48), 1f))
-        serverPage.addView(serverModes)
-        serverPage.addView(actionButton("Проверить пинг") { measureSelectedPing() })
-        serverPage.addView(actionButton("Найти лучший бесплатный сервер") { refreshFreeServersAndFindBest() })
-        serverPage.addView(pingStatus)
-        val serverRows = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        serverPage.addView(serverRows)
         fun updateServerPage() {
             serverState.text = "Режим: " + if (autoMode) "AUTO · Quattro с бесплатным резервом" else if (activeFree) "Бесплатный" else "Quattro"
             serverRows.removeAllViews()
@@ -652,6 +639,20 @@ class MainActivity : Activity() {
                 })
             }
         }
+
+        val serverModes = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        serverModes.addView(actionButton("АВТО") { switchToAuto(); updateServerPage() },
+            LinearLayout.LayoutParams(0, dp(48), 1f))
+        serverModes.addView(actionButton("QUATTRO") { switchMode(false); updateServerPage() },
+            LinearLayout.LayoutParams(0, dp(48), 1f))
+        serverModes.addView(actionButton("FREE") { switchMode(true); updateServerPage() },
+            LinearLayout.LayoutParams(0, dp(48), 1f))
+        serverPage.addView(serverModes)
+        serverPage.addView(actionButton("Проверить пинг") { measureSelectedPing() })
+        serverPage.addView(actionButton("Найти лучший бесплатный сервер") { refreshFreeServersAndFindBest() })
+        serverPage.addView(pingStatus)
+        val serverRows = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        serverPage.addView(serverRows)
         val trafficPage = page("Трафик")
         trafficPage.addView(TextView(this).apply {
             text = "Живые показатели подключения"
