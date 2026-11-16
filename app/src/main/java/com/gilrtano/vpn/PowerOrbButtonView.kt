@@ -311,7 +311,6 @@ class PowerOrbButtonView @JvmOverloads constructor(
 
         // The artwork contains an intentionally empty neon capsule. Draw the
         // live VPN status there so it can change without editing the PNG.
-        val connecting = state == State.CONNECTING
         captionPaint.textAlign = Paint.Align.CENTER
         captionPaint.typeface = Typeface.create("sans-serif", Typeface.BOLD)
         captionPaint.textSize = side * 0.060f
