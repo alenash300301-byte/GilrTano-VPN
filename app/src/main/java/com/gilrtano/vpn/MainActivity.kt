@@ -663,7 +663,7 @@ class MainActivity : Activity() {
             .start()
         currentPageIndex = destination
         contentScrollView.scrollTo(0, 0)
-        navigationDock.setSelectedIndex(destination, false)
+        navigationDock.setSelectedIndex(destination, true)
         findImportButtonsVisibility()
     }
 
