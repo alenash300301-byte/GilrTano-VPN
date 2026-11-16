@@ -583,7 +583,155 @@ class MainActivity : Activity() {
             view.setPadding(0, bars.top, 0, bars.bottom)
             insets
         }
-        root.addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        val pageHost = FrameLayout(this)
+        val serverPageScroll = android.widget.ScrollView(this)
+        val trafficPageScroll = android.widget.ScrollView(this)
+        val settingsPageScroll = android.widget.ScrollView(this)
+        fun page(title: String): LinearLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(18), dp(22), dp(18), dp(28))
+            addView(TextView(this@MainActivity).apply {
+                text = title
+                textSize = 25f
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                setTextColor(Color.WHITE)
+                setPadding(0, 0, 0, dp(18))
+            })
+        }
+        fun card(): LinearLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(14), dp(16), dp(14))
+            background = GradientDrawable().apply {
+                setColor(Color.rgb(13, 13, 17))
+                cornerRadius = dp(20).toFloat()
+                setStroke(dp(1), Color.rgb(90, 28, 34))
+            }
+        }
+        fun actionButton(label: String, action: () -> Unit) = Button(this).apply {
+            text = label
+            isAllCaps = false
+            setOnClickListener { action() }
+        }
+        val serverPage = page("Серверы")
+        val serverState = TextView(this).apply { textSize = 13f; setTextColor(Color.LTGRAY) }
+        serverPage.addView(serverState)
+        val serverModes = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        serverModes.addView(actionButton("АВТО") { switchToAuto(); updateServerPage() },
+            LinearLayout.LayoutParams(0, dp(48), 1f))
+        serverModes.addView(actionButton("QUATTRO") { switchMode(false); updateServerPage() },
+            LinearLayout.LayoutParams(0, dp(48), 1f))
+        serverModes.addView(actionButton("FREE") { switchMode(true); updateServerPage() },
+            LinearLayout.LayoutParams(0, dp(48), 1f))
+        serverPage.addView(serverModes)
+        serverPage.addView(actionButton("Проверить пинг") { measureSelectedPing() })
+        serverPage.addView(actionButton("Найти лучший бесплатный сервер") { refreshFreeServersAndFindBest() })
+        serverPage.addView(pingStatus)
+        val serverRows = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        serverPage.addView(serverRows)
+        fun updateServerPage() {
+            serverState.text = "Режим: " + if (autoMode) "AUTO · Quattro с бесплатным резервом" else if (activeFree) "Бесплатный" else "Quattro"
+            serverRows.removeAllViews()
+            val nodes = activeNodes
+            if (nodes.isEmpty()) {
+                serverRows.addView(TextView(this).apply {
+                    text = "Нет серверов. Добавьте подписку в настройках."
+                    setTextColor(Color.LTGRAY); setPadding(0, dp(18), 0, dp(18))
+                })
+            } else nodes.forEachIndexed { index, node ->
+                val row = actionButton((if (index == servers.selectedItemPosition) "●  " else "") + node.name) {
+                    servers.setSelection(index)
+                    prefs.edit().putInt(if (activeFree) "free_selected" else "quattro_selected", index).apply()
+                    serverCardTitle.text = node.name
+                    serverCardSubtitle.text = if (activeFree) "Бесплатный" else "Quattro"
+                    serverCardPing.text = ""
+                    pingStatus.text = "Пинг: —"
+                    updateServerPage()
+                }
+                serverRows.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                    topMargin = dp(4); bottomMargin = dp(4)
+                })
+            }
+        }
+        val trafficPage = page("Трафик")
+        trafficPage.addView(TextView(this).apply {
+            text = "Живые показатели подключения"
+            textSize = 13f; setTextColor(Color.LTGRAY); setPadding(0, 0, 0, dp(14))
+        })
+        fun metricCard(label: String): Pair<LinearLayout, TextView> {
+            val box = card()
+            box.addView(TextView(this).apply { text = label; textSize = 12f; setTextColor(Color.LTGRAY) })
+            val value = TextView(this).apply {
+                text = "—"; textSize = 23f
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                setTextColor(Color.rgb(45, 245, 85)); setPadding(0, dp(5), 0, 0)
+            }
+            box.addView(value)
+            return Pair(box, value)
+        }
+        val down = metricCard("Входящая скорость")
+        val up = metricCard("Исходящая скорость")
+        val total = metricCard("Трафик приложения")
+        val trafficState = TextView(this).apply { text = "Ожидание подключения"; setTextColor(Color.LTGRAY); setPadding(0, dp(12), 0, dp(12)) }
+        trafficPage.addView(trafficState)
+        listOf(down.first, up.first, total.first).forEach {
+            trafficPage.addView(it, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(10) })
+        }
+        trafficPage.addView(TrafficWaveView(this), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(120)))
+        trafficPage.addView(TextView(this).apply {
+            text = "Примечание: скорость рассчитывается по сетевым счётчикам Android; общий объём — по UID приложения, а не по серверной статистике."
+            textSize = 11f; setTextColor(Color.GRAY); setPadding(0, dp(14), 0, 0)
+        })
+        val settingsPage = page("Настройки")
+        settingsPage.addView(TextView(this).apply {
+            text = "Управление источниками серверов"
+            textSize = 13f; setTextColor(Color.LTGRAY)
+        })
+        val primaryInput = EditText(this).apply {
+            hint = "Ссылка Quattro / YAML"
+            setText(prefs.getString("subscription_url", ""))
+            minLines = 2; maxLines = 4
+        }
+        val freeInput = EditText(this).apply {
+            hint = "Ссылка бесплатного резерва"
+            setText(prefs.getString("free_subscription_url", ""))
+            minLines = 2; maxLines = 4
+        }
+        settingsPage.addView(primaryInput)
+        settingsPage.addView(actionButton("Импортировать Quattro") { importFrom(primaryInput.text.toString().trim(), false) })
+        settingsPage.addView(actionButton("Выбрать DOCX Quattro") {
+            val pick = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            }
+            startActivityForResult(pick, docxRequestCode)
+        })
+        settingsPage.addView(freeInput)
+        settingsPage.addView(actionButton("Импортировать бесплатные серверы") { importFrom(freeInput.text.toString().trim(), true) })
+        settingsPage.addView(actionButton("Проверить обновления") { checkForAppUpdate() })
+        settingsPage.addView(TextView(this).apply {
+            text = "Подписки сохраняются локально. Используйте только доверенные источники."
+            textSize = 11f; setTextColor(Color.GRAY); setPadding(0, dp(18), 0, 0)
+        })
+        fun wrapPage(content: View): android.widget.ScrollView =
+            android.widget.ScrollView(this).apply {
+                isFillViewport = true
+                addView(content, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            }
+        pageHost.addView(scroll, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        pageHost.addView(wrapPage(serverPage), FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        pageHost.addView(wrapPage(trafficPage), FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        pageHost.addView(wrapPage(settingsPage), FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        fun showPage(index: Int) {
+            for (i in 0 until pageHost.childCount) pageHost.getChildAt(i).visibility = if (i == index) View.VISIBLE else View.GONE
+            if (index == 1) updateServerPage()
+            if (index == 2) {
+                down.second.text = downloadMetric.text
+                up.second.text = uploadMetric.text
+                total.second.text = trafficTotalMetric.text
+                trafficState.text = if (status.text.toString().contains("Подключено")) "VPN подключён" else "VPN отключён"
+            }
+        }
+        root.addView(pageHost, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         val bottomNav = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = android.view.Gravity.CENTER
@@ -620,36 +768,8 @@ class MainActivity : Activity() {
                 }
                 setOnClickListener {
                     selectNav(index)
-                    when (index) {
-                        0 -> {
-                            settingsExpanded = false
-                            servers.visibility = View.GONE
-                            findImportButtonsVisibility()
-                            settingsHeader.text = "Настройки и импорт  ›"
-                            scroll.smoothScrollTo(0, 0)
-                        }
-                        1 -> {
-                            settingsExpanded = false
-                            findImportButtonsVisibility()
-                            servers.visibility = View.VISIBLE
-                            modeSelectorRow.visibility = View.VISIBLE
-                            scroll.post { scroll.smoothScrollTo(0, serverCardTitle.top.coerceAtLeast(0)) }
-                            showServerPicker()
-                        }
-                        2 -> {
-                            settingsExpanded = false
-                            servers.visibility = View.GONE
-                            findImportButtonsVisibility()
-                            scroll.post { scroll.smoothScrollTo(0, trafficWaveAnchor.top.coerceAtLeast(0)) }
-                        }
-                        3 -> {
-                            settingsExpanded = true
-                            settingsHeader.visibility = View.VISIBLE
-                            settingsHeader.text = "Настройки и импорт  ⌄"
-                            findImportButtonsVisibility()
-                            scroll.post { scroll.smoothScrollTo(0, settingsHeader.top.coerceAtLeast(0)) }
-                        }
-                    }
+                    showPage(index)
+
                 }
             }
             navButtons.add(navButton)
