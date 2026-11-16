@@ -713,39 +713,66 @@ class MainActivity : Activity() {
         }
         root.addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
 
-        // Compact persistent dock inspired by FlClashX; the tiger dashboard stays the home screen.
+        // Compact FlClashX-inspired navigation dock with clear selected state.
         val bottomNav = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = android.view.Gravity.CENTER
-            setPadding(dp(8), dp(7), dp(8), dp(7))
+            setPadding(dp(7), dp(7), dp(7), dp(7))
             background = GradientDrawable().apply {
-                setColor(Color.rgb(9, 9, 11))
-                cornerRadius = dp(22).toFloat()
-                setStroke(dp(1), Color.rgb(42, 42, 46))
+                setColor(Color.rgb(15, 17, 21))
+                cornerRadius = dp(25).toFloat()
+                setStroke(dp(1), Color.rgb(48, 52, 60))
+            }
+            if (android.os.Build.VERSION.SDK_INT >= 21) elevation = dp(8).toFloat()
+        }
+        val navViews = mutableListOf<TextView>()
+        fun updateNavSelection(selected: Int) {
+            navViews.forEachIndexed { index, item ->
+                val active = index == selected
+                item.setTextColor(if (active) Color.rgb(242, 245, 250) else Color.rgb(151, 157, 168))
+                item.background = GradientDrawable().apply {
+                    setColor(if (active) Color.rgb(43, 47, 56) else Color.TRANSPARENT)
+                    cornerRadius = dp(18).toFloat()
+                    if (active) setStroke(dp(1), Color.rgb(73, 79, 91))
+                }
+                item.alpha = if (active) 1f else 0.88f
             }
         }
-        fun navItem(symbol: String, label: String, action: () -> Unit) =
+        fun navItem(symbol: String, label: String, index: Int, action: () -> Unit): TextView =
             TextView(this).apply {
                 text = "$symbol\\n$label"
-                textSize = 10f
+                textSize = 11f
+                typeface = android.graphics.Typeface.create(
+                    "sans-serif-medium", android.graphics.Typeface.NORMAL
+                )
                 gravity = android.view.Gravity.CENTER
-                setTextColor(Color.rgb(205, 205, 210))
-                setPadding(dp(4), dp(5), dp(4), dp(5))
+                includeFontPadding = false
+                maxLines = 2
+                setLineSpacing(dp(3).toFloat(), 1f)
+                setPadding(dp(3), dp(8), dp(3), dp(8))
                 isClickable = true
                 isFocusable = true
-                setOnClickListener { action() }
-                layoutParams = LinearLayout.LayoutParams(0, dp(48), 1f)
+                contentDescription = label
+                layoutParams = LinearLayout.LayoutParams(0, dp(58), 1f).apply {
+                    setMargins(dp(3), 0, dp(3), 0)
+                }
+                navViews.add(this)
+                setOnClickListener {
+                    updateNavSelection(index)
+                    action()
+                }
             }
-        bottomNav.addView(navItem("⌂", "Главная") { scroll.smoothScrollTo(0, 0) })
-        bottomNav.addView(navItem("◈", "Серверы") { showServerPicker() })
-        bottomNav.addView(navItem("⇄", "Трафик") { showConnectionDetails() })
-        bottomNav.addView(navItem("⚙", "Настройки") {
+        bottomNav.addView(navItem("⌂", "Главная", 0) { scroll.smoothScrollTo(0, 0) })
+        bottomNav.addView(navItem("◈", "Серверы", 1) { showServerPicker() })
+        bottomNav.addView(navItem("⇄", "Трафик", 2) { showConnectionDetails() })
+        bottomNav.addView(navItem("⚙", "Настройки", 3) {
             settingsExpanded = true
             settingsHeader.visibility = View.VISIBLE
             settingsHeader.text = "Настройки и импорт  ⌄"
             findImportButtonsVisibility()
             scroll.post { scroll.smoothScrollTo(0, settingsHeader.top) }
         })
+        updateNavSelection(0)
         root.addView(LinearLayout(this).apply {
             setPadding(dp(12), dp(6), dp(12), dp(6))
             addView(bottomNav, LinearLayout.LayoutParams(
