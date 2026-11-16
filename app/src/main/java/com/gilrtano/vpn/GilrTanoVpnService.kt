@@ -25,7 +25,8 @@ class GilrTanoVpnService : VpnService() {
     @Volatile private var coreInitialized = false
     @Volatile private var activeConfig: String? = null
     @Volatile private var fallbackConfig: String? = null
-    @Volatile private var fallbackChain: List<Pair<String, Boolean>> = emptyList()
+    private data class FallbackCandidate(val config: String, val boxMode: Boolean, val portalMode: Boolean)
+    @Volatile private var fallbackChain: List<FallbackCandidate> = emptyList()
     @Volatile private var fallbackIndex = -1
     @Volatile private var preferredConfig: String? = null
     @Volatile private var automaticMode = false
@@ -106,7 +107,9 @@ class GilrTanoVpnService : VpnService() {
                                 val root = JSONObject(profile.config)
                                 root.has("endpoints") && !root.has("outbounds")
                             }.getOrDefault(false)
-                            profile.config to useSingBox
+                            // Both imported engines belong to PORTAL; MASQUE uses Xray,
+                            // while AmneziaWG uses sing-box.
+                            FallbackCandidate(profile.config, useSingBox, true)
                         }
                         // An optional private archive may be injected by CI from a secret
                         // URL. It is deliberately not stored in this public repository.
@@ -118,7 +121,7 @@ class GilrTanoVpnService : VpnService() {
                                             val root = JSONObject(profile.config)
                                             root.has("endpoints") && !root.has("outbounds")
                                         }.getOrDefault(false)
-                                        profile.config to useSingBox
+                                        FallbackCandidate(profile.config, useSingBox, true)
                                     }
                                 }
                             }.onFailure { error ->
@@ -126,14 +129,14 @@ class GilrTanoVpnService : VpnService() {
                             }.getOrDefault(emptyList())
                         } else emptyList()
                         fallbackChain = (importedProfiles + bundledProfiles)
-                            .distinctBy { it.first }
-                            .filterNot { it.first == config }
+                            .distinctBy { it.config }
+                            .filterNot { it.config == config }
                         Log.i(TAG, "Loaded ${importedProfiles.size} imported and ${bundledProfiles.size} bundled PORTAL failover profiles")
                     }
                     if (!fallbackConfig.isNullOrBlank() && fallbackConfig != config &&
-                        fallbackChain.none { it.first == fallbackConfig }) {
-                        // Quattro is appended after PORTAL candidates as the final fallback.
-                        fallbackChain = fallbackChain + (fallbackConfig!! to fallbackBoxMode)
+                        fallbackChain.none { it.config == fallbackConfig }) {
+                        // Explicit Quattro is appended after PORTAL candidates as the final fallback.
+                        fallbackChain = fallbackChain + FallbackCandidate(fallbackConfig!!, fallbackBoxMode, false)
                     }
                     fallbackIndex = -1
                     preferredConfig = intent.getStringExtra(EXTRA_PREFERRED_CONFIG)
@@ -184,10 +187,14 @@ class GilrTanoVpnService : VpnService() {
         usingFallback = true
         lastAutomaticSwitchAt = System.currentTimeMillis()
         consecutiveProbeFailures = 0
-        val (config, isBox) = fallbackChain[next]
-        val label = if (isBox) "PORTAL AmneziaWG ${next + 1}/${fallbackChain.size}" else "Quattro"
+        val candidate = fallbackChain[next]
+        val label = when {
+            candidate.portalMode && candidate.boxMode -> "PORTAL AmneziaWG " + (next + 1) + "/" + fallbackChain.size
+            candidate.portalMode -> "PORTAL MASQUE " + (next + 1) + "/" + fallbackChain.size
+            else -> "Quattro"
+        }
         broadcastStatus("Переключаюсь… $reason. Выбираю $label")
-        switchTunnel(config, isBox, isBox)
+        switchTunnel(candidate.config, candidate.boxMode, candidate.portalMode)
         return true
     }
     private fun startTunnel(config: String) {
