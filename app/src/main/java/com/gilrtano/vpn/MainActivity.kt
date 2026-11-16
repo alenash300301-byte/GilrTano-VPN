@@ -71,7 +71,6 @@ class MainActivity : Activity() {
     private lateinit var pingMetric: TextView
     private lateinit var protocolMetric: TextView
     private lateinit var connectButton: PowerOrbButtonView
-    private lateinit var energyOrb: EnergyOrbGLView
     @Volatile private var scanningFree = false
     private var activeFree = false
     private var settingsExpanded = false
@@ -102,7 +101,6 @@ class MainActivity : Activity() {
                 refreshMode()
                 status.setTextColor(Color.rgb(36, 255, 72))
                 updatePowerOrb(true)
-                if (::energyOrb.isInitialized) energyOrb.setOrbState(EnergyOrbGLView.OrbState.CONNECTED)
                 if (::connectionTimer.isInitialized) {
                     connectionTimer.base = SystemClock.elapsedRealtime()
                     connectionTimer.visibility = View.VISIBLE
@@ -113,7 +111,6 @@ class MainActivity : Activity() {
             } else if (message == "Отключено" || message.startsWith("Ошибка")) {
                 status.setTextColor(Color.LTGRAY)
                 updatePowerOrb(false)
-                if (::energyOrb.isInitialized) energyOrb.setOrbState(EnergyOrbGLView.OrbState.IDLE)
                 if (::connectionTimer.isInitialized) {
                     connectionTimer.stop()
                     connectionTimer.visibility = View.GONE
@@ -123,7 +120,6 @@ class MainActivity : Activity() {
             } else if (message.startsWith("Подключаю") || message.startsWith("Запускаю") || message.startsWith("Запуск Xray") || message.startsWith("Переключаю")) {
                 status.setTextColor(Color.rgb(255, 166, 55))
                 connectButton.setState(PowerOrbButtonView.State.CONNECTING)
-                if (::energyOrb.isInitialized) energyOrb.setOrbState(EnergyOrbGLView.OrbState.CONNECTING)
                 // Keep the ignition animation visible while the tunnel is starting.
             }
             val busy = message.startsWith("Подключаю") || message.startsWith("Запускаю") || message.startsWith("Запуск Xray") || message.startsWith("Переключаю")
@@ -315,15 +311,7 @@ class MainActivity : Activity() {
                     clipChildren = false
                     clipToPadding = false
                 }
-                // Transparent GLES flame layer behind the original repository PNG.
-                energyOrb = EnergyOrbGLView(this@MainActivity).apply {
-                    setOrbState(EnergyOrbGLView.OrbState.IDLE)
-                    alpha = 1f
-                }
-                heroFrame.addView(energyOrb, FrameLayout.LayoutParams(dp(224), dp(224),
-                    android.view.Gravity.CENTER).apply {
-                    topMargin = dp(150)
-                })
+                // Flame and press effects are drawn in the button view itself; no SurfaceView overlay.
                 // Keep the original artwork visible and interactive above the flame.
                 connectButton.useGlArtwork = false
                 connectButton.background = android.graphics.drawable.ColorDrawable(Color.TRANSPARENT)
