@@ -737,9 +737,7 @@ class MainActivity : Activity() {
             incoming.animate().translationX(0f).alpha(1f)
                 .setDuration(450L)
                 .setInterpolator(android.view.animation.PathInterpolator(0.2f, 0f, 0f, 1f))
-                .withEndAction {
-                    if (generation == pageTransitionGeneration) navigationDock.setSelectedIndex(index, true)
-                }.start()
+                .start()
             currentPageIndex = index
             if (index == 1) updateServerPage()
             if (index == 2) refreshProfileCard()
