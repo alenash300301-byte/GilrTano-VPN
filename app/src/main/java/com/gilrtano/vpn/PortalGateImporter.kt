@@ -156,7 +156,7 @@ object PortalGateImporter {
             when {
                 key in intKeys -> value.toIntOrNull()?.let { amnezia.put(key, it) }
                 key in stringKeys && value.isNotBlank() -> amnezia.put(key, value)
-                key in boolKeys -> amnezia.put(key, value.equals("true", true))
+                key in boolKeys -> amnezia.put(key, value.equals("true", true) || value.equals("on", true) || value == "1" || value.equals("yes", true))
             }
         }
         val peerJson = JSONObject()
@@ -182,7 +182,7 @@ object PortalGateImporter {
             .put("private_key", privateKey)
             .put("address", JSONArray(addresses))
             .put("peers", JSONArray().put(peerJson))
-            .put("amnezia", amnezia)
+            .put("awg", amnezia)
         iface["mtu"]?.toIntOrNull()?.let { endpointJson.put("mtu", it) }
         val dnsJson = JSONObject()
         if (dnsServers.isNotEmpty()) {
