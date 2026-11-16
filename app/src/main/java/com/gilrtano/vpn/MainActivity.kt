@@ -60,6 +60,7 @@ class MainActivity : Activity() {
     private lateinit var servers: Spinner
     private lateinit var quattroTab: Button
     private lateinit var freeTab: Button
+    private lateinit var portalGateButton: Button
     private lateinit var autoTab: Button
     private var autoMode = true
     private var activeMode: String = "auto"
@@ -85,6 +86,7 @@ class MainActivity : Activity() {
     private var pendingFallbackConfig: String? = null
     private var pendingPreferredConfig: String? = null
     private var pendingAutomatic = false
+    private var pendingPortalAwg = false
     private val requestCode = 4101
     private val docxRequestCode = 4102
 
@@ -122,11 +124,11 @@ class MainActivity : Activity() {
                 }
                 updateServerCard(false)
                 resetConnectButtonGlow()
-            } else if (message.startsWith("Подключаю") || message.startsWith("Запускаю") || message.startsWith("Запуск Xray") || message.startsWith("Переключаю")) {
+            } else if (message.startsWith("Подключаю") || message.startsWith("Запускаю") || (message.startsWith("Запуск Xray") || message.startsWith("Запуск PORTAL") || message.startsWith("Запуск Quattro")) || message.startsWith("Переключаю")) {
                 status.setTextColor(Color.rgb(255, 166, 55))
                 // Keep the ignition animation visible while the tunnel is starting.
             }
-            val busy = message.startsWith("Подключаю") || message.startsWith("Запускаю") || message.startsWith("Запуск Xray") || message.startsWith("Переключаю")
+            val busy = message.startsWith("Подключаю") || message.startsWith("Запускаю") || (message.startsWith("Запуск Xray") || message.startsWith("Запуск PORTAL") || message.startsWith("Запуск Quattro")) || message.startsWith("Переключаю")
             // The single power button remains usable while connecting so it can cancel,
             // and while connected so it can disconnect.
             connectButton.isEnabled = true
@@ -181,14 +183,18 @@ class MainActivity : Activity() {
             setOnClickListener { switchMode(false) }
         }
         freeTab = Button(this).apply {
-            text = "БЕСПЛАТНЫЙ"
-            setOnClickListener { switchMode(true) }
+            text = "PORTAL GATE"
+            setOnClickListener { startActivity(Intent(this@MainActivity, PortalGateActivity::class.java)) }
         }
         autoTab = Button(this).apply {
-            text = "АВТО"
-            setOnClickListener { switchToAuto() }
+            text = "АВТО QUATTRO"
+            setOnClickListener { switchMode(false) }
         }
 
+        portalGateButton = Button(this).apply {
+            text = "ОТКРЫТЬ PORTAL GATE"
+            setOnClickListener { startActivity(Intent(this@MainActivity, PortalGateActivity::class.java)) }
+        }
         val importPrimary = Button(this).apply {
             text = "Импортировать Quattro"
             setOnClickListener { importFrom(primarySource.text.toString().trim(), false) }
@@ -221,44 +227,61 @@ class MainActivity : Activity() {
                         .setAction(GilrTanoVpnService.ACTION_STOP))
                     return@setOnClickListener
                 }
-                if (autoMode) {
-                    activeFree = quattroNodes.isEmpty() && freeNodes.isNotEmpty()
-                    prefs.edit().putBoolean("active_free_mode", activeFree).apply()
-                    refreshMode()
-                    if (quattroNodes.isEmpty() && freeNodes.isEmpty()) {
-                        status.text = "Ищу бесплатный резерв…"
-                        refreshFreeServersAndFindBest(autoConnectWhenReady = true)
-                        return@setOnClickListener
-                    }
-                }
-                val node = activeNodes.getOrNull(servers.selectedItemPosition)
-                if (node == null) {
-                    Toast.makeText(this@MainActivity, "В этом режиме пока нет серверов", Toast.LENGTH_LONG).show()
-                } else {
+                // One-tap mode: request a fresh WARP/AmneziaWG profile from the
+                // same generator API used by the Cyberportal web UI, then start it.
+                status.text = "Получаю новую конфигурацию WARP…"
+                connectButton.isEnabled = false
+                Thread {
                     try {
-                        val config = GilrTanoVpnService.xrayConfigFromVless(node.uri)
-                        val fallbackConfig = if (autoMode) {
-                            (if (activeFree) quattroNodes.firstOrNull() else freeNodes.firstOrNull())
-                                ?.let { runCatching { GilrTanoVpnService.xrayConfigFromVless(it.uri) }.getOrNull() }
-                        } else null
-                        val preferredConfig = if (autoMode) {
-                            quattroNodes.firstOrNull()?.let { runCatching { GilrTanoVpnService.xrayConfigFromVless(it.uri) }.getOrNull() }
-                        } else null
-                        pendingConfig = config
-                        pendingFallbackConfig = fallbackConfig
-                        pendingPreferredConfig = preferredConfig
-                        pendingAutomatic = autoMode
-                        connectButton.isEnabled = true
-                        status.text = "Подключаю: ${node.name}…"
-                        val permission = VpnService.prepare(this@MainActivity)
-                        if (permission != null) startActivityForResult(permission, requestCode)
-                        else startVpn(config, fallbackConfig, preferredConfig, autoMode)
+                        val generated = WarpGeneratorClient.generateAmneziaProfile()
+                        val profile = PortalGateImporter.parseConf(generated, "WARP-Cyberportal")
+                        val quattro = quattroNodes.firstOrNull()
+                            ?.let { runCatching { GilrTanoVpnService.xrayConfigFromVless(it.uri) }.getOrNull() }
+                        runOnUiThread {
+                            pendingConfig = profile.config
+                            pendingFallbackConfig = quattro
+                            pendingPreferredConfig = null
+                            pendingAutomatic = true
+                            pendingPortalAwg = true
+                            connectButton.isEnabled = true
+                            status.text = "WARP создан. Запрашиваю разрешение VPN…"
+                            val permission = VpnService.prepare(this@MainActivity)
+                            if (permission != null) startActivityForResult(permission, requestCode)
+                            else startWarpVpn(profile.config, quattro)
+                        }
                     } catch (e: Exception) {
-                        pendingConfig = null
-                        connectButton.isEnabled = true
-                        status.text = "Профиль не поддерживается: ${e.message}"
+                        // Generator outage: use the bundled PORTAL archive as the
+                        // primary profile. The service loads the rest as failover.
+                        val bundled = runCatching {
+                            assets.open("portal_gate.zip").use { input ->
+                                PortalGateImporter.parseZip(input).firstOrNull { profile ->
+                                    runCatching {
+                                        org.json.JSONObject(profile.config).optJSONArray("outbounds")
+                                            ?.optJSONObject(0)?.optString("protocol") != "masque"
+                                    }.getOrDefault(true)
+                                }
+                            }
+                        }.getOrNull()
+                        runOnUiThread {
+                            connectButton.isEnabled = true
+                            if (bundled != null) {
+                                pendingConfig = bundled.config
+                                pendingFallbackConfig = quattroNodes.firstOrNull()
+                                    ?.let { runCatching { GilrTanoVpnService.xrayConfigFromVless(it.uri) }.getOrNull() }
+                                pendingPreferredConfig = null
+                                pendingAutomatic = true
+                                pendingPortalAwg = true
+                                status.text = "Генератор WARP недоступен. Запускаю резервный PORTAL…"
+                                val permission = VpnService.prepare(this@MainActivity)
+                                if (permission != null) startActivityForResult(permission, requestCode)
+                                else startWarpVpn(bundled.config, pendingFallbackConfig)
+                            } else {
+                                status.text = "WARP и резервный архив недоступны: ${e.message ?: "ошибка генератора"}"
+                                resetConnectButtonGlow()
+                            }
+                        }
                     }
-                }
+                }.start()
             }
         }
         bestFreeButton = Button(this).apply {
@@ -486,8 +509,7 @@ class MainActivity : Activity() {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = android.view.Gravity.CENTER
                     addView(quattroTab, LinearLayout.LayoutParams(0, dp(44), 1f).apply { rightMargin = dp(6) })
-                    addView(freeTab, LinearLayout.LayoutParams(0, dp(44), 1f).apply { leftMargin = dp(4); rightMargin = dp(4) })
-                    addView(autoTab, LinearLayout.LayoutParams(0, dp(44), 1f).apply { leftMargin = dp(4) })
+                    addView(freeTab, LinearLayout.LayoutParams(0, dp(44), 1f).apply { leftMargin = dp(4) })
                     visibility = View.GONE
                 }
                 settingsHeader = TextView(this@MainActivity).apply {
@@ -506,6 +528,8 @@ class MainActivity : Activity() {
                     }
                 }
                 addView(settingsHeader)
+                portalGateButton.visibility = View.GONE
+                addView(portalGateButton)
                 addView(modeSelectorRow, LinearLayout.LayoutParams.MATCH_PARENT, dp(48))
                 addView(primarySource, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
                 addView(importPrimary)
@@ -598,9 +622,9 @@ class MainActivity : Activity() {
                 false
             }
         }
-        activeMode = prefs.getString("connection_mode", "auto") ?: "auto"
-        autoMode = activeMode == "auto"
-        activeFree = prefs.getBoolean("active_free_mode", false)
+        activeMode = prefs.getString("connection_mode", "quattro") ?: "quattro"
+        autoMode = false
+        activeFree = false
         refreshMode()
         updatePowerOrb(false)
         updateServerCard(false)
@@ -868,10 +892,11 @@ class MainActivity : Activity() {
         val scroll = root.getChildAt(0) as? android.widget.ScrollView ?: return
         val page = scroll.getChildAt(0) as? ViewGroup ?: return
         settingsHeader.visibility = if (settingsExpanded) View.VISIBLE else View.GONE
+        portalGateButton.visibility = if (settingsExpanded) View.VISIBLE else View.GONE
         modeSelectorRow.visibility = if (settingsExpanded) View.VISIBLE else View.GONE
         primarySource.visibility = if (settingsExpanded && !activeFree) View.VISIBLE else View.GONE
-        freeSource.visibility = if (settingsExpanded && activeFree) View.VISIBLE else View.GONE
-        bestFreeButton.visibility = if (settingsExpanded && activeFree) View.VISIBLE else View.GONE
+        freeSource.visibility = View.GONE
+        bestFreeButton.visibility = View.GONE
         checkPing.visibility = if (settingsExpanded) View.VISIBLE else View.GONE
         for (i in 0 until page.childCount) {
             val child = page.getChildAt(i)
@@ -879,7 +904,7 @@ class MainActivity : Activity() {
                 val label = child.text.toString()
                 val show = settingsExpanded && (
                     (!activeFree && (label == "Импортировать Quattro" || label == "Выбрать DOCX Quattro")) ||
-                    (activeFree && label == "Импортировать бесплатные серверы")
+                    (label == "ОТКРЫТЬ PORTAL GATE")
                 )
                 if (label.startsWith("Импортировать") || label == "Выбрать DOCX Quattro") {
                     child.visibility = if (show) View.VISIBLE else View.GONE
@@ -1206,6 +1231,19 @@ class MainActivity : Activity() {
         }.start()
     }
 
+    private fun startWarpVpn(config: String, fallbackQuattro: String?) {
+        val intent = Intent(this, GilrTanoVpnService::class.java)
+            .setAction(GilrTanoVpnService.ACTION_START_PORTAL)
+            .putExtra(GilrTanoVpnService.EXTRA_CONFIG, config)
+            .putExtra(GilrTanoVpnService.EXTRA_ENGINE_BOX, true)
+            .putExtra(GilrTanoVpnService.EXTRA_PORTAL, true)
+            .putExtra(GilrTanoVpnService.EXTRA_AUTO, true)
+            .putExtra(GilrTanoVpnService.EXTRA_FALLBACK_CONFIG, fallbackQuattro)
+            .putExtra(GilrTanoVpnService.EXTRA_FALLBACK_ENGINE_BOX, false)
+        startForegroundService(intent)
+        status.text = "Запускаю сгенерированный WARP. Резервный архив загружает VPN-служба…"
+    }
+
     private fun startVpn(
         config: String,
         fallbackConfig: String? = null,
@@ -1228,14 +1266,19 @@ class MainActivity : Activity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == this.requestCode && resultCode == RESULT_OK) {
             pendingConfig?.let {
-                startVpn(it, pendingFallbackConfig, pendingPreferredConfig, pendingAutomatic)
+                if (pendingPortalAwg) startWarpVpn(it, pendingFallbackConfig)
+                else startVpn(it, pendingFallbackConfig, pendingPreferredConfig, pendingAutomatic)
                 pendingConfig = null
                 pendingFallbackConfig = null
                 pendingPreferredConfig = null
                 pendingAutomatic = false
+                pendingPortalAwg = false
             } ?: run { status.text = "Подключение отменено" }
         } else if (requestCode == this.requestCode) {
             pendingConfig = null
+            pendingFallbackConfig = null
+            pendingPreferredConfig = null
+            pendingPortalAwg = false
             connectButton.isEnabled = true
             status.text = "Разрешение VPN не предоставлено"
         } else if (requestCode == docxRequestCode && resultCode == RESULT_OK) {

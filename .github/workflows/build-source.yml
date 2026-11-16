@@ -3,6 +3,8 @@ name: Build GilrTano VPN APK
 on:
   workflow_dispatch:
   push:
+    branches: [main, 'feature/portal-gate-awg-integration', 'feature/portal-auto-dual-protocol']
+  pull_request:
     branches: [main]
 
 permissions:
@@ -52,16 +54,38 @@ jobs:
           ./scripts/build-native-aar.sh
           test -s app/libs/teapod-core-1.7.7.aar
 
+      - name: Download private PORTALGATE profiles (optional)
+        env:
+          PORTAL_ARCHIVE_URL: ${{ secrets.PORTAL_ARCHIVE_URL }}
+        run: |
+          mkdir -p app/src/main/assets
+          if [ -n "${PORTAL_ARCHIVE_URL:-}" ]; then
+            curl --fail --silent --show-error --location --retry 2 --connect-timeout 15 \
+              "$PORTAL_ARCHIVE_URL" --output app/src/main/assets/portal_gate.zip
+            unzip -tq app/src/main/assets/portal_gate.zip
+            count=$(unzip -Z1 app/src/main/assets/portal_gate.zip | grep -Ec "[.]conf$" || true)
+            test "$count" -eq 121 || {
+              echo "Expected 121 PORTALGATE .conf profiles, found $count"
+              exit 1
+            }
+            echo "Private PORTALGATE archive validated."
+          else
+            echo "PORTAL_ARCHIVE_URL is not configured; build continues without bundled private profiles."
+          fi
+
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
 
       - name: Build APK
-        run: gradle --no-daemon assembleDebug
+        run: |
+          gradle --no-daemon assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: GilrTano-VPN-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: GilrTano-VPN-debug
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
