@@ -72,6 +72,8 @@ class MainActivity : Activity() {
     private lateinit var pingMetric: TextView
     private lateinit var downloadMetric: TextView
     private lateinit var uploadMetric: TextView
+    private lateinit var trafficTotalMetric: TextView
+    private lateinit var protocolMetric: TextView
     private val trafficHandler = Handler(Looper.getMainLooper())
     private var lastRxBytes = TrafficStats.getTotalRxBytes()
     private var lastTxBytes = TrafficStats.getTotalTxBytes()
@@ -354,6 +356,34 @@ class MainActivity : Activity() {
                 addView(connectionTimer, LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, dp(22)
                 ))
+                addView(LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = android.view.Gravity.CENTER
+                    background = GradientDrawable().apply {
+                        setColor(Color.rgb(10, 10, 13))
+                        cornerRadius = dp(18).toFloat()
+                        setStroke(dp(1), Color.rgb(65, 30, 32))
+                    }
+                    setPadding(dp(8), dp(8), dp(8), dp(8))
+                    fun stat(title: String, initial: String): LinearLayout =
+                        LinearLayout(this@MainActivity).apply {
+                            orientation = LinearLayout.VERTICAL
+                            gravity = android.view.Gravity.CENTER
+                            addView(TextView(this@MainActivity).apply {
+                                text = title; textSize = 10f; setTextColor(Color.LTGRAY)
+                            })
+                            addView(TextView(this@MainActivity).apply {
+                                text = initial; textSize = 14f
+                                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                                setTextColor(Color.WHITE)
+                                if (title == "Трафик приложения") trafficTotalMetric = this
+                                if (title == "Протокол") protocolMetric = this
+                            })
+                        }
+                    addView(stat("Состояние", "VPN"), LinearLayout.LayoutParams(0, dp(48), 1f))
+                    addView(stat("Трафик приложения", "0,00 ГБ"), LinearLayout.LayoutParams(0, dp(48), 1f))
+                    addView(stat("Протокол", "QUATTRO"), LinearLayout.LayoutParams(0, dp(48), 1f))
+                }, LinearLayout.LayoutParams.MATCH_PARENT, dp(66).apply { topMargin = dp(8) })
                 // The central glowing orb is the primary connect/disconnect control.
                 // Keep the accessible action button as the click target, but remove its
                 // duplicate pill from the visual layout to match the approved reference.
@@ -529,7 +559,13 @@ class MainActivity : Activity() {
                 setOnClickListener {
                     when (index) {
                         0 -> { settingsExpanded = false; findImportButtonsVisibility(); scroll.smoothScrollTo(0, 0) }
-                        1 -> { settingsExpanded = false; findImportButtonsVisibility(); showServerPicker() }
+                        1 -> {
+                            settingsExpanded = false
+                            findImportButtonsVisibility()
+                            servers.visibility = View.VISIBLE
+                            modeSelectorRow.visibility = View.VISIBLE
+                            showServerPicker()
+                        }
                         2 -> { settingsExpanded = false; findImportButtonsVisibility(); scroll.smoothScrollTo(0, dp(560)) }
                         3 -> {
                             settingsExpanded = true
@@ -908,6 +944,7 @@ class MainActivity : Activity() {
         quattroTab.setTextColor(if (!autoMode && !activeFree) Color.WHITE else Color.LTGRAY)
         freeTab.setTextColor(if (!autoMode && activeFree) Color.WHITE else Color.LTGRAY)
         autoTab.setTextColor(if (autoMode) Color.WHITE else Color.LTGRAY)
+        if (::protocolMetric.isInitialized) protocolMetric.text = if (activeFree) "FREE" else "QUATTRO"
         primarySource.visibility = if (activeFree) ViewGroup.GONE else ViewGroup.VISIBLE
         freeSource.visibility = if (activeFree) ViewGroup.VISIBLE else ViewGroup.GONE
         findImportButtonsVisibility()
@@ -963,6 +1000,12 @@ class MainActivity : Activity() {
                 val connected = ::status.isInitialized && status.text.toString().contains("Подключено")
                 downloadMetric.text = String.format(java.util.Locale.US, "%.1f Мбит/с", if (connected) down else 0.0)
                 uploadMetric.text = String.format(java.util.Locale.US, "%.1f Мбит/с", if (connected) up else 0.0)
+                if (::trafficTotalMetric.isInitialized) {
+                    val appRx = TrafficStats.getUidRxBytes(android.os.Process.myUid()).coerceAtLeast(0L)
+                    val appTx = TrafficStats.getUidTxBytes(android.os.Process.myUid()).coerceAtLeast(0L)
+                    val totalGb = (appRx + appTx) / 1_000_000_000.0
+                    trafficTotalMetric.text = String.format(java.util.Locale.US, "%.2f ГБ", totalGb)
+                }
                 lastRxBytes = rx
                 lastTxBytes = tx
                 lastTrafficSample = now
