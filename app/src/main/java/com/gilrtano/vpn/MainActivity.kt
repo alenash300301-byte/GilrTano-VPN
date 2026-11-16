@@ -124,11 +124,11 @@ class MainActivity : Activity() {
                 }
                 updateServerCard(false)
                 resetConnectButtonGlow()
-            } else if (message.startsWith("Подключаю") || message.startsWith("Запускаю") || (message.startsWith("Запуск Xray") || message.startsWith("Запуск PORTAL") || message.startsWith("Запуск Quattro")) || message.startsWith("Переключаю")) {
+            } else if (message.startsWith("Подключаю") || message.startsWith("Запускаю") || (message.startsWith("Запуск Xray") || message.startsWith("Запуск PORTAL") || message.startsWith("Запуск Quattro")) || message.startsWith("Переключаю") || message.startsWith("Переключаюсь") || message.startsWith("Проверяю восстановление")) {
                 status.setTextColor(Color.rgb(255, 166, 55))
                 // Keep the ignition animation visible while the tunnel is starting.
             }
-            val busy = message.startsWith("Подключаю") || message.startsWith("Запускаю") || (message.startsWith("Запуск Xray") || message.startsWith("Запуск PORTAL") || message.startsWith("Запуск Quattro")) || message.startsWith("Переключаю")
+            val busy = message.startsWith("Подключаю") || message.startsWith("Запускаю") || (message.startsWith("Запуск Xray") || message.startsWith("Запуск PORTAL") || message.startsWith("Запуск Quattro")) || message.startsWith("Переключаю") || message.startsWith("Переключаюсь") || message.startsWith("Проверяю восстановление")
             // The single power button remains usable while connecting so it can cancel,
             // and while connected so it can disconnect.
             connectButton.isEnabled = true
@@ -221,7 +221,8 @@ class MainActivity : Activity() {
                 val isConnecting = currentStatus.startsWith("Подключаю") ||
                     currentStatus.startsWith("Запускаю") || currentStatus.startsWith("Запуск Xray") ||
                     currentStatus.startsWith("Запуск PORTAL") || currentStatus.startsWith("Запуск Quattro") ||
-                    currentStatus.startsWith("Переключаю")
+                    currentStatus.startsWith("Переключаю") || currentStatus.startsWith("Переключаюсь") ||
+                    currentStatus.startsWith("Проверяю восстановление")
                 if (isConnected || isConnecting) {
                     pendingConfig = null
                     status.text = if (isConnected) "Отключаю VPN…" else "Отменяю подключение…"
