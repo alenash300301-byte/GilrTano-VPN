@@ -2,6 +2,8 @@ package com.gilrtano.vpn
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.app.ProgressDialog
+import android.content.pm.PackageInstaller
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -65,6 +67,9 @@ class MainActivity : Activity() {
     private var activeMode: String = "auto"
     private lateinit var bestFreeButton: Button
     private lateinit var checkPing: Button
+    private lateinit var updateButton: Button
+    private val releaseUpdater by lazy { ReleaseUpdater(this) }
+    private val updateExecutor = Executors.newSingleThreadExecutor()
     private lateinit var modeSelectorRow: LinearLayout
     private lateinit var pingMetric: TextView
     private lateinit var downloadMetric: TextView
@@ -268,6 +273,10 @@ class MainActivity : Activity() {
         checkPing = Button(this).apply {
             text = "Проверить пинг"
             setOnClickListener { measureSelectedPing() }
+        }
+        updateButton = Button(this).apply {
+            text = "Проверить обновления"
+            setOnClickListener { checkForAppUpdate() }
         }
 
         val root = LinearLayout(this).apply {
@@ -506,6 +515,7 @@ class MainActivity : Activity() {
                     }
                 }
                 addView(settingsHeader)
+                addView(updateButton)
                 addView(modeSelectorRow, LinearLayout.LayoutParams.MATCH_PARENT, dp(48))
                 addView(primarySource, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
                 addView(importPrimary)
@@ -731,10 +741,124 @@ class MainActivity : Activity() {
         visit(findViewById(android.R.id.content))
     }
 
+    private fun checkForAppUpdate() {
+        updateButton.isEnabled = false
+        updateButton.text = "Проверяем обновления…"
+        updateExecutor.execute {
+            try {
+                val release = releaseUpdater.latestRelease()
+                val installed = packageManager.getPackageInfo(packageName, 0).versionName ?: "0"
+                runOnUiThread {
+                    updateButton.isEnabled = true
+                    updateButton.text = "Проверить обновления"
+                    if (release == null || !releaseUpdater.isNewer(release.tag, installed)) {
+                        AlertDialog.Builder(this)
+                            .setTitle("Обновления")
+                            .setMessage("Установлена последняя версия GilrTano VPN ($installed).")
+                            .setPositiveButton("Понятно", null)
+                            .show()
+                    } else {
+                        val notes = release.notes.trim().ifBlank { "Исправления ошибок и улучшения стабильности." }
+                        AlertDialog.Builder(this)
+                            .setTitle("Доступна новая версия \${release.tag}")
+                            .setMessage("Установлена версия $installed\n\nЧто нового:\n$notes\n\nAPK будет проверен по SHA-256 перед установкой.")
+                            .setPositiveButton("Скачать и установить") { _, _ ->
+                                downloadAndInstallUpdate(release)
+                            }
+                            .setNegativeButton("Позже", null)
+                            .show()
+                    }
+                }
+            } catch (error: Exception) {
+                runOnUiThread {
+                    updateButton.isEnabled = true
+                    updateButton.text = "Проверить обновления"
+                    AlertDialog.Builder(this)
+                        .setTitle("Не удалось проверить обновления")
+                        .setMessage("Проверьте подключение к интернету и попробуйте ещё раз.\n\nПричина: \${error.message ?: "неизвестная ошибка"}")
+                        .setPositiveButton("Закрыть", null)
+                        .show()
+                }
+            }
+        }
+    }
+
+    private fun downloadAndInstallUpdate(release: AppRelease) {
+        val progress = ProgressDialog(this).apply {
+            setTitle("Загрузка обновления")
+            setMessage("Загружаем новую версию GilrTano VPN…")
+            setProgressStyle(ProgressDialog.STYLE_HORIZONTAL)
+            max = 100
+            progress = 0
+            setCancelable(false)
+            show()
+        }
+        val apk = java.io.File(cacheDir, "GilrTano-\${release.tag}.apk")
+        updateExecutor.execute {
+            try {
+                releaseUpdater.download(release, apk) { value ->
+                    runOnUiThread { if (!isFinishing) progress.progress = value }
+                }
+                runOnUiThread {
+                    progress.dismiss()
+                    AlertDialog.Builder(this)
+                        .setTitle("Обновление загружено")
+                        .setMessage("Файл успешно загружен и проверен. Установить версию \${release.tag}?")
+                        .setPositiveButton("Установить") { _, _ ->
+                            runCatching { releaseUpdater.install(apk) }.onFailure {
+                                Toast.makeText(this, "Не удалось запустить установку: \${it.message}", Toast.LENGTH_LONG).show()
+                            }
+                        }
+                        .setNegativeButton("Позже", null)
+                        .show()
+                }
+            } catch (error: Exception) {
+                apk.delete()
+                runOnUiThread {
+                    progress.dismiss()
+                    AlertDialog.Builder(this)
+                        .setTitle("Ошибка обновления")
+                        .setMessage("Не удалось загрузить или проверить APK.\n\n\${error.message ?: "Неизвестная ошибка"}")
+                        .setPositiveButton("Закрыть", null)
+                        .show()
+                }
+            }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        if (intent == null) return
+        setIntent(intent)
+        if (intent.action != ACTION_INSTALL_STATUS) return
+        when (intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)) {
+            PackageInstaller.STATUS_PENDING_USER_ACTION -> {
+                val confirmation = if (android.os.Build.VERSION.SDK_INT >= 33) {
+                    intent.getParcelableExtra(Intent.EXTRA_INTENT, Intent::class.java)
+                } else {
+                    @Suppress("DEPRECATION")
+                    intent.getParcelableExtra(Intent.EXTRA_INTENT)
+                }
+                confirmation?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                if (confirmation != null) startActivity(confirmation)
+            }
+            PackageInstaller.STATUS_SUCCESS -> Toast.makeText(this, "GilrTano VPN успешно обновлён", Toast.LENGTH_LONG).show()
+            else -> {
+                val message = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)
+                Toast.makeText(this, "Установка обновления не выполнена: \${message ?: "отменено"}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
     override fun onDestroy() {
         trafficHandler.removeCallbacks(trafficSample)
         fireAnimator?.cancel()
+        updateExecutor.shutdownNow()
         super.onDestroy()
+    }
+
+    companion object {
+        const val ACTION_INSTALL_STATUS = "com.gilrtano.vpn.UPDATE_INSTALL_STATUS"
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
@@ -887,6 +1011,7 @@ class MainActivity : Activity() {
             }
         }
         pingStatus.visibility = if (settingsExpanded) View.VISIBLE else View.GONE
+        updateButton.visibility = if (settingsExpanded) View.VISIBLE else View.GONE
     }
 
     private val trafficSample = object : Runnable {
