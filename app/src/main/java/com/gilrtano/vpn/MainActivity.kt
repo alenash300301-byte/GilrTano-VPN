@@ -1423,11 +1423,9 @@ class MainActivity : Activity() {
                 if (result.isSuccess) {
                     val ms = result.getOrThrow()
                     pingStatus.text = "Пинг до сервера: ${ms} мс (TCP)"
-                    if (::pingMetric.isInitialized) pingMetric.text = "$ms мс"
                     if (::serverCardPing.isInitialized) serverCardPing.text = "$ms мс"
                 } else {
                     pingStatus.text = "Сервер не отвечает на проверку"
-                    if (::pingMetric.isInitialized) pingMetric.text = "— мс"
                 }
             }
         }.start()
