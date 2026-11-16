@@ -368,9 +368,12 @@ class MainActivity : Activity() {
                 addView(LinearLayout(this@MainActivity).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = android.view.Gravity.CENTER_VERTICAL
-                    background = GradientDrawable().apply {
-                        setColor(Color.rgb(10, 10, 12)); cornerRadius = dp(28).toFloat()
-                        setStroke(dp(1), Color.rgb(45, 45, 48))
+                    background = GradientDrawable(
+                        GradientDrawable.Orientation.LEFT_RIGHT,
+                        intArrayOf(Color.rgb(16, 10, 12), Color.rgb(7, 8, 10), Color.rgb(18, 8, 10))
+                    ).apply {
+                        cornerRadius = dp(24).toFloat()
+                        setStroke(dp(1), Color.rgb(125, 34, 39))
                     }
                     setPadding(dp(16), dp(10), dp(14), dp(10))
                     setOnClickListener { showServerPicker() }
@@ -391,6 +394,21 @@ class MainActivity : Activity() {
                         addView(serverCardTitle)
                         addView(serverCardSubtitle)
                     }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                    addView(TextView(this@MainActivity).apply {
+                        text = "AUTO PORTAL"
+                        textSize = 10f
+                        typeface = android.graphics.Typeface.DEFAULT_BOLD
+                        gravity = android.view.Gravity.CENTER
+                        setTextColor(Color.rgb(75, 255, 105))
+                        setPadding(dp(10), dp(7), dp(10), dp(7))
+                        background = GradientDrawable().apply {
+                            setColor(Color.rgb(5, 28, 12))
+                            cornerRadius = dp(18).toFloat()
+                            setStroke(dp(1), Color.rgb(45, 225, 78))
+                        }
+                    }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                        leftMargin = dp(8); rightMargin = dp(6)
+                    })
                     addView(LinearLayout(this@MainActivity).apply {
                         orientation = LinearLayout.HORIZONTAL
                         gravity = android.view.Gravity.CENTER_VERTICAL
