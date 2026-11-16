@@ -98,7 +98,13 @@ object PortalGateImporter {
         val sections = linkedMapOf<String, MutableMap<String, String>>()
         var section = ""
         text.removePrefix("\uFEFF").lineSequence().forEach { raw ->
-            val line = raw.substringBefore('#').substringBefore(';').trim()
+            // WARP generators sometimes export the Cloudflare client ID as a commented
+            // "Reserved = a,b,c" line because generic WireGuard apps ignore it.
+            val rawTrimmed = raw.trim()
+            val reservedComment = rawTrimmed.removePrefix("#").trim()
+                .takeIf { it.startsWith("reserved", ignoreCase = true) && it.contains('=') }
+            val line = (reservedComment ?: raw.substringBefore('#'))
+                .substringBefore(';').trim()
             if (line.isEmpty()) return@forEach
             val header = sectionPattern.matchEntire(line)
             if (header != null) {
@@ -160,6 +166,15 @@ object PortalGateImporter {
             .put("allowed_ips", JSONArray(allowed))
         peer["presharedkey"]?.takeIf { it.isNotBlank() }?.let { peerJson.put("pre_shared_key", it) }
         peer["persistentkeepalive"]?.toIntOrNull()?.let { peerJson.put("persistent_keepalive_interval", it) }
+        peer["reserved"]?.takeIf { it.isNotBlank() }?.let { rawReserved ->
+            val reserved = rawReserved.split(',').map { value ->
+                value.trim().toIntOrNull()?.also { require(it in 0..255) {
+                    "Некорректный байт Reserved в $fileName"
+                } } ?: error("Некорректный байт Reserved в $fileName")
+            }
+            require(reserved.size == 3) { "В $fileName поле Reserved должно содержать ровно 3 числа" }
+            peerJson.put("reserved", JSONArray(reserved))
+        }
         val endpointJson = JSONObject()
             .put("type", "awg")
             .put("tag", "proxy")
