@@ -18,7 +18,9 @@ object WarpGeneratorClient {
     )
 
     // Matches the WARP UDP endpoint observed in the user's working PORTAL profile.
-    private const val WARP_ENDPOINT = "162.159.192.1:4500"
+    // Cloudflare's stable endpoint hostname avoids pinning a single anycast IP.
+    // Port 2408 is one of the currently documented WARP UDP ports.
+    private const val WARP_ENDPOINT = "engage.cloudflareclient.com:2408"
 
     fun generateAmneziaProfile(): String {
         val payload = JSONObject()
