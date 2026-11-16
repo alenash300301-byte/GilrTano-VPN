@@ -6,6 +6,8 @@ import android.graphics.Color
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.view.View
+import android.view.animation.AccelerateDecelerateInterpolator
 import android.widget.ImageView
 
 class SplashActivity : Activity() {
@@ -16,21 +18,28 @@ class SplashActivity : Activity() {
         window.statusBarColor = Color.BLACK
         window.navigationBarColor = Color.BLACK
         window.decorView.systemUiVisibility =
-            android.view.View.SYSTEM_UI_FLAG_FULLSCREEN or
-            android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+            View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
 
-        setContentView(ImageView(this).apply {
+        val artwork = ImageView(this).apply {
             setBackgroundColor(Color.BLACK)
             setImageResource(R.drawable.gilrtano_splash)
             scaleType = ImageView.ScaleType.FIT_CENTER
             contentDescription = "GilrTano"
-        })
+            alpha = 0f
+        }
+        setContentView(artwork)
+
+        artwork.animate()
+            .alpha(1f)
+            .setDuration(500L)
+            .setInterpolator(AccelerateDecelerateInterpolator())
+            .start()
 
         handler.postDelayed({
             startActivity(Intent(this, MainActivity::class.java))
-            overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out)
+            overridePendingTransition(R.anim.gilrtano_fade_in, R.anim.gilrtano_fade_out)
             finish()
-        }, 1100L)
+        }, 1450L)
     }
 
     override fun onDestroy() {
