@@ -917,27 +917,125 @@ class MainActivity : Activity() {
     }
 
     private fun showConnectionDetails() {
-        val connected = status.text.toString().contains("Подключено")
-        val currentNode = activeNodes.getOrNull(servers.selectedItemPosition)?.name ?: "Автовыбор"
-        val details = buildString {
-            append(if (connected) "VPN подключён" else "VPN отключён")
-            append("\\n\\nСервер: ")
-            append(currentNode)
-            append("\\nРежим: ")
-            append(if (autoMode) "Автоматический · PORTAL → Quattro" else if (activeFree) "Резервный" else "Quattro")
-            append("\\n\\nВходящий трафик: ")
-            append(if (::downloadMetric.isInitialized) downloadMetric.text else "—")
-            append("\\nИсходящий трафик: ")
-            append(if (::uploadMetric.isInitialized) uploadMetric.text else "—")
-            append("\\nПинг: ")
-            append(if (::pingMetric.isInitialized) pingMetric.text else "—")
+        val dialog = android.app.Dialog(this)
+        val page = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(18), dp(12), dp(18), dp(16))
+            setBackgroundColor(Color.rgb(8, 8, 10))
         }
-        AlertDialog.Builder(this)
-            .setTitle("Состояние соединения")
-            .setMessage(details)
-            .setPositiveButton("Проверить пинг") { _, _ -> measureSelectedPing() }
-            .setNegativeButton("Закрыть", null)
-            .show()
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+        }
+        val heading = TextView(this).apply {
+            text = "СТАТИСТИКА И СОЕДИНЕНИЕ"
+            textSize = 18f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(Color.WHITE)
+        }
+        val close = TextView(this).apply {
+            text = "✕"
+            textSize = 22f
+            gravity = android.view.Gravity.CENTER
+            setTextColor(Color.LTGRAY)
+            isClickable = true
+            setPadding(dp(12), dp(8), dp(8), dp(8))
+            setOnClickListener { dialog.dismiss() }
+        }
+        header.addView(heading, LinearLayout.LayoutParams(0, dp(48), 1f))
+        header.addView(close, LinearLayout.LayoutParams(dp(48), dp(48)))
+        val connectedNow = status.text.toString().contains("Подключено")
+        val state = TextView(this).apply {
+            text = if (connectedNow) "●  ЗАЩИЩЁННОЕ СОЕДИНЕНИЕ" else "○  VPN ОТКЛЮЧЁН"
+            textSize = 13f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(if (connectedNow) Color.rgb(42, 235, 92) else Color.LTGRAY)
+            setPadding(dp(14), dp(14), dp(14), dp(14))
+            background = GradientDrawable().apply {
+                setColor(Color.rgb(18, 22, 19))
+                cornerRadius = dp(14).toFloat()
+                setStroke(dp(1), if (connectedNow) Color.rgb(35, 105, 55) else Color.rgb(55, 55, 60))
+            }
+        }
+        fun infoCard(label: String, value: String): Pair<LinearLayout, TextView> {
+            val card = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(14), dp(12), dp(14), dp(12))
+                background = GradientDrawable().apply {
+                    setColor(Color.rgb(20, 20, 24))
+                    cornerRadius = dp(15).toFloat()
+                    setStroke(dp(1), Color.rgb(48, 48, 55))
+                }
+            }
+            val caption = TextView(this).apply {
+                text = label.uppercase(java.util.Locale.ROOT)
+                textSize = 10f
+                setTextColor(Color.GRAY)
+            }
+            val number = TextView(this).apply {
+                text = value
+                textSize = 19f
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                setTextColor(Color.WHITE)
+                setPadding(0, dp(5), 0, 0)
+                maxLines = 2
+            }
+            card.addView(caption)
+            card.addView(number)
+            return card to number
+        }
+        val downCard = infoCard("ВХОДЯЩАЯ СКОРОСТЬ", if (::downloadMetric.isInitialized) downloadMetric.text.toString() else "0.0 Мбит/с")
+        val upCard = infoCard("ИСХОДЯЩАЯ СКОРОСТЬ", if (::uploadMetric.isInitialized) uploadMetric.text.toString() else "0.0 Мбит/с")
+        val grid = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        grid.addView(downCard.first, LinearLayout.LayoutParams(0, dp(94), 1f).apply { rightMargin = dp(5) })
+        grid.addView(upCard.first, LinearLayout.LayoutParams(0, dp(94), 1f).apply { leftMargin = dp(5) })
+        val currentNode = activeNodes.getOrNull(servers.selectedItemPosition)?.name ?: "Автовыбор"
+        val serverCard = infoCard("ТЕКУЩИЙ СЕРВЕР", currentNode)
+        val modeCard = infoCard("РЕЖИМ РАБОТЫ", if (autoMode) "Автоматический · PORTAL → Quattro" else if (activeFree) "Резервный" else "Quattro")
+        val pingCard = infoCard("ЗАДЕРЖКА", if (::pingMetric.isInitialized) pingMetric.text.toString() else "— мс")
+        val scroll = android.widget.ScrollView(this)
+        val body = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dp(12), 0, 0)
+        }
+        body.addView(state, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(10) })
+        body.addView(grid, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(94)).apply { bottomMargin = dp(10) })
+        body.addView(serverCard.first, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(9) })
+        body.addView(modeCard.first, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(9) })
+        body.addView(pingCard.first, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(12) })
+        val pingButton = Button(this).apply {
+            text = "ПРОВЕРИТЬ ЗАДЕРЖКУ"
+            isAllCaps = false
+            setTextColor(Color.WHITE)
+            background = GradientDrawable().apply {
+                setColor(Color.rgb(24, 38, 27))
+                cornerRadius = dp(13).toFloat()
+                setStroke(dp(1), Color.rgb(45, 130, 65))
+            }
+            setOnClickListener { measureSelectedPing() }
+        }
+        body.addView(pingButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)))
+        scroll.addView(body)
+        page.addView(header)
+        page.addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        dialog.setContentView(page)
+        dialog.setOnShowListener {
+            dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+            dialog.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        }
+        dialog.show()
+        dialog.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        val liveUpdate = object : Runnable {
+            override fun run() {
+                if (!dialog.isShowing) return
+                downCard.second.text = if (::downloadMetric.isInitialized) downloadMetric.text else "0.0 Мбит/с"
+                upCard.second.text = if (::uploadMetric.isInitialized) uploadMetric.text else "0.0 Мбит/с"
+                pingCard.second.text = if (::pingMetric.isInitialized) pingMetric.text else "— мс"
+                trafficHandler.postDelayed(this, 1000L)
+            }
+        }
+        dialog.setOnDismissListener { trafficHandler.removeCallbacks(liveUpdate) }
+        trafficHandler.post(liveUpdate)
     }
 
     private fun updateServerCard(connected: Boolean) {
