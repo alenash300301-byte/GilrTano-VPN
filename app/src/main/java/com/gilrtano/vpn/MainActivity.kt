@@ -518,10 +518,11 @@ class MainActivity : Activity() {
                         setStroke(dp(1), Color.rgb(35, 180, 65))
                     }
                 }
+                // Connection state is overlaid inside the power ring, not shown as a separate row.
                 powerScene.addView(status, FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT, dp(38),
+                    ViewGroup.LayoutParams.WRAP_CONTENT, dp(32),
                     android.view.Gravity.CENTER_HORIZONTAL or android.view.Gravity.BOTTOM
-                ).apply { bottomMargin = dp(20) })
+                ).apply { bottomMargin = dp(43) })
                 addView(powerScene, LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, dp(390)
                 ).apply { topMargin = dp(0); bottomMargin = dp(2) })
@@ -602,8 +603,8 @@ class MainActivity : Activity() {
                         gravity = android.view.Gravity.CENTER_VERTICAL
                         addView(TextView(this@MainActivity).apply {
                             text = "РЕЖИМ ПОДКЛЮЧЕНИЯ"
-                            textSize = 11f
-                            letterSpacing = 0.12f
+                            textSize = 13f
+                            letterSpacing = 0.04f
                             typeface = android.graphics.Typeface.DEFAULT_BOLD
                             setTextColor(Color.rgb(190, 190, 198))
                         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
@@ -623,8 +624,8 @@ class MainActivity : Activity() {
                     }
                     addView(modeSelectorRow)
                     addView(TextView(this@MainActivity).apply {
-                        text = "Авто: PORTAL → Quattro при сбое  ·  Quattro: выбранный профиль"
-                        textSize = 10f
+                        text = "AUTO PORTAL — автоматический резерв  ·  QUATTRO — выбранный профиль"
+                        textSize = 9f
                         gravity = android.view.Gravity.CENTER
                         setTextColor(Color.rgb(135, 135, 145))
                     })
@@ -700,16 +701,7 @@ class MainActivity : Activity() {
                         LinearLayout.LayoutParams(dp(1), dp(30)))
                     addView(detail("МАРШРУТ", if (autoMode) "PORTAL → QUATTRO" else "QUATTRO"), LinearLayout.LayoutParams(0, dp(43), 1.2f))
                 }, LinearLayout.LayoutParams.MATCH_PARENT, dp(62))
-                addView(TextView(this@MainActivity).apply {
-                    text = "Скорость сети"
-                    textSize = 10f
-                    setTextColor(Color.GRAY)
-                    gravity = android.view.Gravity.CENTER
-                    setPadding(0, dp(3), 0, 0)
-                }, LinearLayout.LayoutParams.MATCH_PARENT, dp(20))
-                addView(TrafficWaveView(this@MainActivity), LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, dp(58)
-                ).apply { topMargin = dp(8); bottomMargin = dp(8) })
+                // Speed graph removed from the home screen; live numeric metrics remain below.
                 addView(servers, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)))
                 servers.visibility = View.GONE
                 addView(pingStatus.apply { gravity = android.view.Gravity.CENTER_VERTICAL }, LinearLayout.LayoutParams.MATCH_PARENT, dp(1))
