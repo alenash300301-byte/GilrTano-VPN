@@ -858,9 +858,8 @@ class MainActivity : Activity() {
     }
 
     private fun setPowerButtonLabel(label: String) {
-        // The power glyph is drawn by PowerOrbButtonView itself. Keep the
-        // label separate and anchored below it to avoid icon/text collisions.
-        connectButton.text = label
+        // The custom orb draws its own icon and status capsule.
+        connectButton.setCaption(label)
     }
 
     private fun igniteConnectButton() { connectButton.elevation = dp(12).toFloat() }
