@@ -326,18 +326,25 @@ class MainActivity : Activity() {
                         }
                     })
                 })
-                // Static tiger artwork from the app's bundled assets; no animated GIF.
-                addView(ImageView(this@MainActivity).apply {
+                // Hero composition: full-width tiger artwork with the live VPN power control layered over it.
+                val heroFrame = FrameLayout(this@MainActivity).apply {
+                    clipChildren = false
+                    clipToPadding = false
+                }
+                heroFrame.addView(ImageView(this@MainActivity).apply {
                     setImageResource(R.drawable.tiger_hero)
                     scaleType = ImageView.ScaleType.CENTER_CROP
-                    adjustViewBounds = true
                     contentDescription = "Тигр GilrTano с зелёными глазами"
-                }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(245)).apply {
-                    topMargin = dp(4); bottomMargin = dp(0)
+                }, FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
+                ))
+                heroFrame.addView(connectButton, FrameLayout.LayoutParams(dp(174), dp(174),
+                    android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL).apply {
+                    bottomMargin = dp(12)
                 })
-                val powerFrame = FrameLayout(this@MainActivity)
-                powerFrame.addView(connectButton, FrameLayout.LayoutParams(dp(184), dp(184), android.view.Gravity.CENTER))
-                addView(powerFrame, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(194)))
+                addView(heroFrame, LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(390)
+                ).apply { topMargin = dp(2); bottomMargin = dp(4) })
                 powerOrb = connectButton
                 connectButton.contentDescription = "Кнопка питания VPN"
                 addView(status.apply {
@@ -353,37 +360,8 @@ class MainActivity : Activity() {
                     format = "%s"
                     visibility = View.GONE
                 }
-                addView(connectionTimer, LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, dp(22)
-                ))
-                addView(LinearLayout(this@MainActivity).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = android.view.Gravity.CENTER
-                    background = GradientDrawable().apply {
-                        setColor(Color.rgb(10, 10, 13))
-                        cornerRadius = dp(18).toFloat()
-                        setStroke(dp(1), Color.rgb(65, 30, 32))
-                    }
-                    setPadding(dp(8), dp(8), dp(8), dp(8))
-                    fun stat(title: String, initial: String): LinearLayout =
-                        LinearLayout(this@MainActivity).apply {
-                            orientation = LinearLayout.VERTICAL
-                            gravity = android.view.Gravity.CENTER
-                            addView(TextView(this@MainActivity).apply {
-                                text = title; textSize = 10f; setTextColor(Color.LTGRAY)
-                            })
-                            addView(TextView(this@MainActivity).apply {
-                                text = initial; textSize = 14f
-                                typeface = android.graphics.Typeface.DEFAULT_BOLD
-                                setTextColor(Color.WHITE)
-                                if (title == "Трафик приложения") trafficTotalMetric = this
-                                if (title == "Протокол") protocolMetric = this
-                            })
-                        }
-                    addView(stat("Состояние", "VPN"), LinearLayout.LayoutParams(0, dp(48), 1f))
-                    addView(stat("Трафик приложения", "0,00 ГБ"), LinearLayout.LayoutParams(0, dp(48), 1f))
-                    addView(stat("Протокол", "QUATTRO"), LinearLayout.LayoutParams(0, dp(48), 1f))
-                }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(66)).apply { topMargin = dp(8) })
+                // Connection duration is displayed in the lower live-statistics panel.
+                // The timer remains driven by the existing VPN status receiver.
                 // The central glowing orb is the primary connect/disconnect control.
                 // Keep the accessible action button as the click target, but remove its
                 // duplicate pill from the visual layout to match the approved reference.
@@ -459,6 +437,58 @@ class MainActivity : Activity() {
                     addView(metric("Входящий", "—", " Мбит/с"), LinearLayout.LayoutParams(0, dp(62), 1f).apply { leftMargin = dp(3); rightMargin = dp(3) })
                     addView(metric("Исходящий", "—", " Мбит/с"), LinearLayout.LayoutParams(0, dp(62), 1f).apply { leftMargin = dp(6) })
                 }, LinearLayout.LayoutParams.MATCH_PARENT, dp(62))
+                // Secondary live panel, matching FlClashX's modular dashboard-card approach.
+                addView(LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = android.view.Gravity.CENTER
+                    background = GradientDrawable().apply {
+                        setColor(Color.rgb(9, 9, 12))
+                        cornerRadius = dp(22).toFloat()
+                        setStroke(dp(1), Color.rgb(105, 28, 34))
+                    }
+                    setPadding(dp(6), dp(12), dp(6), dp(12))
+                    fun infoCell(label: String, value: View): LinearLayout =
+                        LinearLayout(this@MainActivity).apply {
+                            orientation = LinearLayout.VERTICAL
+                            gravity = android.view.Gravity.CENTER
+                            addView(TextView(this@MainActivity).apply {
+                                text = label; textSize = 11f; setTextColor(Color.LTGRAY)
+                            })
+                            addView(value)
+                        }
+                    val durationValue = connectionTimer.apply {
+                        textSize = 15f
+                        gravity = android.view.Gravity.CENTER
+                        setTextColor(Color.WHITE)
+                        format = "%s"
+                    }
+                    val trafficValue = TextView(this@MainActivity).apply {
+                        text = "0,00 ГБ"; textSize = 15f
+                        typeface = android.graphics.Typeface.DEFAULT_BOLD
+                        setTextColor(Color.WHITE)
+                        trafficTotalMetric = this
+                    }
+                    val protocolValue = TextView(this@MainActivity).apply {
+                        text = "QUATTRO"; textSize = 15f
+                        typeface = android.graphics.Typeface.DEFAULT_BOLD
+                        setTextColor(Color.rgb(55, 255, 95))
+                        protocolMetric = this
+                    }
+                    addView(infoCell("Время соединения", durationValue),
+                        LinearLayout.LayoutParams(0, dp(48), 1f))
+                    addView(View(this@MainActivity).apply {
+                        setBackgroundColor(Color.rgb(65, 55, 58))
+                    }, LinearLayout.LayoutParams(dp(1), dp(42)))
+                    addView(infoCell("Трафик", trafficValue),
+                        LinearLayout.LayoutParams(0, dp(48), 1f))
+                    addView(View(this@MainActivity).apply {
+                        setBackgroundColor(Color.rgb(65, 55, 58))
+                    }, LinearLayout.LayoutParams(dp(1), dp(42)))
+                    addView(infoCell("Протокол", protocolValue),
+                        LinearLayout.LayoutParams(0, dp(48), 1f))
+                }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(82)).apply {
+                    topMargin = dp(10); bottomMargin = dp(10)
+                })
                 addView(TextView(this@MainActivity).apply {
                     text = "Скорость сети"
                     textSize = 10f
@@ -595,12 +625,12 @@ class MainActivity : Activity() {
             isAllCaps = false
             background = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
-                setColor(Color.rgb(7, 24, 12))
-                setStroke(dp(4), Color.rgb(45, 245, 78))
+                setColor(Color.rgb(3, 24, 10))
+                setStroke(dp(3), Color.rgb(45, 255, 82))
             }
             elevation = dp(18).toFloat()
-            minWidth = dp(184)
-            minHeight = dp(184)
+            minWidth = dp(174)
+            minHeight = dp(174)
         }
         activeMode = prefs.getString("connection_mode", "auto") ?: "auto"
         autoMode = activeMode == "auto"
