@@ -19,6 +19,8 @@ import android.widget.TextView
 import android.animation.AnimatorSet
 import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
+import kotlin.math.cos
+import kotlin.math.sin
 
 /** FlClashX-inspired three-state power control with an animated heartbeat trace. */
 class PowerOrbButtonView @JvmOverloads constructor(
