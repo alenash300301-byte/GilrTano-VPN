@@ -517,7 +517,50 @@ class MainActivity : Activity() {
                         })
                     })
                 }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(70)).apply {
-                    topMargin = dp(8); bottomMargin = dp(14)
+                    topMargin = dp(8); bottomMargin = dp(8)
+                })
+                // Branded mode control: automatic failover or a directly selected Quattro profile.
+                addView(LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.VERTICAL
+                    background = GradientDrawable().apply {
+                        setColor(Color.rgb(10, 10, 13))
+                        cornerRadius = dp(18).toFloat()
+                        setStroke(dp(1), Color.rgb(54, 54, 60))
+                    }
+                    setPadding(dp(13), dp(10), dp(13), dp(12))
+                    addView(LinearLayout(this@MainActivity).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = android.view.Gravity.CENTER_VERTICAL
+                        addView(TextView(this@MainActivity).apply {
+                            text = "РЕЖИМ ПОДКЛЮЧЕНИЯ"
+                            textSize = 11f
+                            letterSpacing = 0.12f
+                            typeface = android.graphics.Typeface.DEFAULT_BOLD
+                            setTextColor(Color.rgb(190, 190, 198))
+                        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                        addView(TextView(this@MainActivity).apply {
+                            text = "● LIVE"
+                            textSize = 9f
+                            typeface = android.graphics.Typeface.DEFAULT_BOLD
+                            setTextColor(Color.rgb(40, 230, 85))
+                        })
+                    })
+                    modeSelectorRow = LinearLayout(this@MainActivity).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = android.view.Gravity.CENTER
+                        setPadding(0, dp(9), 0, dp(7))
+                        addView(autoTab, LinearLayout.LayoutParams(0, dp(46), 1f).apply { rightMargin = dp(5) })
+                        addView(quattroTab, LinearLayout.LayoutParams(0, dp(46), 1f).apply { leftMargin = dp(5) })
+                    }
+                    addView(modeSelectorRow)
+                    addView(TextView(this@MainActivity).apply {
+                        text = "Авто: PORTAL → Quattro при сбое  ·  Quattro: выбранный профиль"
+                        textSize = 10f
+                        gravity = android.view.Gravity.CENTER
+                        setTextColor(Color.rgb(135, 135, 145))
+                    })
+                }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                    bottomMargin = dp(12)
                 })
                 // Three compact live-metric cards and the neon traffic trace from the approved reference.
                 addView(LinearLayout(this@MainActivity).apply {
@@ -569,13 +612,6 @@ class MainActivity : Activity() {
                 bestFreeButton.visibility = View.GONE
                 addView(checkPing, LinearLayout.LayoutParams.MATCH_PARENT, dp(1))
                 checkPing.visibility = View.GONE
-                modeSelectorRow = LinearLayout(this@MainActivity).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = android.view.Gravity.CENTER
-                    addView(quattroTab, LinearLayout.LayoutParams(0, dp(44), 1f).apply { rightMargin = dp(6) })
-                    addView(freeTab, LinearLayout.LayoutParams(0, dp(44), 1f).apply { leftMargin = dp(4) })
-                    visibility = View.GONE
-                }
                 settingsHeader = TextView(this@MainActivity).apply {
                     text = "Настройки и импорт  ›"; textSize = 20f
                     typeface = android.graphics.Typeface.DEFAULT_BOLD
@@ -1302,11 +1338,9 @@ class MainActivity : Activity() {
 
     private fun refreshMode() {
         autoTab.isEnabled = !autoMode
-        quattroTab.isEnabled = autoMode || activeFree
-        freeTab.isEnabled = autoMode || !activeFree
+        quattroTab.isEnabled = autoMode
         autoTab.alpha = if (autoMode) 1f else 0.72f
         quattroTab.alpha = if (!autoMode && !activeFree) 1f else 0.72f
-        freeTab.alpha = if (!autoMode && activeFree) 1f else 0.72f
         fun modeBackground(selected: Boolean) = GradientDrawable().apply {
             setColor(if (selected) Color.rgb(54, 24, 12) else Color.rgb(13, 13, 15))
             cornerRadius = dp(14).toFloat()
@@ -1314,10 +1348,8 @@ class MainActivity : Activity() {
                 if (selected) Color.rgb(220, 32, 32) else Color.rgb(58, 58, 62))
         }
         quattroTab.background = modeBackground(!autoMode && !activeFree)
-        freeTab.background = modeBackground(!autoMode && activeFree)
         autoTab.background = modeBackground(autoMode)
         quattroTab.setTextColor(if (!autoMode && !activeFree) Color.WHITE else Color.LTGRAY)
-        freeTab.setTextColor(if (!autoMode && activeFree) Color.WHITE else Color.LTGRAY)
         autoTab.setTextColor(if (autoMode) Color.WHITE else Color.LTGRAY)
         primarySource.visibility = if (activeFree) ViewGroup.GONE else ViewGroup.VISIBLE
         freeSource.visibility = if (activeFree) ViewGroup.VISIBLE else ViewGroup.GONE
@@ -1341,7 +1373,7 @@ class MainActivity : Activity() {
         val page = scroll.getChildAt(0) as? ViewGroup ?: return
         settingsHeader.visibility = if (settingsExpanded) View.VISIBLE else View.GONE
         portalGateButton.visibility = if (settingsExpanded) View.VISIBLE else View.GONE
-        modeSelectorRow.visibility = if (settingsExpanded) View.VISIBLE else View.GONE
+        modeSelectorRow.visibility = View.VISIBLE
         primarySource.visibility = if (settingsExpanded && !activeFree) View.VISIBLE else View.GONE
         freeSource.visibility = View.GONE
         bestFreeButton.visibility = View.GONE
