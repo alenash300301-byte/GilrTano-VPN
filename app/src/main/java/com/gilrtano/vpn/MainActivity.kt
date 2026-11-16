@@ -47,7 +47,6 @@ import java.util.concurrent.TimeUnit
 class MainActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var powerOrb: TextView
-    private lateinit var tigerFlames: TigerFlameOverlayView
     private val powerOrbDrawable = PowerOrbDrawable()
     private lateinit var connectionTimer: Chronometer
     private lateinit var serverCardTitle: TextView
@@ -60,6 +59,7 @@ class MainActivity : Activity() {
     private lateinit var servers: Spinner
     private lateinit var quattroTab: Button
     private lateinit var freeTab: Button
+    private lateinit var portalGateButton: Button
     private lateinit var autoTab: Button
     private var autoMode = true
     private var activeMode: String = "auto"
@@ -69,6 +69,11 @@ class MainActivity : Activity() {
     private lateinit var pingMetric: TextView
     private lateinit var downloadMetric: TextView
     private lateinit var uploadMetric: TextView
+    private lateinit var sessionMetric: TextView
+    private lateinit var trafficTotalMetric: TextView
+    private lateinit var routeMetric: TextView
+    private var sessionRxStart = TrafficStats.getTotalRxBytes()
+    private var sessionTxStart = TrafficStats.getTotalTxBytes()
     private val trafficHandler = Handler(Looper.getMainLooper())
     private var lastRxBytes = TrafficStats.getTotalRxBytes()
     private var lastTxBytes = TrafficStats.getTotalTxBytes()
@@ -85,6 +90,8 @@ class MainActivity : Activity() {
     private var pendingFallbackConfig: String? = null
     private var pendingPreferredConfig: String? = null
     private var pendingAutomatic = false
+    private var pendingPortalAwg = false
+    private var pendingFallbackChain: List<String> = emptyList()
     private val requestCode = 4101
     private val docxRequestCode = 4102
 
@@ -101,6 +108,8 @@ class MainActivity : Activity() {
                 else -> message
             }
             if (message.startsWith("Подключено")) {
+                sessionRxStart = TrafficStats.getTotalRxBytes()
+                sessionTxStart = TrafficStats.getTotalTxBytes()
                 if (message.contains("бесплатный резерв")) activeFree = true
                 else if (message.contains("Quattro")) activeFree = false
                 refreshMode()
@@ -122,11 +131,11 @@ class MainActivity : Activity() {
                 }
                 updateServerCard(false)
                 resetConnectButtonGlow()
-            } else if (message.startsWith("Подключаю") || message.startsWith("Запускаю") || message.startsWith("Запуск Xray") || message.startsWith("Переключаю")) {
+            } else if (message.startsWith("Подключаю") || message.startsWith("Запускаю") || (message.startsWith("Запуск Xray") || message.startsWith("Запуск PORTAL") || message.startsWith("Запуск Quattro")) || message.startsWith("Переключаю") || message.startsWith("Переключаюсь") || message.startsWith("Проверяю восстановление")) {
                 status.setTextColor(Color.rgb(255, 166, 55))
                 // Keep the ignition animation visible while the tunnel is starting.
             }
-            val busy = message.startsWith("Подключаю") || message.startsWith("Запускаю") || message.startsWith("Запуск Xray") || message.startsWith("Переключаю")
+            val busy = message.startsWith("Подключаю") || message.startsWith("Запускаю") || (message.startsWith("Запуск Xray") || message.startsWith("Запуск PORTAL") || message.startsWith("Запуск Quattro")) || message.startsWith("Переключаю") || message.startsWith("Переключаюсь") || message.startsWith("Проверяю восстановление")
             // The single power button remains usable while connecting so it can cancel,
             // and while connected so it can disconnect.
             connectButton.isEnabled = true
@@ -181,14 +190,18 @@ class MainActivity : Activity() {
             setOnClickListener { switchMode(false) }
         }
         freeTab = Button(this).apply {
-            text = "БЕСПЛАТНЫЙ"
-            setOnClickListener { switchMode(true) }
+            text = "PORTAL GATE"
+            setOnClickListener { startActivity(Intent(this@MainActivity, PortalGateActivity::class.java)) }
         }
         autoTab = Button(this).apply {
-            text = "АВТО"
+            text = "АВТО PORTAL"
             setOnClickListener { switchToAuto() }
         }
 
+        portalGateButton = Button(this).apply {
+            text = "ОТКРЫТЬ PORTAL GATE"
+            setOnClickListener { startActivity(Intent(this@MainActivity, PortalGateActivity::class.java)) }
+        }
         val importPrimary = Button(this).apply {
             text = "Импортировать Quattro"
             setOnClickListener { importFrom(primarySource.text.toString().trim(), false) }
@@ -213,7 +226,10 @@ class MainActivity : Activity() {
                 val currentStatus = status.text.toString()
                 val isConnected = currentStatus.contains("Подключено")
                 val isConnecting = currentStatus.startsWith("Подключаю") ||
-                    currentStatus.startsWith("Запускаю") || currentStatus.startsWith("Запуск Xray") || currentStatus.startsWith("Переключаю")
+                    currentStatus.startsWith("Запускаю") || currentStatus.startsWith("Запуск Xray") ||
+                    currentStatus.startsWith("Запуск PORTAL") || currentStatus.startsWith("Запуск Quattro") ||
+                    currentStatus.startsWith("Переключаю") || currentStatus.startsWith("Переключаюсь") ||
+                    currentStatus.startsWith("Проверяю восстановление")
                 if (isConnected || isConnecting) {
                     pendingConfig = null
                     status.text = if (isConnected) "Отключаю VPN…" else "Отменяю подключение…"
@@ -221,44 +237,121 @@ class MainActivity : Activity() {
                         .setAction(GilrTanoVpnService.ACTION_STOP))
                     return@setOnClickListener
                 }
-                if (autoMode) {
-                    activeFree = quattroNodes.isEmpty() && freeNodes.isNotEmpty()
-                    prefs.edit().putBoolean("active_free_mode", activeFree).apply()
-                    refreshMode()
-                    if (quattroNodes.isEmpty() && freeNodes.isEmpty()) {
-                        status.text = "Ищу бесплатный резерв…"
-                        refreshFreeServersAndFindBest(autoConnectWhenReady = true)
+                // Explicit Quattro mode uses the selected Quattro profile.
+                // Automatic mode below uses PORTAL first and Quattro as fallback.
+                if (!autoMode) {
+                    val node = quattroNodes.getOrNull(servers.selectedItemPosition)
+                    if (node == null) {
+                        status.text = "Сначала импортируй профиль Quattro в настройках"
                         return@setOnClickListener
                     }
+                    val config = runCatching { GilrTanoVpnService.xrayConfigFromVless(node.uri) }
+                        .getOrElse {
+                            status.text = "Ошибка профиля Quattro: ${it.message}"
+                            return@setOnClickListener
+                        }
+                    pendingConfig = config
+                    pendingFallbackConfig = null
+                    pendingPreferredConfig = null
+                    pendingAutomatic = false
+                    pendingPortalAwg = false
+                    status.text = "Запрашиваю разрешение VPN для Quattro…"
+                    val permission = VpnService.prepare(this@MainActivity)
+                    if (permission != null) startActivityForResult(permission, requestCode)
+                    else startVpn(config)
+                    return@setOnClickListener
                 }
-                val node = activeNodes.getOrNull(servers.selectedItemPosition)
-                if (node == null) {
-                    Toast.makeText(this@MainActivity, "В этом режиме пока нет серверов", Toast.LENGTH_LONG).show()
-                } else {
+
+                // One-tap automatic mode: fresh PORTAL/WARP first, Quattro if the generator is unavailable.
+                status.text = "Получаю новую конфигурацию WARP…"
+                connectButton.isEnabled = false
+                Thread {
                     try {
-                        val config = GilrTanoVpnService.xrayConfigFromVless(node.uri)
-                        val fallbackConfig = if (autoMode) {
-                            (if (activeFree) quattroNodes.firstOrNull() else freeNodes.firstOrNull())
-                                ?.let { runCatching { GilrTanoVpnService.xrayConfigFromVless(it.uri) }.getOrNull() }
-                        } else null
-                        val preferredConfig = if (autoMode) {
-                            quattroNodes.firstOrNull()?.let { runCatching { GilrTanoVpnService.xrayConfigFromVless(it.uri) }.getOrNull() }
-                        } else null
-                        pendingConfig = config
-                        pendingFallbackConfig = fallbackConfig
-                        pendingPreferredConfig = preferredConfig
-                        pendingAutomatic = autoMode
-                        connectButton.isEnabled = true
-                        status.text = "Подключаю: ${node.name}…"
-                        val permission = VpnService.prepare(this@MainActivity)
-                        if (permission != null) startActivityForResult(permission, requestCode)
-                        else startVpn(config, fallbackConfig, preferredConfig, autoMode)
+                        // Refresh the saved Quattro subscription when configured, then
+                        // test real outbound latency and keep the fastest working nodes.
+                        val quattroSource = prefs.getString("subscription_url", "").orEmpty().trim()
+                        val discoveredQuattro = if (quattroSource.isNotBlank()) {
+                            runCatching { SubscriptionImporter.load(quattroSource) }
+                                .getOrElse { error ->
+                                    android.util.Log.w("QuattroAuto", "Subscription refresh failed; using cached nodes", error)
+                                    quattroNodes
+                                }
+                        } else quattroNodes
+                        val rankedQuattro = scanQuattroCandidates(discoveredQuattro)
+                        val selectedQuattro = rankedQuattro.firstOrNull()?.first ?: discoveredQuattro.firstOrNull()
+                        if (rankedQuattro.isNotEmpty()) {
+                            quattroNodes = rankedQuattro.map { it.first }
+                            saveNodes("quattro_nodes", quattroNodes)
+                            prefs.edit().putInt("quattro_selected", 0).apply()
+                        } else if (discoveredQuattro.isNotEmpty()) {
+                            quattroNodes = discoveredQuattro
+                        }
+                        val quattro = selectedQuattro
+                            ?.let { runCatching { GilrTanoVpnService.xrayConfigFromVless(it.uri) }.getOrNull() }
+                        val generated = WarpGeneratorClient.generateAmneziaProfile()
+                        val profile = PortalGateImporter.parseConf(generated, "WARP-Cyberportal")
+                        runOnUiThread {
+                            pendingConfig = profile.config
+                            pendingFallbackConfig = quattro
+                            pendingPreferredConfig = null
+                            pendingAutomatic = true
+                            pendingPortalAwg = true
+                            pendingFallbackChain = (if (rankedQuattro.isNotEmpty()) rankedQuattro.map { it.first } else discoveredQuattro)
+                                .mapNotNull { node -> runCatching { GilrTanoVpnService.xrayConfigFromVless(node.uri) }.getOrNull() }
+                            connectButton.isEnabled = true
+                            status.text = "WARP создан. Запрашиваю разрешение VPN…"
+                            val permission = VpnService.prepare(this@MainActivity)
+                            if (permission != null) startActivityForResult(permission, requestCode)
+                            else startWarpVpn(profile.config, quattro)
+                        }
                     } catch (e: Exception) {
-                        pendingConfig = null
-                        connectButton.isEnabled = true
-                        status.text = "Профиль не поддерживается: ${e.message}"
+                        android.util.Log.e("WarpGenerator", "WARP generation/import pipeline failed", e)
+                        // Generator outage: use the bundled PORTAL archive as the
+                        // primary profile. The service loads the rest as failover.
+                        val bundled = runCatching {
+                            assets.open("portal_gate.zip").use { input ->
+                                PortalGateImporter.parseZip(input).firstOrNull { profile ->
+                                    runCatching {
+                                        org.json.JSONObject(profile.config).optJSONArray("outbounds")
+                                            ?.optJSONObject(0)?.optString("protocol") != "masque"
+                                    }.getOrDefault(true)
+                                }
+                            }
+                        }.getOrNull()
+                        val quattroFallback = quattroNodes.firstOrNull()
+                            ?.let { runCatching { GilrTanoVpnService.xrayConfigFromVless(it.uri) }.getOrNull() }
+                        runOnUiThread {
+                            connectButton.isEnabled = true
+                            if (bundled != null) {
+                                pendingConfig = bundled.config
+                                pendingFallbackConfig = quattroFallback
+                                pendingPreferredConfig = null
+                                pendingAutomatic = true
+                                pendingPortalAwg = true
+                                pendingFallbackChain = quattroNodes.mapNotNull { node -> runCatching { GilrTanoVpnService.xrayConfigFromVless(node.uri) }.getOrNull() }
+                                status.text = "Генератор WARP недоступен. Запускаю резервный PORTAL…"
+                                val permission = VpnService.prepare(this@MainActivity)
+                                if (permission != null) startActivityForResult(permission, requestCode)
+                                else startWarpVpn(bundled.config, quattroFallback)
+                            } else if (quattroFallback != null) {
+                                // No public profile archive is bundled. If PORTAL generation
+                                // is down, keep the paid Quattro path usable instead of failing.
+                                pendingConfig = quattroFallback
+                                pendingFallbackConfig = null
+                                pendingPreferredConfig = null
+                                pendingAutomatic = false
+                                pendingPortalAwg = false
+                                status.text = "Генератор PORTAL недоступен. Подключаю Quattro…"
+                                val permission = VpnService.prepare(this@MainActivity)
+                                if (permission != null) startActivityForResult(permission, requestCode)
+                                else startVpn(quattroFallback)
+                            } else {
+                                status.text = "PORTAL недоступен, а профиль Quattro не импортирован: ${e.message ?: "ошибка генератора"}"
+                                resetConnectButtonGlow()
+                            }
+                        }
                     }
-                }
+                }.start()
             }
         }
         bestFreeButton = Button(this).apply {
@@ -266,8 +359,54 @@ class MainActivity : Activity() {
             setOnClickListener { refreshFreeServersAndFindBest() }
         }
         checkPing = Button(this).apply {
-            text = "Проверить пинг"
+            text = "ПРОВЕРИТЬ ЗАДЕРЖКУ"
             setOnClickListener { measureSelectedPing() }
+        }
+
+        // FlClashX-inspired settings surfaces: restrained glass-like cards,
+        // compact typography and subtle borders. Existing actions remain unchanged.
+        fun stylePanelButton(button: Button, accent: Boolean = false) {
+            button.isAllCaps = false
+            button.textSize = 15f
+            button.typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
+            button.setTextColor(Color.rgb(238, 240, 245))
+            button.minimumHeight = dp(54)
+            button.setPadding(dp(18), dp(12), dp(18), dp(12))
+            button.background = GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(
+                    if (accent) Color.rgb(48, 28, 30) else Color.rgb(29, 31, 37),
+                    if (accent) Color.rgb(27, 19, 22) else Color.rgb(19, 21, 26)
+                )
+            ).apply {
+                cornerRadius = dp(17).toFloat()
+                setStroke(dp(1), if (accent) Color.rgb(126, 49, 53) else Color.rgb(61, 65, 74))
+            }
+            if (android.os.Build.VERSION.SDK_INT >= 21) button.elevation = dp(2).toFloat()
+        }
+        stylePanelButton(checkPing)
+        stylePanelButton(portalGateButton, true)
+        primarySource.apply {
+            textSize = 14f
+            setTextColor(Color.rgb(240, 242, 247))
+            setHintTextColor(Color.rgb(137, 143, 154))
+            setPadding(dp(16), dp(13), dp(16), dp(13))
+            background = GradientDrawable().apply {
+                setColor(Color.rgb(20, 22, 27))
+                cornerRadius = dp(15).toFloat()
+                setStroke(dp(1), Color.rgb(58, 63, 73))
+            }
+        }
+        freeSource.apply {
+            textSize = 14f
+            setTextColor(Color.rgb(240, 242, 247))
+            setHintTextColor(Color.rgb(137, 143, 154))
+            setPadding(dp(16), dp(13), dp(16), dp(13))
+            background = GradientDrawable().apply {
+                setColor(Color.rgb(20, 22, 27))
+                cornerRadius = dp(15).toFloat()
+                setStroke(dp(1), Color.rgb(58, 63, 73))
+            }
         }
 
         val root = LinearLayout(this).apply {
@@ -296,15 +435,15 @@ class MainActivity : Activity() {
                         orientation = LinearLayout.HORIZONTAL
                         gravity = android.view.Gravity.CENTER
                         val title = TextView(this@MainActivity).apply {
-                            text = "GilrTano"; textSize = 25f
-                            typeface = android.graphics.Typeface.create("serif", android.graphics.Typeface.BOLD_ITALIC)
+                            text = "GILRTANO"; textSize = 29f
+                            typeface = android.graphics.Typeface.create("sans-serif-black", android.graphics.Typeface.BOLD_ITALIC)
                             setTextColor(Color.rgb(245, 242, 238))
                             setShadowLayer(dp(5).toFloat(), 0f, dp(1).toFloat(), Color.rgb(130, 18, 18))
                         }
                         val vpn = TextView(this@MainActivity).apply {
                             text = " VPN"; textSize = 25f
-                            typeface = android.graphics.Typeface.create("serif", android.graphics.Typeface.BOLD_ITALIC)
-                            setTextColor(Color.rgb(230, 38, 38))
+                            typeface = android.graphics.Typeface.create("sans-serif-black", android.graphics.Typeface.BOLD_ITALIC)
+                            setTextColor(Color.rgb(50, 245, 75))
                             setShadowLayer(dp(6).toFloat(), 0f, 0f, Color.rgb(170, 0, 0))
                         }
                         addView(title); addView(vpn)
@@ -319,64 +458,74 @@ class MainActivity : Activity() {
                         }
                     })
                 })
-                // The uploaded GIF is the complete hero composition: tiger, realistic fire and orb.
-                val tigerScene = FrameLayout(this@MainActivity).apply {
-                    setBackgroundColor(Color.BLACK)
-                    tigerFlames = TigerFlameOverlayView(this@MainActivity).apply {
-                        visibility = View.VISIBLE
-                        isClickable = false
-                        isFocusable = false
-                        contentDescription = "Тигр с анимированным огнём"
-                    }
-                    addView(tigerFlames, FrameLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
-                    ))
+                // Main-screen hero reuses the exact tiger artwork from the splash.
+                // The old animated GIF stays removed; the splash PNG is shown statically.
+                val powerScene = FrameLayout(this@MainActivity).apply {
+                    background = GradientDrawable(
+                        GradientDrawable.Orientation.TOP_BOTTOM,
+                        intArrayOf(Color.rgb(8, 8, 10), Color.BLACK)
+                    ).apply { cornerRadius = dp(18).toFloat() }
+                    clipToOutline = true
                 }
-                addView(tigerScene, LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, dp(410)
-                ).apply { topMargin = dp(0); bottomMargin = dp(0) })
-
-                // Transparent hit target sits over the power symbol already rendered in the GIF.
+                val heroTiger = ImageView(this@MainActivity).apply {
+                    setImageResource(R.drawable.gilrtano_splash)
+                    scaleType = ImageView.ScaleType.FIT_CENTER
+                    contentDescription = "Тигр GilrTano"
+                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+                }
+                powerScene.addView(heroTiger, FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
+                ))
                 powerOrb = PowerOrbButtonView(this@MainActivity).apply {
                     text = ""
                     gravity = android.view.Gravity.CENTER
                     setTextColor(Color.TRANSPARENT)
-                    background = null
-                    alpha = 0f
-                    elevation = dp(14).toFloat()
+                    background = powerOrbDrawable
+                    alpha = 1f
+                    elevation = dp(8).toFloat()
                     setLayerType(View.LAYER_TYPE_SOFTWARE, null)
-                }
-                powerOrb.setOnClickListener { connectButton.performClick() }
-                powerOrb.setOnTouchListener { _, event ->
-                    if (event.actionMasked == MotionEvent.ACTION_DOWN &&
-                        !status.text.toString().contains("Подключено")) {
-                        tigerFlames.setActive(true)
-                        if (fireAnimator?.isRunning != true) {
+                    contentDescription = "Кнопка питания VPN"
+                    setOnClickListener { connectButton.performClick() }
+                    setOnTouchListener { _, event ->
+                        if (event.actionMasked == MotionEvent.ACTION_DOWN &&
+                            !status.text.toString().contains("Подключено") && fireAnimator?.isRunning != true) {
                             fireAnimator = ValueAnimator.ofFloat(0f, (Math.PI * 2).toFloat()).apply {
                                 duration = 900L
                                 repeatCount = ValueAnimator.INFINITE
-                                addUpdateListener {
-                                    val phase = it.animatedValue as Float
-                                    powerOrbDrawable.setPhase(phase)
-                                    tigerFlames.setPhase(phase)
-                                }
+                                addUpdateListener { powerOrbDrawable.setPhase(it.animatedValue as Float) }
                                 start()
                             }
                         }
+                        false
                     }
-                    false
                 }
-                powerOrb.contentDescription = "Кнопка питания VPN"
-                tigerScene.addView(powerOrb, FrameLayout.LayoutParams(dp(132), dp(132)).apply {
-                    gravity = android.view.Gravity.TOP or android.view.Gravity.CENTER_HORIZONTAL
-                    topMargin = dp(242)
+                powerOrb.elevation = dp(12).toFloat()
+                powerScene.addView(powerOrb, FrameLayout.LayoutParams(dp(150), dp(150)).apply {
+                    gravity = android.view.Gravity.CENTER_HORIZONTAL or android.view.Gravity.BOTTOM
+                    bottomMargin = dp(10)
                 })
-                addView(status.apply {
-                    text = "●  Отключено"; textSize = 17f
+                status.apply {
+                    text = "●  Отключено"
+                    textSize = 15f
                     gravity = android.view.Gravity.CENTER
-                    setTextColor(Color.LTGRAY)
-                    setPadding(dp(8), dp(5), dp(8), dp(0))
-                })
+                    typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
+                    setTextColor(Color.rgb(80, 245, 105))
+                    setShadowLayer(dp(8).toFloat(), 0f, 0f, Color.rgb(0, 220, 50))
+                    setPadding(dp(8), dp(5), dp(8), dp(5))
+                    background = GradientDrawable().apply {
+                        setColor(0xCC050807.toInt())
+                        cornerRadius = dp(22).toFloat()
+                        setStroke(dp(1), Color.rgb(35, 180, 65))
+                    }
+                }
+                // Connection state is overlaid inside the power ring, not shown as a separate row.
+                powerScene.addView(status, FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, dp(32),
+                    android.view.Gravity.CENTER_HORIZONTAL or android.view.Gravity.BOTTOM
+                ).apply { bottomMargin = dp(43) })
+                addView(powerScene, LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(390)
+                ).apply { topMargin = dp(0); bottomMargin = dp(2) })
                 connectionTimer = Chronometer(this@MainActivity).apply {
                     textSize = 14f
                     gravity = android.view.Gravity.CENTER
@@ -395,25 +544,30 @@ class MainActivity : Activity() {
                 addView(LinearLayout(this@MainActivity).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = android.view.Gravity.CENTER_VERTICAL
-                    background = GradientDrawable().apply {
-                        setColor(Color.rgb(10, 10, 12)); cornerRadius = dp(28).toFloat()
-                        setStroke(dp(1), Color.rgb(45, 45, 48))
+                    background = GradientDrawable(
+                        GradientDrawable.Orientation.TL_BR,
+                        intArrayOf(Color.rgb(24, 17, 19), Color.rgb(7, 9, 9), Color.rgb(20, 17, 18))
+                    ).apply {
+                        cornerRadius = dp(23).toFloat()
+                        setStroke(dp(1), Color.rgb(155, 43, 46))
                     }
-                    setPadding(dp(16), dp(10), dp(14), dp(10))
+                    elevation = dp(5).toFloat()
+                    setPadding(dp(16), dp(12), dp(14), dp(12))
                     setOnClickListener { showServerPicker() }
                     addView(TextView(this@MainActivity).apply {
-                        text = "🌐"; textSize = 25f; setTextColor(Color.WHITE)
+                        text = "🌍"; textSize = 27f; setTextColor(Color.WHITE)
                         setPadding(0, 0, dp(14), 0)
                     })
                     addView(LinearLayout(this@MainActivity).apply {
                         orientation = LinearLayout.VERTICAL
                         serverCardTitle = TextView(this@MainActivity).apply {
-                            text = "Автоматический сервер"; textSize = 16f
+                            text = "Автоматический сервер"; textSize = 17f
+                            typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
                             setTextColor(Color.WHITE)
                         }
                         serverCardSubtitle = TextView(this@MainActivity).apply {
-                            text = "Автовыбор"; textSize = 12f
-                            setTextColor(Color.LTGRAY)
+                            text = "Автовыбор"; textSize = 13f
+                            setTextColor(Color.rgb(195, 197, 202))
                         }
                         addView(serverCardTitle)
                         addView(serverCardSubtitle)
@@ -422,15 +576,61 @@ class MainActivity : Activity() {
                         orientation = LinearLayout.HORIZONTAL
                         gravity = android.view.Gravity.CENTER_VERTICAL
                         serverCardPing = TextView(this@MainActivity).apply {
-                            text = ""; textSize = 13f; setTextColor(Color.rgb(0, 230, 55))
+                            text = ""; textSize = 14f; typeface = android.graphics.Typeface.DEFAULT_BOLD
+                            setTextColor(Color.rgb(55, 245, 85))
+                            setShadowLayer(dp(5).toFloat(), 0f, 0f, Color.rgb(0, 180, 40))
                         }
                         addView(serverCardPing)
                         addView(TextView(this@MainActivity).apply {
                             text = "  ›"; textSize = 27f; setTextColor(Color.WHITE)
                         })
                     })
-                }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(70)).apply {
-                    topMargin = dp(8); bottomMargin = dp(14)
+                }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(82)).apply {
+                    topMargin = dp(8); bottomMargin = dp(8)
+                })
+                // Screenshot-inspired neon glass styling for the server and live metrics.
+                // Branded mode control: automatic failover or a directly selected Quattro profile.
+                addView(LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.VERTICAL
+                    background = GradientDrawable().apply {
+                        setColor(Color.rgb(10, 10, 13))
+                        cornerRadius = dp(18).toFloat()
+                        setStroke(dp(1), Color.rgb(54, 54, 60))
+                    }
+                    setPadding(dp(13), dp(10), dp(13), dp(12))
+                    addView(LinearLayout(this@MainActivity).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = android.view.Gravity.CENTER_VERTICAL
+                        addView(TextView(this@MainActivity).apply {
+                            text = "РЕЖИМ ПОДКЛЮЧЕНИЯ"
+                            textSize = 13f
+                            letterSpacing = 0.04f
+                            typeface = android.graphics.Typeface.DEFAULT_BOLD
+                            setTextColor(Color.rgb(190, 190, 198))
+                        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                        addView(TextView(this@MainActivity).apply {
+                            text = "● LIVE"
+                            textSize = 9f
+                            typeface = android.graphics.Typeface.DEFAULT_BOLD
+                            setTextColor(Color.rgb(40, 230, 85))
+                        })
+                    })
+                    modeSelectorRow = LinearLayout(this@MainActivity).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = android.view.Gravity.CENTER
+                        setPadding(0, dp(9), 0, dp(7))
+                        addView(autoTab, LinearLayout.LayoutParams(0, dp(46), 1f).apply { rightMargin = dp(5) })
+                        addView(quattroTab, LinearLayout.LayoutParams(0, dp(46), 1f).apply { leftMargin = dp(5) })
+                    }
+                    addView(modeSelectorRow)
+                    addView(TextView(this@MainActivity).apply {
+                        text = "AUTO PORTAL — автоматический резерв  ·  QUATTRO — выбранный профиль"
+                        textSize = 9f
+                        gravity = android.view.Gravity.CENTER
+                        setTextColor(Color.rgb(135, 135, 145))
+                    })
+                }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                    bottomMargin = dp(12)
                 })
                 // Three compact live-metric cards and the neon traffic trace from the approved reference.
                 addView(LinearLayout(this@MainActivity).apply {
@@ -441,9 +641,9 @@ class MainActivity : Activity() {
                             orientation = LinearLayout.VERTICAL
                             gravity = android.view.Gravity.CENTER
                             background = GradientDrawable().apply {
-                                setColor(Color.rgb(12, 12, 15))
+                                setColor(Color.rgb(8, 10, 10))
                                 cornerRadius = dp(16).toFloat()
-                                setStroke(dp(1), Color.rgb(48, 48, 52))
+                                setStroke(dp(1), Color.rgb(83, 45, 48))
                             }
                             addView(TextView(this@MainActivity).apply {
                                 text = title; textSize = 11f
@@ -464,16 +664,44 @@ class MainActivity : Activity() {
                     addView(metric("Входящий", "—", " Мбит/с"), LinearLayout.LayoutParams(0, dp(62), 1f).apply { leftMargin = dp(3); rightMargin = dp(3) })
                     addView(metric("Исходящий", "—", " Мбит/с"), LinearLayout.LayoutParams(0, dp(62), 1f).apply { leftMargin = dp(6) })
                 }, LinearLayout.LayoutParams.MATCH_PARENT, dp(62))
-                addView(TextView(this@MainActivity).apply {
-                    text = "Скорость сети"
-                    textSize = 10f
-                    setTextColor(Color.GRAY)
-                    gravity = android.view.Gravity.CENTER
-                    setPadding(0, dp(3), 0, 0)
-                }, LinearLayout.LayoutParams.MATCH_PARENT, dp(20))
-                addView(TrafficWaveView(this@MainActivity), LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, dp(58)
-                ).apply { topMargin = dp(8); bottomMargin = dp(8) })
+                // Second dashboard strip: session duration, total traffic and active route.
+                addView(LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = android.view.Gravity.CENTER_VERTICAL
+                    background = GradientDrawable().apply {
+                        setColor(Color.rgb(8, 10, 10))
+                        cornerRadius = dp(17).toFloat()
+                        setStroke(dp(1), Color.rgb(145, 43, 47))
+                    }
+                    setPadding(dp(8), dp(9), dp(8), dp(9))
+                    fun detail(label: String, initial: String): LinearLayout {
+                        return LinearLayout(this@MainActivity).apply {
+                            orientation = LinearLayout.VERTICAL
+                            gravity = android.view.Gravity.CENTER
+                            addView(TextView(this@MainActivity).apply {
+                                text = label; textSize = 10f
+                                setTextColor(Color.rgb(155, 158, 166))
+                            })
+                            addView(TextView(this@MainActivity).apply {
+                                text = initial; textSize = 13f
+                                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                                setTextColor(Color.WHITE)
+                                setPadding(0, dp(3), 0, 0)
+                                if (label == "СЕССИЯ") sessionMetric = this
+                                if (label == "ТРАФИК") trafficTotalMetric = this
+                                if (label == "МАРШРУТ") routeMetric = this
+                            })
+                        }
+                    }
+                    addView(detail("СЕССИЯ", "00:00"), LinearLayout.LayoutParams(0, dp(43), 1f))
+                    addView(View(this@MainActivity).apply { setBackgroundColor(Color.rgb(58, 58, 64)) },
+                        LinearLayout.LayoutParams(dp(1), dp(30)))
+                    addView(detail("ТРАФИК", "—"), LinearLayout.LayoutParams(0, dp(43), 1f))
+                    addView(View(this@MainActivity).apply { setBackgroundColor(Color.rgb(58, 58, 64)) },
+                        LinearLayout.LayoutParams(dp(1), dp(30)))
+                    addView(detail("МАРШРУТ", if (autoMode) "PORTAL → QUATTRO" else "QUATTRO"), LinearLayout.LayoutParams(0, dp(43), 1.2f))
+                }, LinearLayout.LayoutParams.MATCH_PARENT, dp(62))
+                // Speed graph removed from the home screen; live numeric metrics remain below.
                 addView(servers, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)))
                 servers.visibility = View.GONE
                 addView(pingStatus.apply { gravity = android.view.Gravity.CENTER_VERTICAL }, LinearLayout.LayoutParams.MATCH_PARENT, dp(1))
@@ -482,22 +710,18 @@ class MainActivity : Activity() {
                 bestFreeButton.visibility = View.GONE
                 addView(checkPing, LinearLayout.LayoutParams.MATCH_PARENT, dp(1))
                 checkPing.visibility = View.GONE
-                modeSelectorRow = LinearLayout(this@MainActivity).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = android.view.Gravity.CENTER
-                    addView(quattroTab, LinearLayout.LayoutParams(0, dp(44), 1f).apply { rightMargin = dp(6) })
-                    addView(freeTab, LinearLayout.LayoutParams(0, dp(44), 1f).apply { leftMargin = dp(4); rightMargin = dp(4) })
-                    addView(autoTab, LinearLayout.LayoutParams(0, dp(44), 1f).apply { leftMargin = dp(4) })
-                    visibility = View.GONE
-                }
                 settingsHeader = TextView(this@MainActivity).apply {
-                    text = "Настройки и импорт  ›"; textSize = 20f
-                    typeface = android.graphics.Typeface.DEFAULT_BOLD
-                    setTextColor(Color.WHITE); setPadding(dp(16), dp(14), dp(12), dp(12))
-                    background = GradientDrawable().apply {
-                        setColor(Color.rgb(14, 8, 9)); cornerRadius = dp(18).toFloat()
-                        setStroke(dp(1), Color.rgb(150, 24, 24))
+                    text = "Настройки и импорт     ⌄"; textSize = 17f
+                    typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
+                    setTextColor(Color.rgb(245, 246, 250)); setPadding(dp(18), dp(17), dp(16), dp(17))
+                    background = GradientDrawable(
+                        GradientDrawable.Orientation.TOP_BOTTOM,
+                        intArrayOf(Color.rgb(34, 36, 43), Color.rgb(20, 22, 27))
+                    ).apply {
+                        cornerRadius = dp(18).toFloat()
+                        setStroke(dp(1), Color.rgb(66, 70, 80))
                     }
+                    if (android.os.Build.VERSION.SDK_INT >= 21) elevation = dp(3).toFloat()
                     visibility = View.GONE
                     setOnClickListener {
                         settingsExpanded = !settingsExpanded
@@ -506,16 +730,18 @@ class MainActivity : Activity() {
                     }
                 }
                 addView(settingsHeader)
-                addView(modeSelectorRow, LinearLayout.LayoutParams.MATCH_PARENT, dp(48))
+                portalGateButton.visibility = View.GONE
+                addView(portalGateButton)
+                // Mode selector is already attached inside the home-screen mode card above.
                 addView(primarySource, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
                 addView(importPrimary)
                 addView(importDocx)
                 addView(freeSource, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
                 addView(importFree)
                 addView(TextView(this@MainActivity).apply {
-                    text = "Бесплатные серверы предоставляются сторонними операторами."
-                    textSize = 10f; setTextColor(Color.GRAY); gravity = android.view.Gravity.CENTER
-                    setPadding(0, dp(12), 0, dp(8))
+                    text = "Бесплатные серверы предоставляются сторонними операторами"
+                    textSize = 11f; setTextColor(Color.rgb(139, 145, 156)); gravity = android.view.Gravity.CENTER
+                    setPadding(dp(8), dp(16), dp(8), dp(12))
                 })
             })
         }
@@ -538,6 +764,77 @@ class MainActivity : Activity() {
             insets
         }
         root.addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+
+        // Compact FlClashX-inspired navigation dock with clear selected state.
+        val bottomNav = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER
+            setPadding(dp(7), dp(7), dp(7), dp(7))
+            background = GradientDrawable().apply {
+                setColor(Color.rgb(8, 9, 11))
+                cornerRadius = dp(25).toFloat()
+                setStroke(dp(1), Color.rgb(112, 44, 48))
+            }
+            if (android.os.Build.VERSION.SDK_INT >= 21) elevation = dp(8).toFloat()
+        }
+        val navViews = mutableListOf<TextView>()
+        fun updateNavSelection(selected: Int) {
+            navViews.forEachIndexed { index, item ->
+                val active = index == selected
+                item.setTextColor(if (active) Color.rgb(100, 255, 125) else Color.rgb(170, 173, 180))
+                item.background = GradientDrawable(
+                    GradientDrawable.Orientation.TOP_BOTTOM,
+                    if (active) intArrayOf(Color.rgb(14, 45, 23), Color.rgb(5, 17, 10))
+                    else intArrayOf(Color.TRANSPARENT, Color.TRANSPARENT)
+                ).apply {
+                    cornerRadius = dp(18).toFloat()
+                    if (active) setStroke(dp(1), Color.rgb(45, 220, 82))
+                }
+                if (active) item.setShadowLayer(dp(8).toFloat(), 0f, 0f, Color.rgb(0, 150, 40))
+                item.alpha = if (active) 1f else 0.88f
+            }
+        }
+        fun navItem(symbol: String, label: String, index: Int, action: () -> Unit): TextView =
+            TextView(this).apply {
+                text = "$symbol\n$label"
+                textSize = 11f
+                typeface = android.graphics.Typeface.create(
+                    "sans-serif-medium", android.graphics.Typeface.NORMAL
+                )
+                gravity = android.view.Gravity.CENTER
+                includeFontPadding = false
+                maxLines = 2
+                setLineSpacing(dp(3).toFloat(), 1f)
+                setPadding(dp(3), dp(8), dp(3), dp(8))
+                isClickable = true
+                isFocusable = true
+                contentDescription = label
+                layoutParams = LinearLayout.LayoutParams(0, dp(58), 1f).apply {
+                    setMargins(dp(3), 0, dp(3), 0)
+                }
+                navViews.add(this)
+                setOnClickListener {
+                    updateNavSelection(index)
+                    action()
+                }
+            }
+        bottomNav.addView(navItem("⌂", "Главная", 0) { scroll.smoothScrollTo(0, 0) })
+        bottomNav.addView(navItem("◈", "Серверы", 1) { showServerPicker() })
+        bottomNav.addView(navItem("⇄", "Трафик", 2) { showConnectionDetails() })
+        bottomNav.addView(navItem("⚙", "Настройки", 3) {
+            settingsExpanded = true
+            settingsHeader.visibility = View.VISIBLE
+            settingsHeader.text = "Настройки и импорт  ⌄"
+            findImportButtonsVisibility()
+            scroll.post { scroll.smoothScrollTo(0, settingsHeader.top) }
+        })
+        updateNavSelection(0)
+        root.addView(LinearLayout(this).apply {
+            setPadding(dp(12), dp(6), dp(12), dp(6))
+            addView(bottomNav, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            ))
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         setContentView(root)
         trafficHandler.removeCallbacks(trafficSample)
         trafficHandler.post(trafficSample)
@@ -559,7 +856,6 @@ class MainActivity : Activity() {
                     event.actionMasked == MotionEvent.ACTION_CANCEL
                 if (pressed || released) {
                     if (pressed && !status.text.toString().contains("Подключено")) {
-                        if (::tigerFlames.isInitialized) tigerFlames.setActive(true)
                         fireDrawable.setPressed(true)
                         if (fireAnimator?.isRunning != true) {
                             fireAnimator = ValueAnimator.ofFloat(0f, (Math.PI * 2).toFloat()).apply {
@@ -569,7 +865,6 @@ class MainActivity : Activity() {
                 val phase = it.animatedValue as Float
                 fireDrawable.setPhase(phase)
                 powerOrbDrawable.setPhase(phase)
-                if (::tigerFlames.isInitialized) tigerFlames.setPhase(phase)
             }
                                 start()
                             }
@@ -599,40 +894,382 @@ class MainActivity : Activity() {
             }
         }
         activeMode = prefs.getString("connection_mode", "auto") ?: "auto"
+        if (::routeMetric.isInitialized) routeMetric.text = if (activeMode == "auto") "PORTAL → QUATTRO" else "QUATTRO"
+        // Fresh installs start in the one-tap PORTAL → Quattro mode.
+        // Migrate any old public/free mode preference back to automatic mode.
+        if (activeMode == "free") activeMode = "auto"
         autoMode = activeMode == "auto"
-        activeFree = prefs.getBoolean("active_free_mode", false)
+        activeFree = false
+        prefs.edit().putString("connection_mode", activeMode)
+            .putBoolean("active_free_mode", false).apply()
         refreshMode()
         updatePowerOrb(false)
         updateServerCard(false)
     }
 
     private fun showServerPicker() {
-        val nodes = activeNodes
-        if (nodes.isEmpty()) {
+        val initialNodes = activeNodes
+        if (initialNodes.isEmpty()) {
             settingsExpanded = true
             findImportButtonsVisibility()
             val content = findViewById<ViewGroup>(android.R.id.content)
-            val root = content.getChildAt(0) as? ViewGroup
+            val root = content?.getChildAt(0) as? ViewGroup
             val scroll = root?.getChildAt(0) as? android.widget.ScrollView
             scroll?.post { scroll.smoothScrollTo(0, settingsHeader.top) }
             Toast.makeText(this, "Добавь сервер в настройках", Toast.LENGTH_LONG).show()
             return
         }
-        val names = nodes.map { it.name }.toTypedArray()
-        AlertDialog.Builder(this)
-            .setTitle("Выбор сервера")
-            .setSingleChoiceItems(names, servers.selectedItemPosition) { dialog, which ->
-                servers.setSelection(which)
-                val key = if (activeFree) "free_selected" else "quattro_selected"
-                prefs.edit().putInt(key, which).apply()
-                serverCardTitle.text = nodes[which].name
-                serverCardSubtitle.text = if (activeFree) "Бесплатный" else "Quattro"
-                serverCardPing.text = ""
-                pingStatus.text = "Пинг: —"
-                dialog.dismiss()
+
+        // Full-screen server catalogue: keeps the tiger dashboard intact and gives
+        // server management its own usable space on phones.
+        val dialog = android.app.Dialog(this)
+        val page = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(18), dp(12), dp(18), dp(12))
+            setBackgroundColor(Color.rgb(8, 8, 10))
+        }
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+        }
+        val title = TextView(this).apply {
+            text = "СЕРВЕРЫ  ·  ${initialNodes.size}"
+            textSize = 20f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(Color.WHITE)
+        }
+        val close = TextView(this).apply {
+            text = "✕"
+            textSize = 22f
+            gravity = android.view.Gravity.CENTER
+            setTextColor(Color.LTGRAY)
+            isClickable = true
+            setPadding(dp(14), dp(8), dp(8), dp(8))
+            setOnClickListener { dialog.dismiss() }
+        }
+        header.addView(title, LinearLayout.LayoutParams(0, dp(48), 1f))
+        header.addView(close, LinearLayout.LayoutParams(dp(48), dp(48)))
+        val search = EditText(this).apply {
+            hint = "Поиск сервера или страны"
+            setSingleLine(true)
+            textSize = 15f
+            setTextColor(Color.WHITE)
+            setHintTextColor(Color.GRAY)
+            background = GradientDrawable().apply {
+                setColor(Color.rgb(24, 24, 28))
+                cornerRadius = dp(14).toFloat()
+                setStroke(dp(1), Color.rgb(64, 64, 72))
             }
-            .setNegativeButton("Закрыть", null)
-            .show()
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+        }
+        val actions = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER
+        }
+        fun actionButton(label: String) = Button(this).apply {
+            text = label
+            isAllCaps = false
+            textSize = 12f
+            setTextColor(Color.WHITE)
+            background = GradientDrawable().apply {
+                setColor(Color.rgb(30, 30, 35))
+                cornerRadius = dp(12).toFloat()
+                setStroke(dp(1), Color.rgb(58, 58, 66))
+            }
+        }
+        val sortButton = actionButton("По названию")
+        val testButton = actionButton("Проверить все")
+        actions.addView(sortButton, LinearLayout.LayoutParams(0, dp(46), 1f).apply { rightMargin = dp(5) })
+        actions.addView(testButton, LinearLayout.LayoutParams(0, dp(46), 1f).apply { leftMargin = dp(5) })
+
+        val list = android.widget.ListView(this).apply {
+            divider = GradientDrawable().apply { setColor(Color.rgb(38, 38, 44)); setSize(1, dp(1)) }
+            dividerHeight = dp(1)
+            cacheColorHint = Color.TRANSPARENT
+            setBackgroundColor(Color.TRANSPARENT)
+        }
+        var orderedNodes = initialNodes.toList()
+        var visibleNodes = orderedNodes
+        val measuredLatency = mutableMapOf<String, Long>()
+        fun refreshList() {
+            val query = search.text.toString().trim()
+            visibleNodes = orderedNodes.filter { it.name.contains(query, ignoreCase = true) }
+            val labels = visibleNodes.map { node ->
+                val latency = measuredLatency[node.uri]
+                if (latency != null) "●  ${node.name}     ·  ${latency} мс" else "○  ${node.name}"
+            }
+            list.adapter = object : android.widget.BaseAdapter() {
+                override fun getCount(): Int = visibleNodes.size
+                override fun getItem(position: Int): Any = visibleNodes[position]
+                override fun getItemId(position: Int): Long = position.toLong()
+                override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+                    val node = visibleNodes[position]
+                    val row = (convertView as? LinearLayout) ?: LinearLayout(this@MainActivity).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = android.view.Gravity.CENTER_VERTICAL
+                        setPadding(dp(14), dp(11), dp(14), dp(11))
+                        background = GradientDrawable().apply {
+                            setColor(Color.rgb(20, 20, 24))
+                            cornerRadius = dp(14).toFloat()
+                            setStroke(dp(1), Color.rgb(48, 48, 56))
+                        }
+                    }
+                    row.removeAllViews()
+                    val dot = TextView(this@MainActivity).apply {
+                        text = if (measuredLatency.containsKey(node.uri)) "●" else "○"
+                        textSize = 18f
+                        setTextColor(if (measuredLatency.containsKey(node.uri)) Color.rgb(55, 225, 100) else Color.GRAY)
+                        gravity = android.view.Gravity.CENTER
+                    }
+                    val nameColumn = LinearLayout(this@MainActivity).apply {
+                        orientation = LinearLayout.VERTICAL
+                        setPadding(dp(12), 0, dp(8), 0)
+                    }
+                    val name = TextView(this@MainActivity).apply {
+                        text = node.name
+                        textSize = 15f
+                        maxLines = 1
+                        ellipsize = android.text.TextUtils.TruncateAt.END
+                        typeface = android.graphics.Typeface.DEFAULT_BOLD
+                        setTextColor(Color.WHITE)
+                    }
+                    val subtitle = TextView(this@MainActivity).apply {
+                        text = if (measuredLatency.containsKey(node.uri)) "Проверен · доступность подтверждена" else "Нажми, чтобы подключиться"
+                        textSize = 11f
+                        setTextColor(Color.GRAY)
+                        setPadding(0, dp(3), 0, 0)
+                    }
+                    nameColumn.addView(name)
+                    nameColumn.addView(subtitle)
+                    val latency = TextView(this@MainActivity).apply {
+                        text = measuredLatency[node.uri]?.let { "$it мс" } ?: "—"
+                        textSize = 13f
+                        typeface = android.graphics.Typeface.DEFAULT_BOLD
+                        setTextColor(if (measuredLatency.containsKey(node.uri)) Color.rgb(70, 230, 110) else Color.LTGRAY)
+                        gravity = android.view.Gravity.CENTER
+                    }
+                    row.addView(dot, LinearLayout.LayoutParams(dp(22), ViewGroup.LayoutParams.WRAP_CONTENT))
+                    row.addView(nameColumn, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                    row.addView(latency, LinearLayout.LayoutParams(dp(58), ViewGroup.LayoutParams.WRAP_CONTENT))
+                    return row
+                }
+            }
+        }
+        refreshList()
+        search.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) { refreshList() }
+            override fun afterTextChanged(s: android.text.Editable?) {}
+        })
+        sortButton.setOnClickListener {
+            orderedNodes = if (sortButton.text == "По названию") {
+                sortButton.text = "Исходный порядок"
+                orderedNodes.sortedBy { it.name.lowercase(java.util.Locale.ROOT) }
+            } else {
+                sortButton.text = "По названию"
+                initialNodes
+            }
+            refreshList()
+        }
+        testButton.setOnClickListener {
+            testButton.isEnabled = false
+            sortButton.isEnabled = false
+            testButton.text = "Проверка…"
+            val sourceNodes = orderedNodes
+            Thread {
+                val ranked = scanQuattroCandidates(sourceNodes)
+                runOnUiThread {
+                    if (!dialog.isShowing) return@runOnUiThread
+                    if (ranked.isNotEmpty()) {
+                        val rankedNodes = ranked.map { it.first }
+                        measuredLatency.clear()
+                        ranked.forEach { measuredLatency[it.first.uri] = it.second }
+                        val rest = sourceNodes.filterNot { node -> rankedNodes.any { it.uri == node.uri } }
+                        orderedNodes = rankedNodes + rest
+                        if (activeFree) {
+                            freeNodes = orderedNodes
+                            saveNodes("free_nodes", freeNodes)
+                        } else {
+                            quattroNodes = orderedNodes
+                            saveNodes("quattro_nodes", quattroNodes)
+                        }
+                        title.text = "СЕРВЕРЫ  ·  ${orderedNodes.size}"
+                        sortButton.text = "Лучшие по пингу"
+                        Toast.makeText(this@MainActivity, "Рабочих серверов найдено: ${ranked.size}", Toast.LENGTH_LONG).show()
+                        refreshList()
+                    } else {
+                        Toast.makeText(this@MainActivity, "Рабочие серверы не найдены", Toast.LENGTH_LONG).show()
+                    }
+                    testButton.isEnabled = true
+                    sortButton.isEnabled = true
+                    testButton.text = "Проверить все"
+                }
+            }.start()
+        }
+        list.setOnItemClickListener { _, _, position, _ ->
+            val selected = visibleNodes.getOrNull(position) ?: return@setOnItemClickListener
+            val currentIndex = activeNodes.indexOfFirst { it.uri == selected.uri }
+            if (currentIndex >= 0) {
+                servers.setSelection(currentIndex)
+                val key = if (activeFree) "free_selected" else "quattro_selected"
+                prefs.edit().putInt(key, currentIndex).apply()
+                serverCardTitle.text = selected.name
+                serverCardSubtitle.text = if (activeFree) "Бесплатный резерв" else "Quattro"
+                serverCardPing.text = measuredLatency[selected.uri]?.let { "${it} мс" } ?: ""
+                pingStatus.text = measuredLatency[selected.uri]?.let { "Пинг: ${it} мс" } ?: "Пинг: —"
+            }
+            dialog.dismiss()
+        }
+        page.addView(header)
+        page.addView(search, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(50)).apply { topMargin = dp(8); bottomMargin = dp(10) })
+        page.addView(actions, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)).apply { bottomMargin = dp(8) })
+        page.addView(list, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        dialog.setContentView(page)
+        dialog.window?.let { window ->
+            window.setBackgroundDrawableResource(android.R.color.transparent)
+            window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        }
+        dialog.show()
+        dialog.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+    }
+
+    private fun showConnectionDetails() {
+        val dialog = android.app.Dialog(this)
+        val page = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(18), dp(12), dp(18), dp(16))
+            setBackgroundColor(Color.rgb(8, 8, 10))
+        }
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+        }
+        val heading = TextView(this).apply {
+            text = "СТАТИСТИКА И СОЕДИНЕНИЕ"
+            textSize = 18f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(Color.WHITE)
+        }
+        val close = TextView(this).apply {
+            text = "✕"
+            textSize = 22f
+            gravity = android.view.Gravity.CENTER
+            setTextColor(Color.LTGRAY)
+            isClickable = true
+            setPadding(dp(12), dp(8), dp(8), dp(8))
+            setOnClickListener { dialog.dismiss() }
+        }
+        header.addView(heading, LinearLayout.LayoutParams(0, dp(48), 1f))
+        header.addView(close, LinearLayout.LayoutParams(dp(48), dp(48)))
+        val connectedNow = status.text.toString().contains("Подключено")
+        val state = TextView(this).apply {
+            text = if (connectedNow) "●  ЗАЩИЩЁННОЕ СОЕДИНЕНИЕ" else "○  VPN ОТКЛЮЧЁН"
+            textSize = 13f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(if (connectedNow) Color.rgb(42, 235, 92) else Color.LTGRAY)
+            setPadding(dp(14), dp(14), dp(14), dp(14))
+            background = GradientDrawable().apply {
+                setColor(Color.rgb(18, 22, 19))
+                cornerRadius = dp(14).toFloat()
+                setStroke(dp(1), if (connectedNow) Color.rgb(35, 105, 55) else Color.rgb(55, 55, 60))
+            }
+        }
+        fun infoCard(label: String, value: String): Pair<LinearLayout, TextView> {
+            val card = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(14), dp(12), dp(14), dp(12))
+                background = GradientDrawable().apply {
+                    setColor(Color.rgb(20, 20, 24))
+                    cornerRadius = dp(15).toFloat()
+                    setStroke(dp(1), Color.rgb(48, 48, 55))
+                }
+            }
+            val caption = TextView(this).apply {
+                text = label.uppercase(java.util.Locale.ROOT)
+                textSize = 10f
+                setTextColor(Color.GRAY)
+            }
+            val number = TextView(this).apply {
+                text = value
+                textSize = 19f
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                setTextColor(Color.WHITE)
+                setPadding(0, dp(5), 0, 0)
+                maxLines = 2
+            }
+            card.addView(caption)
+            card.addView(number)
+            return card to number
+        }
+        val downCard = infoCard("ВХОДЯЩАЯ СКОРОСТЬ", if (::downloadMetric.isInitialized) downloadMetric.text.toString() else "0.0 Мбит/с")
+        val upCard = infoCard("ИСХОДЯЩАЯ СКОРОСТЬ", if (::uploadMetric.isInitialized) uploadMetric.text.toString() else "0.0 Мбит/с")
+        val grid = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        grid.addView(downCard.first, LinearLayout.LayoutParams(0, dp(94), 1f).apply { rightMargin = dp(5) })
+        grid.addView(upCard.first, LinearLayout.LayoutParams(0, dp(94), 1f).apply { leftMargin = dp(5) })
+        val currentNode = activeNodes.getOrNull(servers.selectedItemPosition)?.name ?: "Автовыбор"
+        val serverCard = infoCard("ТЕКУЩИЙ СЕРВЕР", currentNode)
+        val modeCard = infoCard("РЕЖИМ РАБОТЫ", if (autoMode) "Автоматический · PORTAL → Quattro" else if (activeFree) "Резервный" else "Quattro")
+        val pingCard = infoCard("ЗАДЕРЖКА", if (::pingMetric.isInitialized) pingMetric.text.toString() else "— мс")
+        val scroll = android.widget.ScrollView(this)
+        val body = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dp(12), 0, 0)
+        }
+        body.addView(state, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(10) })
+        val trafficNote = TextView(this).apply {
+            text = "Скорость показывает общий сетевой трафик устройства"
+            textSize = 11f
+            setTextColor(Color.GRAY)
+            setPadding(dp(3), 0, dp(3), dp(8))
+        }
+        body.addView(trafficNote)
+        body.addView(grid, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(94)).apply { bottomMargin = dp(10) })
+        body.addView(serverCard.first, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(9) })
+        body.addView(modeCard.first, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(9) })
+        body.addView(pingCard.first, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(12) })
+        val pingButton = Button(this).apply {
+            text = "ПРОВЕРИТЬ ЗАДЕРЖКУ"
+            isAllCaps = false
+            setTextColor(Color.WHITE)
+            background = GradientDrawable().apply {
+                setColor(Color.rgb(24, 38, 27))
+                cornerRadius = dp(13).toFloat()
+                setStroke(dp(1), Color.rgb(45, 130, 65))
+            }
+            setOnClickListener { measureSelectedPing() }
+        }
+        body.addView(pingButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)))
+        scroll.addView(body)
+        page.addView(header)
+        page.addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        dialog.setContentView(page)
+        dialog.setOnShowListener {
+            dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+            dialog.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        }
+        dialog.show()
+        dialog.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        val liveUpdate = object : Runnable {
+            override fun run() {
+                if (!dialog.isShowing) return
+                downCard.second.text = if (::downloadMetric.isInitialized) downloadMetric.text else "0.0 Мбит/с"
+                upCard.second.text = if (::uploadMetric.isInitialized) uploadMetric.text else "0.0 Мбит/с"
+                pingCard.second.text = if (::pingMetric.isInitialized) pingMetric.text else "— мс"
+                val nowConnected = ::status.isInitialized && status.text.toString().contains("Подключено")
+                state.text = if (nowConnected) "●  ЗАЩИЩЁННОЕ СОЕДИНЕНИЕ" else "○  VPN ОТКЛЮЧЁН"
+                state.setTextColor(if (nowConnected) Color.rgb(42, 235, 92) else Color.LTGRAY)
+                state.background = GradientDrawable().apply {
+                    setColor(Color.rgb(18, 22, 19))
+                    cornerRadius = dp(14).toFloat()
+                    setStroke(dp(1), if (nowConnected) Color.rgb(35, 105, 55) else Color.rgb(55, 55, 60))
+                }
+                serverCard.second.text = activeNodes.getOrNull(servers.selectedItemPosition)?.name ?: "Автовыбор"
+                modeCard.second.text = if (autoMode) "Автоматический · PORTAL → Quattro" else if (activeFree) "Резервный" else "Quattro"
+                trafficHandler.postDelayed(this, 1000L)
+            }
+        }
+        dialog.setOnDismissListener { trafficHandler.removeCallbacks(liveUpdate) }
+        trafficHandler.post(liveUpdate)
     }
 
     private fun updateServerCard(connected: Boolean) {
@@ -654,7 +1291,6 @@ class MainActivity : Activity() {
         if (!::powerOrb.isInitialized) return
         powerOrbDrawable.setConnected(connected)
         (powerOrb as? PowerOrbButtonView)?.setConnected(connected)
-        if (::tigerFlames.isInitialized) tigerFlames.setActive(connected)
         powerOrb.setTextColor(if (connected) Color.rgb(0, 255, 48) else Color.WHITE)
         powerOrb.elevation = dp(if (connected) 20 else 12).toFloat()
         powerOrb.invalidate()
@@ -683,7 +1319,6 @@ class MainActivity : Activity() {
                 val phase = it.animatedValue as Float
                 fireDrawable.setPhase(phase)
                 powerOrbDrawable.setPhase(phase)
-                if (::tigerFlames.isInitialized) tigerFlames.setPhase(phase)
             }
             start()
         }
@@ -697,7 +1332,6 @@ class MainActivity : Activity() {
         fireDrawable.setConnected(false)
         fireDrawable.setPhase(0f)
         powerOrbDrawable.setPhase(0f)
-        if (::tigerFlames.isInitialized) tigerFlames.setPhase(0f)
         connectButton.animate().cancel()
         connectButton.scaleX = 1f
         connectButton.scaleY = 1f
@@ -781,12 +1415,15 @@ class MainActivity : Activity() {
     }
 
     private fun switchToAuto() {
+        // Automatic mode is PORTAL GATE first, with Quattro as the final fallback.
+        // Do not silently switch to the rejected public/free-server mode.
         autoMode = true
         activeMode = "auto"
-        prefs.edit().putString("connection_mode", "auto").apply()
-        activeFree = quattroNodes.isEmpty() && freeNodes.isNotEmpty()
+        activeFree = false
+        prefs.edit().putString("connection_mode", "auto")
+            .putBoolean("active_free_mode", false).apply()
         refreshMode()
-        Toast.makeText(this, "Автовыбор включён: Quattro в приоритете, бесплатный резерв", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Автовыбор включён: PORTAL GATE → Quattro", Toast.LENGTH_SHORT).show()
     }
 
     private fun switchMode(free: Boolean) {
@@ -829,12 +1466,11 @@ class MainActivity : Activity() {
     }
 
     private fun refreshMode() {
+        if (::routeMetric.isInitialized) routeMetric.text = if (autoMode) "PORTAL → QUATTRO" else "QUATTRO"
         autoTab.isEnabled = !autoMode
-        quattroTab.isEnabled = autoMode || activeFree
-        freeTab.isEnabled = autoMode || !activeFree
+        quattroTab.isEnabled = autoMode
         autoTab.alpha = if (autoMode) 1f else 0.72f
         quattroTab.alpha = if (!autoMode && !activeFree) 1f else 0.72f
-        freeTab.alpha = if (!autoMode && activeFree) 1f else 0.72f
         fun modeBackground(selected: Boolean) = GradientDrawable().apply {
             setColor(if (selected) Color.rgb(54, 24, 12) else Color.rgb(13, 13, 15))
             cornerRadius = dp(14).toFloat()
@@ -842,10 +1478,8 @@ class MainActivity : Activity() {
                 if (selected) Color.rgb(220, 32, 32) else Color.rgb(58, 58, 62))
         }
         quattroTab.background = modeBackground(!autoMode && !activeFree)
-        freeTab.background = modeBackground(!autoMode && activeFree)
         autoTab.background = modeBackground(autoMode)
         quattroTab.setTextColor(if (!autoMode && !activeFree) Color.WHITE else Color.LTGRAY)
-        freeTab.setTextColor(if (!autoMode && activeFree) Color.WHITE else Color.LTGRAY)
         autoTab.setTextColor(if (autoMode) Color.WHITE else Color.LTGRAY)
         primarySource.visibility = if (activeFree) ViewGroup.GONE else ViewGroup.VISIBLE
         freeSource.visibility = if (activeFree) ViewGroup.VISIBLE else ViewGroup.GONE
@@ -868,10 +1502,11 @@ class MainActivity : Activity() {
         val scroll = root.getChildAt(0) as? android.widget.ScrollView ?: return
         val page = scroll.getChildAt(0) as? ViewGroup ?: return
         settingsHeader.visibility = if (settingsExpanded) View.VISIBLE else View.GONE
-        modeSelectorRow.visibility = if (settingsExpanded) View.VISIBLE else View.GONE
+        portalGateButton.visibility = if (settingsExpanded) View.VISIBLE else View.GONE
+        modeSelectorRow.visibility = View.VISIBLE
         primarySource.visibility = if (settingsExpanded && !activeFree) View.VISIBLE else View.GONE
-        freeSource.visibility = if (settingsExpanded && activeFree) View.VISIBLE else View.GONE
-        bestFreeButton.visibility = if (settingsExpanded && activeFree) View.VISIBLE else View.GONE
+        freeSource.visibility = View.GONE
+        bestFreeButton.visibility = View.GONE
         checkPing.visibility = if (settingsExpanded) View.VISIBLE else View.GONE
         for (i in 0 until page.childCount) {
             val child = page.getChildAt(i)
@@ -879,7 +1514,7 @@ class MainActivity : Activity() {
                 val label = child.text.toString()
                 val show = settingsExpanded && (
                     (!activeFree && (label == "Импортировать Quattro" || label == "Выбрать DOCX Quattro")) ||
-                    (activeFree && label == "Импортировать бесплатные серверы")
+                    (label == "ОТКРЫТЬ PORTAL GATE")
                 )
                 if (label.startsWith("Импортировать") || label == "Выбрать DOCX Quattro") {
                     child.visibility = if (show) View.VISIBLE else View.GONE
@@ -901,6 +1536,17 @@ class MainActivity : Activity() {
                 val connected = ::status.isInitialized && status.text.toString().contains("Подключено")
                 downloadMetric.text = String.format(java.util.Locale.US, "%.1f Мбит/с", if (connected) down else 0.0)
                 uploadMetric.text = String.format(java.util.Locale.US, "%.1f Мбит/с", if (connected) up else 0.0)
+                if (::sessionMetric.isInitialized) {
+                    sessionMetric.text = if (connected && ::connectionTimer.isInitialized) connectionTimer.text.toString() else "00:00"
+                }
+                if (::trafficTotalMetric.isInitialized) {
+                    val total = if (connected && rx >= 0 && tx >= 0) {
+                        (rx - sessionRxStart).coerceAtLeast(0L) + (tx - sessionTxStart).coerceAtLeast(0L)
+                    } else 0L
+                    trafficTotalMetric.text = if (total >= 1_073_741_824L)
+                        String.format(java.util.Locale.US, "%.2f ГБ", total / 1_073_741_824.0)
+                    else String.format(java.util.Locale.US, "%.0f МБ", total / 1_048_576.0)
+                }
                 lastRxBytes = rx
                 lastTxBytes = tx
                 lastTrafficSample = now
@@ -1109,7 +1755,6 @@ class MainActivity : Activity() {
                         }
                         status.setTextColor(Color.LTGRAY)
                         updatePowerOrb(false)
-                        if (::tigerFlames.isInitialized) tigerFlames.setActive(false)
                         if (::connectionTimer.isInitialized) {
                             connectionTimer.stop()
                             connectionTimer.visibility = View.GONE
@@ -1150,13 +1795,49 @@ class MainActivity : Activity() {
             }
         }.start()
     }
+    /**
+     * Tests Quattro nodes through the actual proxy outbound, not just TCP port reachability.
+     * Returns up to three working nodes sorted by measured HTTPS latency.
+     */
+    private fun scanQuattroCandidates(nodes: List<ImportedNode>): List<Pair<ImportedNode, Long>> {
+        if (nodes.isEmpty()) return emptyList()
+        val candidates = nodes.take(80)
+        val pool = Executors.newFixedThreadPool(8)
+        val completion = java.util.concurrent.ExecutorCompletionService<Pair<ImportedNode, Long>?>(pool)
+        try {
+            candidates.forEach { node ->
+                completion.submit(Callable<Pair<ImportedNode, Long>?> {
+                    val config = runCatching { GilrTanoVpnService.xrayConfigFromVless(node.uri) }
+                        .getOrNull() ?: return@Callable null
+                    runCatching {
+                        val latency = teapodcore.Teapodcore.measureOutboundDelay(
+                            config, "https://www.gstatic.com/generate_204"
+                        )
+                        if (latency > 0L) node to latency else null
+                    }.getOrNull()
+                })
+            }
+            val results = mutableListOf<Pair<ImportedNode, Long>>()
+            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(18)
+            var completed = 0
+            while (completed < candidates.size && System.nanoTime() < deadline && results.size < 3) {
+                val remaining = deadline - System.nanoTime()
+                val future = completion.poll(remaining, TimeUnit.NANOSECONDS) ?: break
+                completed++
+                runCatching { future.get() }.getOrNull()?.let(results::add)
+            }
+            return results.sortedBy { it.second }
+        } finally {
+            pool.shutdownNow()
+        }
+    }
+
     private fun connectAutomaticallySelected() {
         val node = activeNodes.getOrNull(servers.selectedItemPosition) ?: return
         try {
             val config = GilrTanoVpnService.xrayConfigFromVless(node.uri)
-            val fallbackNode = if (activeFree) freeNodes.getOrNull(1) else freeNodes.firstOrNull()
-            val fallback = fallbackNode
-                ?.let { runCatching { GilrTanoVpnService.xrayConfigFromVless(it.uri) }.getOrNull() }
+            // Public/free nodes are intentionally excluded; Quattro remains the only Xray fallback.
+            val fallback: String? = null
             pendingConfig = config
             pendingFallbackConfig = fallback
             pendingPreferredConfig = config
@@ -1206,6 +1887,20 @@ class MainActivity : Activity() {
         }.start()
     }
 
+    private fun startWarpVpn(config: String, fallbackQuattro: String?, fallbackChain: List<String> = emptyList()) {
+        val intent = Intent(this, GilrTanoVpnService::class.java)
+            .setAction(GilrTanoVpnService.ACTION_START_PORTAL)
+            .putExtra(GilrTanoVpnService.EXTRA_CONFIG, config)
+            .putExtra(GilrTanoVpnService.EXTRA_ENGINE_BOX, true)
+            .putExtra(GilrTanoVpnService.EXTRA_PORTAL, true)
+            .putExtra(GilrTanoVpnService.EXTRA_AUTO, true)
+            .putExtra(GilrTanoVpnService.EXTRA_FALLBACK_CONFIG, fallbackQuattro)
+            .putExtra(GilrTanoVpnService.EXTRA_FALLBACK_ENGINE_BOX, false)
+            .putExtra(GilrTanoVpnService.EXTRA_FALLBACK_CHAIN, JSONArray(fallbackChain).toString())
+        startForegroundService(intent)
+        status.text = "Запускаю сгенерированный WARP. Резервный архив загружает VPN-служба…"
+    }
+
     private fun startVpn(
         config: String,
         fallbackConfig: String? = null,
@@ -1228,14 +1923,21 @@ class MainActivity : Activity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == this.requestCode && resultCode == RESULT_OK) {
             pendingConfig?.let {
-                startVpn(it, pendingFallbackConfig, pendingPreferredConfig, pendingAutomatic)
+                if (pendingPortalAwg) startWarpVpn(it, pendingFallbackConfig, pendingFallbackChain)
+                else startVpn(it, pendingFallbackConfig, pendingPreferredConfig, pendingAutomatic)
                 pendingConfig = null
                 pendingFallbackConfig = null
                 pendingPreferredConfig = null
                 pendingAutomatic = false
+                pendingPortalAwg = false
+                pendingFallbackChain = emptyList()
             } ?: run { status.text = "Подключение отменено" }
         } else if (requestCode == this.requestCode) {
             pendingConfig = null
+            pendingFallbackConfig = null
+            pendingPreferredConfig = null
+            pendingPortalAwg = false
+            pendingFallbackChain = emptyList()
             connectButton.isEnabled = true
             status.text = "Разрешение VPN не предоставлено"
         } else if (requestCode == docxRequestCode && resultCode == RESULT_OK) {

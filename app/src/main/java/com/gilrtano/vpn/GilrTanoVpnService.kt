@@ -25,28 +25,134 @@ class GilrTanoVpnService : VpnService() {
     @Volatile private var coreInitialized = false
     @Volatile private var activeConfig: String? = null
     @Volatile private var fallbackConfig: String? = null
+    private data class FallbackCandidate(val config: String, val boxMode: Boolean, val portalMode: Boolean)
+    @Volatile private var fallbackChain: List<FallbackCandidate> = emptyList()
+    @Volatile private var fallbackIndex = -1
     @Volatile private var preferredConfig: String? = null
     @Volatile private var automaticMode = false
+    @Volatile private var portalMode = false
+    @Volatile private var fallbackBoxMode = false
+    @Volatile private var preferredBoxMode = false
     @Volatile private var monitorRunning = false
     @Volatile private var consecutiveProbeFailures = 0
     @Volatile private var lastAutomaticSwitchAt = 0L
     @Volatile private var usingFallback = false
+    @Volatile private var boxMode = false
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> stopTunnel()
-            ACTION_START, ACTION_SWITCH -> {
+            ACTION_START, ACTION_SWITCH, ACTION_START_PORTAL -> {
                 val config = intent.getStringExtra(EXTRA_CONFIG)
                 if (config.isNullOrBlank()) {
-                    broadcastStatus("Добавьте VLESS-ссылку")
+                    broadcastStatus("Добавьте профиль Quattro или PORTAL GATE")
                     stopSelf()
                 } else if (intent.action == ACTION_SWITCH) {
                     automaticMode = false
-                    switchTunnel(config)
+                    portalMode = false
+                    boxMode = false
+                    switchTunnel(config, false)
                 } else {
+                    boxMode = intent.action == ACTION_START_PORTAL || intent.getBooleanExtra(EXTRA_ENGINE_BOX, false)
+                    portalMode = intent.getBooleanExtra(EXTRA_PORTAL, intent.action == ACTION_START_PORTAL)
                     automaticMode = intent.getBooleanExtra(EXTRA_AUTO, false)
                     fallbackConfig = intent.getStringExtra(EXTRA_FALLBACK_CONFIG)
+                    fallbackBoxMode = intent.getBooleanExtra(EXTRA_FALLBACK_ENGINE_BOX, false)
+                    // Never send the 121-profile archive through an Intent extra:
+                    // Binder has a small transaction limit and the aggregate configs can
+                    // exceed it, crashing the app before the generated WARP is attempted.
+                    // Load the bundled archive inside this service process instead.
+                    fallbackChain = emptyList()
+                    // Quattro profiles are passed as a compact JSON chain, not a huge Binder parcel.
+                    val suppliedQuattroChain = runCatching {
+                        val raw = intent.getStringExtra(EXTRA_FALLBACK_CHAIN).orEmpty()
+                        val array = org.json.JSONArray(raw)
+                        (0 until array.length()).mapNotNull { index ->
+                            array.optString(index).takeIf { it.isNotBlank() && it != config }
+                                ?.let { FallbackCandidate(it, false, false) }
+                        }
+                    }.getOrDefault(emptyList())
+                    // MainActivity starts generated WARP with ACTION_START + EXTRA_PORTAL,
+                    // while the dedicated PORTAL screen uses ACTION_START_PORTAL. Load the
+                    // bundled failover archive for BOTH entry points; checking only the action
+                    // silently left the one-tap WARP flow with no PORTAL backup candidates.
+                    if (portalMode) {
+                        // Reuse every profile imported in PORTAL GATE. The Activity and
+                        // VPN service share this process, so no private-key list needs to
+                        // be passed through Binder extras or written to public source files.
+                        val sessionProfiles = PortalGateSession.profiles.ifEmpty {
+                            // Restore persisted user imports after Android has recreated the
+                            // app process; URI permissions were persisted by PortalGateActivity.
+                            val prefs = getSharedPreferences("portal_gate", MODE_PRIVATE)
+                            val savedUris = listOfNotNull(
+                                prefs.getString("awg_archive_uri", null),
+                                prefs.getString("masque_archive_uri", null),
+                                prefs.getString("archive_uri", null)
+                            ).distinct()
+                            savedUris.flatMap { saved ->
+                                runCatching {
+                                    val uri = android.net.Uri.parse(saved)
+                                    val displayName = contentResolver.query(
+                                        uri,
+                                        arrayOf(android.provider.OpenableColumns.DISPLAY_NAME),
+                                        null, null, null
+                                    )?.use { cursor ->
+                                        if (cursor.moveToFirst()) cursor.getString(0) else ""
+                                    }.orEmpty()
+                                    contentResolver.openInputStream(uri)?.use { input ->
+                                        if (displayName.endsWith(".yaml", true) || displayName.endsWith(".yml", true)) {
+                                            PortalGateMasqueImporter.parseYaml(input)
+                                        } else {
+                                            PortalGateImporter.parseZip(input)
+                                        }
+                                    } ?: emptyList()
+                                }.onFailure { error ->
+                                    Log.w(TAG, "Could not restore saved PORTAL import", error)
+                                }.getOrDefault(emptyList())
+                            }.also { restored -> PortalGateSession.profiles = restored }
+                        }
+                        val importedProfiles = sessionProfiles.map { profile ->
+                            val useSingBox = runCatching {
+                                val root = JSONObject(profile.config)
+                                root.has("endpoints") && !root.has("outbounds")
+                            }.getOrDefault(false)
+                            // Both imported engines belong to PORTAL; MASQUE uses Xray,
+                            // while AmneziaWG uses sing-box.
+                            FallbackCandidate(profile.config, useSingBox, true)
+                        }
+                        // An optional private archive may be injected by CI from a secret
+                        // URL. It is deliberately not stored in this public repository.
+                        val bundledProfiles = if (assets.list("")?.contains("portal_gate.zip") == true) {
+                            runCatching {
+                                assets.open("portal_gate.zip").use { input ->
+                                    PortalGateImporter.parseZip(input).map { profile ->
+                                        val useSingBox = runCatching {
+                                            val root = JSONObject(profile.config)
+                                            root.has("endpoints") && !root.has("outbounds")
+                                        }.getOrDefault(false)
+                                        FallbackCandidate(profile.config, useSingBox, true)
+                                    }
+                                }
+                            }.onFailure { error ->
+                                Log.e(TAG, "Could not load private PORTAL GATE archive", error)
+                            }.getOrDefault(emptyList())
+                        } else emptyList()
+                        fallbackChain = (importedProfiles + bundledProfiles)
+                            .distinctBy { it.config }
+                            .filterNot { it.config == config }
+                        Log.i(TAG, "Loaded ${importedProfiles.size} imported and ${bundledProfiles.size} bundled PORTAL failover profiles")
+                    }
+                    if (!fallbackConfig.isNullOrBlank() && fallbackConfig != config &&
+                        fallbackChain.none { it.config == fallbackConfig }) {
+                        // Keep the best measured Quattro node first, followed by the remaining tested nodes.
+                        fallbackChain = fallbackChain + FallbackCandidate(fallbackConfig!!, fallbackBoxMode, false)
+                    }
+                    suppliedQuattroChain.forEach { candidate ->
+                        if (fallbackChain.none { it.config == candidate.config }) fallbackChain = fallbackChain + candidate
+                    }
+                    fallbackIndex = -1
                     preferredConfig = intent.getStringExtra(EXTRA_PREFERRED_CONFIG)
+                    preferredBoxMode = intent.getBooleanExtra(EXTRA_PREFERRED_ENGINE_BOX, false)
                     usingFallback = false
                     consecutiveProbeFailures = 0
                     startTunnel(config)
@@ -56,26 +162,64 @@ class GilrTanoVpnService : VpnService() {
         return START_NOT_STICKY
     }
 
-    private fun switchTunnel(config: String) {
+    private fun switchTunnel(
+        config: String,
+        nextBoxMode: Boolean = boxMode,
+        nextPortalMode: Boolean = portalMode
+    ) {
         stopping = true
-        broadcastStatus("Переключаю сервер…")
+        broadcastStatus("Переключаю протокол / сервер…")
         Thread({
             synchronized(this) {
                 runCatching { Teapodcore.stopTun2Socks() }
                 runCatching { Teapodcore.stopXray() }
+                runCatching { Teapodcore.stopBox() }
                 runCatching { tun?.close() }
                 tun = null
             }
+            boxMode = nextBoxMode
+            // PORTAL labels and verification policy belong to the selected engine.
+            // A Quattro/Xray fallback must leave PORTAL mode so its checks run normally.
+            portalMode = nextPortalMode
             stopping = false
             startTunnel(config)
-        }, "GilrTano-Xray-switch").start()
+        }, "GilrTano-VPN-switch").start()
     }
 
+    /**
+     * Move through the ordered failover chain: generated WARP, bundled PORTAL
+     * AmneziaWG profiles, then Quattro/Xray. Each candidate is validated by the
+     * same end-to-end HTTPS probe before it is reported as connected.
+     */
+    @Synchronized private fun advanceFallback(reason: String): Boolean {
+        if (!automaticMode || stopping) return false
+        val next = fallbackIndex + 1
+        if (next !in fallbackChain.indices) return false
+        fallbackIndex = next
+        usingFallback = true
+        lastAutomaticSwitchAt = System.currentTimeMillis()
+        consecutiveProbeFailures = 0
+        val candidate = fallbackChain[next]
+        val label = when {
+            candidate.portalMode && candidate.boxMode -> "PORTAL AmneziaWG " + (next + 1) + "/" + fallbackChain.size
+            candidate.portalMode -> "PORTAL MASQUE " + (next + 1) + "/" + fallbackChain.size
+            else -> "Quattro"
+        }
+        broadcastStatus("Переключаюсь… $reason. Выбираю $label")
+        switchTunnel(candidate.config, candidate.boxMode, candidate.portalMode)
+        return true
+    }
     private fun startTunnel(config: String) {
         stopping = false
         activeConfig = config
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, notification("Запуск Xray…"))
+        val startupLabel = when {
+            portalMode && boxMode -> "Запуск PORTAL AmneziaWG…"
+            portalMode -> "Запуск PORTAL MASQUE…"
+            boxMode -> "Запуск PORTAL GATE…"
+            else -> "Запуск Quattro…"
+        }
+        startForeground(NOTIFICATION_ID, notification(startupLabel))
         // Native core initialization/start can block; never run it on Android's service main thread.
         Thread({
             try {
@@ -92,38 +236,36 @@ class GilrTanoVpnService : VpnService() {
                     }
                 }
                 if (stopping) return@Thread
-                Teapodcore.startXray(config, object : XrayCallback {
+                val callback = object : XrayCallback {
                     override fun onStatus(status: Long, message: String) {
-                        Log.i(TAG, "Xray status=$status $message")
+                        Log.i(TAG, "${when { portalMode && boxMode -> "PORTAL AmneziaWG"; portalMode -> "PORTAL MASQUE"; boxMode -> "PORTAL GATE"; else -> "Quattro" }} status=$status $message")
                         if (status == 0L && !stopping) establishTun()
                         else if (status < 0L && !stopping) {
-                            if (automaticMode && !usingFallback && !fallbackConfig.isNullOrBlank()) {
-                                usingFallback = true
-                                lastAutomaticSwitchAt = System.currentTimeMillis()
-                                broadcastStatus("Quattro недоступен. Запускаю бесплатный резерв…")
-                                switchTunnel(fallbackConfig!!)
+                            if (automaticMode && advanceFallback("Основной протокол недоступен: ${message.take(140)}")) {
+                                return
                             } else {
-                                broadcastStatus("Ошибка Xray: $message")
-                                stopTunnel()
+                                val failure = "Ошибка запуска ${if (boxMode) "PORTAL / AmneziaWG" else "Quattro / Xray"}: ${message.take(220)}"
+                                Log.e(TAG, failure)
+                                stopTunnel(failure)
                             }
                         }
                     }
-                })
+                }
+                if (boxMode) Teapodcore.startBox(config, filesDir.absolutePath, callback)
+                else Teapodcore.startXray(config, callback)
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to start Xray", e)
+                Log.e(TAG, "Failed to start ${if (boxMode) "PORTAL GATE" else "Quattro"}", e)
                 if (!stopping) {
-                    if (automaticMode && !usingFallback && !fallbackConfig.isNullOrBlank()) {
-                        usingFallback = true
-                        lastAutomaticSwitchAt = System.currentTimeMillis()
-                        broadcastStatus("Не удалось запустить Quattro. Пробую бесплатный резерв…")
-                        switchTunnel(fallbackConfig!!)
+                    if (automaticMode && advanceFallback("Не удалось запустить основной протокол")) {
+                        return@Thread
                     } else {
-                        broadcastStatus("Ошибка запуска: ${e.message}")
-                        stopTunnel()
+                        val failure = "Ошибка запуска движка: ${(e.message ?: e.javaClass.simpleName).take(220)}"
+                        Log.e(TAG, failure, e)
+                        stopTunnel(failure)
                     }
                 }
             }
-        }, "GilrTano-Xray-start").start()
+        }, when { portalMode && boxMode -> "GilrTano-PORTAL-AWG-start"; portalMode -> "GilrTano-PORTAL-MASQUE-start"; boxMode -> "GilrTano-PORTAL-start"; else -> "GilrTano-Xray-start" }).start()
     }
 
     @Synchronized private fun establishTun() {
@@ -134,16 +276,19 @@ class GilrTanoVpnService : VpnService() {
                 .setMtu(1280)
                 .addAddress("10.77.0.2", 32)
                 .addRoute("0.0.0.0", 0)
+                .addAddress("fd00:77::2", 128)
+                .addRoute("::", 0)
                 .addDnsServer("1.1.1.1")
                 .addDnsServer("8.8.8.8")
+                .addDnsServer("2606:4700:4700::1111")
                 .establish() ?: throw IllegalStateException("Android не создал VPN-интерфейс")
             tun = pfd
-            // Force HTTP/3 apps to fall back to HTTPS/TCP because many public
-            // free SOCKS nodes do not relay UDP reliably. This avoids apps
-            // hanging on a broken QUIC path; ICMP is not needed here.
+            // Keep UDP enabled: YouTube and other Google apps prefer HTTP/3
+            // over QUIC (UDP/443). Blocking QUIC can leave playback stalled on
+            // networks where the app does not promptly fall back to TCP.
             val error = Teapodcore.startTun2Socks(
                 pfd.fd.toLong(), 1280L, SOCKS_PORT.toLong(),
-                "", "", false, true, null
+                "", "", false, false, null
             )
             if (error.isNotEmpty()) throw IllegalStateException("tun2socks: $error")
 
@@ -171,27 +316,30 @@ class GilrTanoVpnService : VpnService() {
             if (!internetReady) {
                 throw IllegalStateException("Сервер ответил, но интернет через VPN не проходит")
             }
-            if (!verifyRequiredServices()) {
+            if (!portalMode && !boxMode && !verifyRequiredServices()) {
                 throw IllegalStateException("Не все обязательные сервисы доступны через VPN")
             }
 
             broadcastStatus(
-                if (automaticMode) {
-                    if (usingFallback) "Подключено · бесплатный резерв" else "Подключено · Quattro"
-                } else "Подключено · Xray и TUN работают"
+                when {
+                    portalMode && boxMode -> "Подключено · PORTAL / AmneziaWG"
+                    portalMode -> "Подключено · PORTAL / MASQUE"
+                    boxMode -> "Подключено · PORTAL GATE / AmneziaWG"
+                    automaticMode && usingFallback -> "Подключено · резервный сервер"
+                    automaticMode -> "Подключено · Quattro"
+                    else -> "Подключено · Quattro / Xray"
+                }
             )
             updateNotification("Подключено · защищённый трафик")
             startConnectionMonitor()
         } catch (e: Exception) {
             Log.w(TAG, "VPN tunnel did not pass internet verification", e)
-            if (automaticMode && !usingFallback && !fallbackConfig.isNullOrBlank() && !stopping) {
-                usingFallback = true
-                lastAutomaticSwitchAt = System.currentTimeMillis()
-                broadcastStatus("У выбранного сервера нет интернета. Пробую бесплатный резерв…")
-                switchTunnel(fallbackConfig!!)
+            if (automaticMode && !stopping && advanceFallback("У сервера нет доступа в интернет")) {
+                return
             } else {
-                broadcastStatus("Не удалось подключиться: ${e.message}")
-                stopTunnel()
+                val failure = "Не удалось поднять VPN: ${(e.message ?: e.javaClass.simpleName).take(220)}"
+                Log.e(TAG, failure, e)
+                stopTunnel(failure)
             }
         }
     }
@@ -215,21 +363,21 @@ class GilrTanoVpnService : VpnService() {
 
                     if (consecutiveProbeFailures >= FAILURE_LIMIT &&
                         System.currentTimeMillis() - lastAutomaticSwitchAt > SWITCH_COOLDOWN_MS) {
-                        if (!usingFallback && !fallbackConfig.isNullOrBlank()) {
-                            val target = fallbackConfig!!
-                            usingFallback = true
-                            lastAutomaticSwitchAt = System.currentTimeMillis()
-                            consecutiveProbeFailures = 0
-                            broadcastStatus("Связь ухудшилась. Переключаю на бесплатный резерв…")
-                            switchTunnel(target)
+                        if (advanceFallback("Связь ухудшилась")) {
+                            // Continue through every imported PORTAL candidate before Quattro.
                         } else if (usingFallback && !preferredConfig.isNullOrBlank() &&
                             System.currentTimeMillis() - lastAutomaticSwitchAt >= RECOVERY_INTERVAL_MS) {
                             val target = preferredConfig!!
                             usingFallback = false
+                            fallbackIndex = -1 // If the preferred trial fails, restart at the first backup.
                             lastAutomaticSwitchAt = System.currentTimeMillis()
                             consecutiveProbeFailures = 0
-                            broadcastStatus("Проверяю восстановление Quattro…")
-                            switchTunnel(target)
+                            broadcastStatus("Проверяю восстановление основного сервера…")
+                            switchTunnel(target, preferredBoxMode, false)
+                        } else if (fallbackChain.isEmpty() ||
+                            (usingFallback && preferredConfig.isNullOrBlank() && fallbackIndex >= fallbackChain.lastIndex)) {
+                            stopTunnel("Связь потеряна: все доступные резервные серверы исчерпаны")
+                            break
                         }
                     }
 
@@ -240,8 +388,9 @@ class GilrTanoVpnService : VpnService() {
                         consecutiveProbeFailures == 0) {
                         lastAutomaticSwitchAt = System.currentTimeMillis()
                         usingFallback = false
-                        broadcastStatus("Проверяю, восстановился ли Quattro…")
-                        switchTunnel(preferredConfig!!)
+                        fallbackIndex = -1 // Re-arm the fallback chain if the preferred server is still down.
+                        broadcastStatus("Проверяю восстановление основного сервера…")
+                        switchTunnel(preferredConfig!!, preferredBoxMode, false)
                     }
                 } catch (e: InterruptedException) {
                     break
@@ -337,23 +486,26 @@ class GilrTanoVpnService : VpnService() {
         }
     }
 
-    private fun stopTunnel() {
+    private fun stopTunnel(finalStatus: String = "Отключено") {
         stopping = true
         monitorRunning = false
         automaticMode = false
-        broadcastStatus("Отменяю подключение…")
+        portalMode = false
+        boxMode = false
+        // Preserve the real failure instead of overwriting it with a generic status.
         // Native shutdown may block; run it away from Android's main thread.
         Thread({
             synchronized(this) {
                 runCatching { Teapodcore.stopTun2Socks() }
                 runCatching { Teapodcore.stopXray() }
+                runCatching { Teapodcore.stopBox() }
                 runCatching { tun?.close() }
                 tun = null
             }
             if (Build.VERSION.SDK_INT >= 24) stopForeground(STOP_FOREGROUND_REMOVE) else @Suppress("DEPRECATION") stopForeground(true)
-            broadcastStatus("Отключено")
+            broadcastStatus(finalStatus)
             stopSelf()
-        }, "GilrTano-Xray-stop").start()
+        }, "GilrTano-VPN-stop").start()
     }
 
     private fun broadcastStatus(value: String) {
@@ -409,11 +561,17 @@ class GilrTanoVpnService : VpnService() {
         const val ACTION_START = "com.gilrtano.vpn.START"
         const val ACTION_SWITCH = "com.gilrtano.vpn.SWITCH"
         const val ACTION_STOP = "com.gilrtano.vpn.STOP"
+        const val ACTION_START_PORTAL = "com.gilrtano.vpn.START_PORTAL"
         const val ACTION_STATUS = "com.gilrtano.vpn.STATUS"
         const val EXTRA_CONFIG = "xray_config"
+        const val EXTRA_ENGINE_BOX = "engine_box"
+        const val EXTRA_PORTAL = "portal_mode"
+        const val EXTRA_FALLBACK_ENGINE_BOX = "fallback_engine_box"
+        const val EXTRA_PREFERRED_ENGINE_BOX = "preferred_engine_box"
         const val EXTRA_STATUS = "status"
         const val EXTRA_AUTO = "automatic_mode"
         const val EXTRA_FALLBACK_CONFIG = "fallback_config"
+        const val EXTRA_FALLBACK_CHAIN = "fallback_chain"
         const val EXTRA_PREFERRED_CONFIG = "preferred_config"
         private const val TAG = "GilrTanoVPN"
         private const val CHANNEL_ID = "gilrtano_vpn"
@@ -432,8 +590,11 @@ class GilrTanoVpnService : VpnService() {
             val uuid = parsed.userInfo ?: parsed.encodedUserInfo ?: error("В ссылке нет UUID")
             val port = if (parsed.port > 0) parsed.port else 443
             val q = parsed
-            val security = q.getQueryParameter("security") ?: "none"
-            val network = q.getQueryParameter("type") ?: "tcp"
+            val security = (q.getQueryParameter("security") ?: "none").lowercase(java.util.Locale.ROOT)
+            // Mihomo/Clash calls the ordinary TCP transport "raw"; Xray calls
+            // the same transport "tcp". Normalize before validation and JSON output.
+            val rawNetwork = (q.getQueryParameter("type") ?: "tcp").lowercase(java.util.Locale.ROOT)
+            val network = if (rawNetwork == "raw") "tcp" else rawNetwork
             // Xray supports VLESS with TLS, REALITY, and plaintext transport.
             // Public free lists often contain security=none; rejecting it here
             // discarded otherwise valid VLESS profiles before Xray could test them.
