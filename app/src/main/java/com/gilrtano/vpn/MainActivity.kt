@@ -661,9 +661,14 @@ class MainActivity : Activity() {
                 false
             }
         }
-        activeMode = prefs.getString("connection_mode", "quattro") ?: "quattro"
-        autoMode = false
+        activeMode = prefs.getString("connection_mode", "auto") ?: "auto"
+        // Fresh installs start in the one-tap PORTAL → Quattro mode.
+        // Migrate any old public/free mode preference back to automatic mode.
+        if (activeMode == "free") activeMode = "auto"
+        autoMode = activeMode == "auto"
         activeFree = false
+        prefs.edit().putString("connection_mode", activeMode)
+            .putBoolean("active_free_mode", false).apply()
         refreshMode()
         updatePowerOrb(false)
         updateServerCard(false)
