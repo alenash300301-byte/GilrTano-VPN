@@ -515,7 +515,16 @@ class MainActivity : Activity() {
                     gravity = android.view.Gravity.CENTER
                     setPadding(0, dp(3), 0, 0)
                 }, LinearLayout.LayoutParams.MATCH_PARENT, dp(20))
-                trafficWaveAnchor = TrafficWaveView(this@MainActivity)
+                trafficWaveAnchor = TrafficWaveView(this@MainActivity).apply {
+                    contentDescription = "Открыть подробную статистику трафика"
+                    setOnClickListener {
+                        for (i in 0 until pageHost.childCount) pageHost.getChildAt(i).visibility = if (i == 4) View.VISIBLE else View.GONE
+                        down.second.text = downloadMetric.text
+                        up.second.text = uploadMetric.text
+                        total.second.text = trafficTotalMetric.text
+                        trafficState.text = if (status.text.toString().contains("Подключено")) "VPN подключён" else "VPN отключён"
+                    }
+                }
                 addView(trafficWaveAnchor, LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, dp(58)
                 ).apply { topMargin = dp(8); bottomMargin = dp(8) })
@@ -615,32 +624,80 @@ class MainActivity : Activity() {
         val serverPage = page("Серверы")
         val serverState = TextView(this).apply { textSize = 13f; setTextColor(Color.LTGRAY) }
         serverPage.addView(serverState)
+        val proxySearch = EditText(this).apply {
+            hint = "Поиск серверов"
+            singleLine = true
+            setTextColor(Color.WHITE)
+            setHintTextColor(Color.GRAY)
+            background = GradientDrawable().apply {
+                setColor(Color.rgb(30, 31, 35)); cornerRadius = dp(24).toFloat()
+                setStroke(dp(1), Color.rgb(65, 67, 76))
+            }
+            setPadding(dp(16), dp(10), dp(16), dp(10))
+        }
+        serverPage.addView(proxySearch, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(50)).apply { bottomMargin = dp(12) })
         val serverRows = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         serverPage.addView(serverRows)
         fun updateServerPage() {
             serverState.text = "Режим: " + if (autoMode) "AUTO · Quattro с бесплатным резервом" else if (activeFree) "Бесплатный" else "Quattro"
             serverRows.removeAllViews()
-            val nodes = activeNodes
+            val query = proxySearch.text.toString().trim().lowercase()
+            val nodes = activeNodes.mapIndexed { index, node -> index to node }.filter { it.second.name.lowercase().contains(query) }
             if (nodes.isEmpty()) {
                 serverRows.addView(TextView(this).apply {
-                    text = "Нет серверов. Добавьте подписку в настройках."
+                    text = if (activeNodes.isEmpty()) "Нет серверов. Добавьте профиль во вкладке «Профили»." else "Ничего не найдено"
                     setTextColor(Color.LTGRAY); setPadding(0, dp(18), 0, dp(18))
                 })
-            } else nodes.forEachIndexed { index, node ->
-                val row = actionButton((if (index == servers.selectedItemPosition) "●  " else "") + node.name) {
-                    servers.setSelection(index)
-                    prefs.edit().putInt(if (activeFree) "free_selected" else "quattro_selected", index).apply()
-                    serverCardTitle.text = node.name
-                    serverCardSubtitle.text = if (activeFree) "Бесплатный" else "Quattro"
-                    serverCardPing.text = ""
-                    pingStatus.text = "Пинг: —"
-                    updateServerPage()
+            } else nodes.chunked(2).forEach { pair ->
+                val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+                pair.forEach { (index, node) ->
+                    val selected = index == servers.selectedItemPosition
+                    val tile = LinearLayout(this).apply {
+                        orientation = LinearLayout.VERTICAL
+                        gravity = android.view.Gravity.CENTER_VERTICAL
+                        setPadding(dp(13), dp(13), dp(10), dp(13))
+                        background = GradientDrawable().apply {
+                            setColor(if (selected) Color.rgb(8, 35, 17) else Color.rgb(34, 35, 39))
+                            cornerRadius = dp(20).toFloat()
+                            setStroke(dp(1), if (selected) Color.rgb(42, 235, 78) else Color.rgb(61, 43, 48))
+                        }
+                        setOnClickListener {
+                            servers.setSelection(index)
+                            prefs.edit().putInt(if (activeFree) "free_selected" else "quattro_selected", index).apply()
+                            serverCardTitle.text = node.name
+                            serverCardSubtitle.text = if (activeFree) "Бесплатный" else "Quattro"
+                            serverCardPing.text = ""
+                            pingStatus.text = "Пинг: —"
+                            updateServerPage()
+                        }
+                        addView(TextView(this@MainActivity).apply {
+                            text = (if (selected) "✓  " else "") + node.name
+                            textSize = 14f; maxLines = 2; setTextColor(Color.WHITE)
+                            typeface = android.graphics.Typeface.DEFAULT_BOLD
+                        })
+                        addView(TextView(this@MainActivity).apply {
+                            text = node.uri.substringBefore("://").uppercase()
+                            textSize = 11f; setTextColor(Color.rgb(169, 184, 255)); setPadding(0, dp(8), 0, 0)
+                        })
+                        addView(TextView(this@MainActivity).apply {
+                            text = if (selected) "ВЫБРАН" else "Нажмите для выбора"
+                            textSize = 10f; setTextColor(if (selected) Color.rgb(55, 245, 90) else Color.LTGRAY)
+                            setPadding(0, dp(7), 0, 0)
+                        })
+                    }
+                    row.addView(tile, LinearLayout.LayoutParams(0, dp(116), 1f).apply {
+                        leftMargin = dp(3); rightMargin = dp(3); topMargin = dp(4); bottomMargin = dp(4)
+                    })
                 }
-                serverRows.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                    topMargin = dp(4); bottomMargin = dp(4)
-                })
+                if (pair.size == 1) row.addView(View(this), LinearLayout.LayoutParams(0, dp(116), 1f))
+                serverRows.addView(row)
             }
         }
+        proxySearch.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) { updateServerPage() }
+            override fun afterTextChanged(s: android.text.Editable?) {}
+        })
 
         val serverModes = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         serverModes.addView(actionButton("АВТО") { switchToAuto(); updateServerPage() },
