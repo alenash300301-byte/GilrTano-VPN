@@ -73,7 +73,14 @@ jobs:
           cp meow-android/core/build/rustJniLibs/android/arm64-v8a/libmeow_android_ffi.so app/src/main/jniLibs/arm64-v8a/
           curl -fL --retry 3 "https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/country.mmdb" -o app/src/main/assets/geox/country.mmdb
           curl -fL --retry 3 "https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/GeoLite2-ASN.mmdb" -o app/src/main/assets/geox/GeoLite2-ASN.mmdb
-          curl -fL --retry 3 "https://github.com/MetaCubeX/meta-rules-dat/releases/latest/download/geosite.mrs" -o app/src/main/assets/geox/geosite.mrs
+          curl -fL --retry 3 "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/BundleMRS.7z" -o /tmp/BundleMRS.7z
+          sudo apt-get update
+          sudo apt-get install -y p7zip-full
+          mkdir -p /tmp/meow-geodata
+          7z x -y /tmp/BundleMRS.7z -o/tmp/meow-geodata >/dev/null
+          GEOSITE_FILE="$(find /tmp/meow-geodata -type f -iname geosite.mrs | head -n1)"
+          test -n "$GEOSITE_FILE"
+          cp "$GEOSITE_FILE" app/src/main/assets/geox/geosite.mrs
           test -s app/src/main/assets/geox/country.mmdb
           test -s app/src/main/assets/geox/GeoLite2-ASN.mmdb
           test -s app/src/main/assets/geox/geosite.mrs
