@@ -285,7 +285,7 @@ class PowerOrbButtonView @JvmOverloads constructor(
     private val framePaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     // Static transparent power emblem layered above the animated flame artwork.
     private val powerIconBitmap: Bitmap by lazy {
-        BitmapFactory.decodeResource(resources, R.drawable.power_icon)
+        BitmapFactory.decodeResource(resources, R.drawable.gilrtano_power_icon_transparent_1)
     }
 
     override fun onDraw(canvas: Canvas) {
