@@ -296,10 +296,9 @@ class PowerOrbButtonView @JvmOverloads constructor(
     private val framePaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     // Fixed-size transparent power emblem layered over the animated flame frames.
     private val powerOverlay: Bitmap by lazy {
-        BitmapFactory.decodeResource(resources, R.drawable.gilrtano_power_icon_transparent_1)
+        BitmapFactory.decodeResource(resources, R.drawable.gilrtano_power_icon_opaque_inside_transparent_outside)
     }
-    // The nine frame PNGs already contain the complete power emblem.
-    // Do not draw a second transparent power-icon layer over them.
+    // Keep the approved power emblem as a fixed overlay above the nine animated flame frames.
     private var ignitionAnimator: ValueAnimator? = null
 
     override fun onDraw(canvas: Canvas) {
