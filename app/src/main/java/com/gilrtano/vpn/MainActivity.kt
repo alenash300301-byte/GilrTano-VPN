@@ -92,23 +92,31 @@ class MainActivity : Activity() {
         override fun onReceive(context: Context?, intent: Intent?) {
             val message = intent?.getStringExtra(GilrTanoVpnService.EXTRA_STATUS) ?: "—"
             status.text = when {
-                message.startsWith("Подключено") -> "●  Подключено"
+                message.startsWith("Подключено") || message.startsWith("Возобновлено") -> "●  Подключено"
                 message == "Отключено" -> "●  Отключено"
                 else -> message
             }
-            if (message.startsWith("Подключено")) {
+            if (message.startsWith("Подключено") || message.startsWith("Возобновлено")) {
+                val resumed = message.startsWith("Возобновлено")
                 if (message.contains("бесплатный резерв")) activeFree = true
                 else if (message.contains("Quattro")) activeFree = false
                 refreshMode()
                 status.setTextColor(Color.rgb(36, 255, 72))
                 updatePowerOrb(true)
                 if (::connectionTimer.isInitialized) {
-                    connectionTimer.base = SystemClock.elapsedRealtime()
+                    if (!resumed) connectionTimer.base = SystemClock.elapsedRealtime()
                     connectionTimer.visibility = View.VISIBLE
                     connectionTimer.start()
                 }
                 updateServerCard(true)
                 igniteConnectButton()
+            } else if (message == "Приостановлено") {
+                status.text = "Ⅱ  Приостановлено"
+                status.setTextColor(Color.LTGRAY)
+                updatePowerOrb(PowerOrbButtonView.State.SUSPENDED)
+                if (::connectionTimer.isInitialized) connectionTimer.stop()
+                setPowerButtonLabel("Ⅱ  ВОЗОБНОВИТЬ")
+                connectButton.contentDescription = "Возобновить VPN"
             } else if (message == "Отключено" || message.startsWith("Ошибка")) {
                 status.setTextColor(Color.LTGRAY)
                 updatePowerOrb(false)
@@ -123,19 +131,23 @@ class MainActivity : Activity() {
                 connectButton.setState(PowerOrbButtonView.State.CONNECTING)
                 // Keep the ignition animation visible while the tunnel is starting.
             }
-            val busy = message.startsWith("Подключаю") || message.startsWith("Запускаю") || message.startsWith("Запуск Xray") || message.startsWith("Переключаю")
+            val busy = message.startsWith("Подключаю") || message.startsWith("Запускаю") || message.startsWith("Запуск Xray") || message.startsWith("Переключаю") || message.startsWith("Приостанавливаю") || message.startsWith("Возобновляю")
             // The single power button remains usable while connecting so it can cancel,
             // and while connected so it can disconnect.
             connectButton.isEnabled = true
             setPowerButtonLabel(
-                if (message.startsWith("Подключено")) "■ 00:00"
+                if (message.startsWith("Подключено") || message.startsWith("Возобновлено")) "Ⅱ  ПАУЗА"
+                else if (message == "Приостановлено") "Ⅱ  ВОЗОБНОВИТЬ"
                 else if (message.startsWith("Отключаю")) "ОТКЛЮЧЕНИЕ…"
                 else if (message.startsWith("Переключаю")) "ПЕРЕКЛЮЧЕНИЕ…"
+                else if (message.startsWith("Приостанавливаю")) "ПАУЗА…"
+                else if (message.startsWith("Возобновляю")) "ВОЗОБНОВЛЕНИЕ…"
                 else if (busy) "ПОДКЛЮЧЕНИЕ…"
                 else "▶ ПОДКЛЮЧИТЬ"
             )
             connectButton.contentDescription = when {
-                message.startsWith("Подключено") -> "Отключить VPN"
+                message.startsWith("Подключено") || message.startsWith("Возобновлено") -> "Приостановить VPN"
+                message == "Приостановлено" -> "Возобновить VPN"
                 busy -> "Отменить подключение"
                 else -> "Подключить VPN"
             }
@@ -210,11 +222,24 @@ class MainActivity : Activity() {
             setOnClickListener {
                 val currentStatus = status.text.toString()
                 val isConnected = currentStatus.contains("Подключено")
+                val isSuspended = currentStatus.contains("Приостановлено")
                 val isConnecting = currentStatus.startsWith("Подключаю") ||
                     currentStatus.startsWith("Запускаю") || currentStatus.startsWith("Запуск Xray") || currentStatus.startsWith("Переключаю")
-                if (isConnected || isConnecting) {
+                if (isConnected) {
+                    status.text = "Приостанавливаю VPN…"
+                    startService(Intent(this@MainActivity, GilrTanoVpnService::class.java)
+                        .setAction(GilrTanoVpnService.ACTION_PAUSE))
+                    return@setOnClickListener
+                }
+                if (isSuspended) {
+                    status.text = "Возобновляю VPN…"
+                    startService(Intent(this@MainActivity, GilrTanoVpnService::class.java)
+                        .setAction(GilrTanoVpnService.ACTION_RESUME))
+                    return@setOnClickListener
+                }
+                if (isConnecting) {
                     pendingConfig = null
-                    status.text = if (isConnected) "Отключаю VPN…" else "Отменяю подключение…"
+                    status.text = "Отменяю подключение…"
                     startService(Intent(this@MainActivity, GilrTanoVpnService::class.java)
                         .setAction(GilrTanoVpnService.ACTION_STOP))
                     return@setOnClickListener
@@ -258,6 +283,15 @@ class MainActivity : Activity() {
                     }
                 }
             }
+        }
+        connectButton.setOnLongClickListener {
+            val currentStatus = status.text.toString()
+            if (currentStatus.contains("Подключено") || currentStatus.contains("Приостановлено")) {
+                status.text = "Отключаю VPN…"
+                startService(Intent(this@MainActivity, GilrTanoVpnService::class.java)
+                    .setAction(GilrTanoVpnService.ACTION_STOP))
+                true
+            } else false
         }
         bestFreeButton = Button(this).apply {
             text = "Найти лучший бесплатный сервер (проверка интернета)"
@@ -865,14 +899,15 @@ class MainActivity : Activity() {
     private fun updatePowerOrb(next: PowerOrbButtonView.State) {
         if (!::powerOrb.isInitialized) return
         val connected = next == PowerOrbButtonView.State.CONNECTED
+        val suspended = next == PowerOrbButtonView.State.SUSPENDED
         powerOrb.setState(next)
-        powerOrb.setTextColor(if (connected) Color.rgb(90, 255, 120) else Color.WHITE)
+        powerOrb.setTextColor(if (connected) Color.rgb(90, 255, 120) else if (suspended) Color.LTGRAY else Color.WHITE)
         powerOrb.elevation = dp(if (connected) 20 else 12).toFloat()
 
         val startFill = if (connected) Color.rgb(3, 24, 10) else Color.TRANSPARENT
-        val endFill = if (connected) Color.TRANSPARENT else Color.rgb(3, 24, 10)
-        val startStroke = if (connected) Color.rgb(45, 255, 82) else Color.rgb(0, 255, 48)
-        val endStroke = if (connected) Color.rgb(0, 255, 48) else Color.rgb(45, 255, 82)
+        val endFill = if (connected) Color.TRANSPARENT else if (suspended) Color.rgb(22, 22, 24) else Color.rgb(3, 24, 10)
+        val startStroke = if (suspended) Color.GRAY else if (connected) Color.rgb(45, 255, 82) else Color.rgb(0, 255, 48)
+        val endStroke = if (suspended) Color.LTGRAY else if (connected) Color.rgb(0, 255, 48) else Color.rgb(45, 255, 82)
         val shell = GradientDrawable().apply {
             shape = GradientDrawable.OVAL
             setColor(startFill)
