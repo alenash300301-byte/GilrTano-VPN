@@ -245,49 +245,17 @@ class PowerOrbButtonView @JvmOverloads constructor(
             MotionEvent.ACTION_DOWN -> {
                 startRisingHold()
                 performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                // Keep the button and its power emblem geometrically fixed on touch.
+                // Haptic feedback remains, but no scale, rotation, or translation animation is applied.
                 pressAnimator?.cancel()
                 pressFeedback?.cancel()
-                pressFeedback = ValueAnimator.ofFloat(pressAmount, 1f).apply {
-                    duration = 110L
-                    interpolator = DecelerateInterpolator()
-                    addUpdateListener { pressAmount = it.animatedValue as Float; invalidate() }
-                    start()
-                }
-                pressAnimator = AnimatorSet().apply {
-                    playTogether(
-                        ObjectAnimator.ofFloat(this@PowerOrbButtonView, View.SCALE_X, scaleX, 0.925f),
-                        ObjectAnimator.ofFloat(this@PowerOrbButtonView, View.SCALE_Y, scaleY, 0.925f),
-                        ObjectAnimator.ofFloat(this@PowerOrbButtonView, View.TRANSLATION_Z, translationZ, -3f * d),
-                        ObjectAnimator.ofFloat(this@PowerOrbButtonView, View.ROTATION_X, rotationX, 2.2f),
-                        ObjectAnimator.ofFloat(this@PowerOrbButtonView, View.ROTATION_Y, rotationY, -1.5f)
-                    )
-                    duration = 105L
-                    interpolator = DecelerateInterpolator(2f)
-                    start()
-                }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 cancelRisingHold()
+                // No rebound animation: the power emblem stays at the same size and position.
                 pressAnimator?.cancel()
                 pressFeedback?.cancel()
-                pressFeedback = ValueAnimator.ofFloat(pressAmount, 0f).apply {
-                    duration = 360L
-                    interpolator = OvershootInterpolator(1.8f)
-                    addUpdateListener { pressAmount = it.animatedValue as Float; invalidate() }
-                    start()
-                }
-                pressAnimator = AnimatorSet().apply {
-                    playTogether(
-                        ObjectAnimator.ofFloat(this@PowerOrbButtonView, View.SCALE_X, scaleX, 1f),
-                        ObjectAnimator.ofFloat(this@PowerOrbButtonView, View.SCALE_Y, scaleY, 1f),
-                        ObjectAnimator.ofFloat(this@PowerOrbButtonView, View.TRANSLATION_Z, translationZ, 0f),
-                        ObjectAnimator.ofFloat(this@PowerOrbButtonView, View.ROTATION_X, rotationX, 0f),
-                        ObjectAnimator.ofFloat(this@PowerOrbButtonView, View.ROTATION_Y, rotationY, 0f)
-                    )
-                    duration = 360L
-                    interpolator = OvershootInterpolator(1.35f)
-                    start()
-                }
+                pressAmount = 0f
             }
         }
         if (event.actionMasked == MotionEvent.ACTION_UP && holdTriggered) {
