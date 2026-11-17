@@ -358,24 +358,6 @@ class PowerOrbButtonView @JvmOverloads constructor(
         canvas.drawText(caption, cx, captionY, captionPaint)
         captionPaint.clearShadowLayer()
 
-        // Subtle breathing halo and animated contact ripple stay independent
-        // of the static artwork.
-        if (pressAmount > 0.01f) {
-            val ripplePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                style = Paint.Style.STROKE
-                color = if (connecting) Color.rgb(255, 190, 70) else Color.rgb(90, 255, 78)
-                alpha = (150f * pressAmount).toInt()
-                strokeWidth = (2f + 2f * pressAmount) * d
-            }
-            canvas.drawCircle(width / 2f, height / 2f, side * (0.43f + pressAmount * 0.035f), ripplePaint)
-        }
-        if (breath > 0f && state != State.CONNECTED) {
-            val halo = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                style = Paint.Style.STROKE
-                color = Color.argb((25 + breath * 35).toInt(), 95, 255, 85)
-                strokeWidth = 1.2f * d
-            }
-            canvas.drawCircle(width / 2f, height / 2f, side * (0.49f + breath * 0.006f), halo)
-        }
+        // No additional outer rings or ripple circles; preserve the nine PNG frames as-is.
     }
 }
