@@ -94,7 +94,7 @@ object SubscriptionImporter {
 
     fun parse(raw: String): List<ImportedNode> {
         val text = raw.trim()
-        if (text.startsWith("vless://", ignoreCase = true) && !text.contains("\\n")) {
+        if (text.startsWith("vless://", ignoreCase = true) && !text.contains("\n")) {
             return listOf(ImportedNode("VLESS · сервер", text))
         }
         if (looksLikeClashYaml(text)) return parseClashProfile(text)
