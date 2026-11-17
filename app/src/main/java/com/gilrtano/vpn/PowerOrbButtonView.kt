@@ -239,7 +239,10 @@ class PowerOrbButtonView @JvmOverloads constructor(
             R.drawable.gilrtano_frame_07,
             R.drawable.gilrtano_frame_08,
             R.drawable.gilrtano_frame_09
-        ).map { BitmapFactory.decodeResource(resources, it) }
+        ).map { resourceId ->
+            val options = BitmapFactory.Options().apply { inSampleSize = 2 }
+            BitmapFactory.decodeResource(resources, resourceId, options)
+        }
     }
     private val framePaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
 
