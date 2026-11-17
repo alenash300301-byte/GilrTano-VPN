@@ -2,6 +2,8 @@ package com.gilrtano.vpn
 
 import android.content.Context
 import android.graphics.Canvas
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
@@ -226,9 +228,20 @@ class PowerOrbButtonView @JvmOverloads constructor(
         return super.onTouchEvent(event)
     }
 
-    private val buttonArtwork by lazy {
-        requireNotNull(context.getDrawable(R.drawable.file_000000004cb08210bfb53b4ce7ceb0dd))
+    private val buttonFrames: List<Bitmap> by lazy {
+        listOf(
+            R.drawable.gilrtano_frame_01,
+            R.drawable.gilrtano_frame_02,
+            R.drawable.gilrtano_frame_03,
+            R.drawable.gilrtano_frame_04,
+            R.drawable.gilrtano_frame_05,
+            R.drawable.gilrtano_frame_06,
+            R.drawable.gilrtano_frame_07,
+            R.drawable.gilrtano_frame_08,
+            R.drawable.gilrtano_frame_09
+        ).map { BitmapFactory.decodeResource(resources, it) }
     }
+    private val framePaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
 
     override fun onDraw(canvas: Canvas) {
         // Use the exact artwork uploaded to the repository. Clip its black
@@ -239,104 +252,16 @@ class PowerOrbButtonView @JvmOverloads constructor(
         val left = (width - side) / 2f
         val top = (height - side) / 2f
 
-        val connected = state == State.CONNECTED
         val connecting = state == State.CONNECTING
-        val energy = if (connected) 1f else if (connecting) 0.9f else 0.62f + breath * 0.18f
-        val t = if (state == State.DISCONNECTED) breath * 0.9f else phase * 6.28318f
-        val cx = width / 2f
-        val cy = height / 2f
-        val baseRadius = side * 0.425f
-
-        val save = canvas.save()
-        val clip = Path().apply {
-            addCircle(width / 2f, height / 2f, side * 0.495f, Path.Direction.CW)
+        val frameIndex = when (state) {
+            State.DISCONNECTED -> 0
+            State.CONNECTING -> (phase * buttonFrames.size).toInt().coerceIn(0, buttonFrames.lastIndex)
+            State.CONNECTED -> 4 + (phase * 5).toInt().coerceIn(0, 4)
         }
-        // Explicit anti-aliased circular clipping removes the source PNG's
-        // opaque square corners so the tiger wallpaper remains visible.
-        canvas.clipPath(clip, android.graphics.Region.Op.INTERSECT)
-        if (!useGlArtwork) {
-            buttonArtwork.bounds = android.graphics.Rect(
-                left.toInt(), top.toInt(), (left + side).toInt(), (top + side).toInt()
-            )
-            buttonArtwork.draw(canvas)
-        }
-        canvas.restoreToCount(save)
-
-        // Draw real tapered flame tongues AFTER the PNG so the fire remains visible.
-        // Each tongue is a filled, curved silhouette with a soft green glow and a hot core.
-        val flameGlow = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
-            strokeCap = Paint.Cap.ROUND
-            strokeJoin = Paint.Join.ROUND
-            strokeWidth = side * 0.026f
-            color = Color.rgb(30, 255, 18)
-            alpha = (145f * energy).toInt()
-            setShadowLayer(side * 0.085f, 0f, 0f, Color.rgb(25, 255, 8))
-        }
-        val flameFill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.FILL
-            alpha = (210f * energy).toInt()
-        }
-        val flameCore = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
-            strokeCap = Paint.Cap.ROUND
-            strokeWidth = side * 0.008f
-            color = Color.rgb(190, 255, 95)
-            alpha = (225f * energy).toInt()
-        }
-        fun point(angle: Float, radius: Float): android.graphics.PointF =
-            android.graphics.PointF(cx + kotlin.math.cos(angle) * radius, cy + kotlin.math.sin(angle) * radius)
-
-        // Two staggered rings create a continuous, turbulent corona rather than a static outline.
-        for (i in 0 until 42) {
-            val a = (Math.PI * 2.0 * i / 42.0).toFloat() + 0.035f * kotlin.math.sin(t * 1.7f + i)
-            val wave = kotlin.math.sin(t * 2.2f + i * 1.91f)
-            val wave2 = kotlin.math.cos(t * 3.1f + i * 0.73f)
-            val length = side * (0.018f + (0.025f + 0.025f * wave) * energy)
-            val r0 = baseRadius + side * 0.012f
-            val rTip = r0 + length
-            val p0 = point(a, r0)
-            val p1 = point(a - 0.10f + wave2 * 0.045f, r0 + length * 0.48f)
-            val p2 = point(a + 0.08f + wave * 0.055f, rTip)
-            val p3 = point(a, r0 + length * 0.22f)
-            val path = Path().apply {
-                moveTo(p0.x, p0.y)
-                cubicTo(p1.x, p1.y, p2.x, p2.y, p2.x, p2.y)
-                cubicTo(
-                    point(a + 0.055f, r0 + length * 0.52f).x,
-                    point(a + 0.055f, r0 + length * 0.52f).y,
-                    point(a - 0.025f, r0 + length * 0.20f).x,
-                    point(a - 0.025f, r0 + length * 0.20f).y,
-                    p0.x, p0.y
-                )
-                close()
-            }
-            flameGlow.strokeWidth = side * (0.018f + 0.008f * energy)
-            canvas.drawPath(path, flameGlow)
-            flameFill.shader = LinearGradient(
-                p0.x, p0.y, p2.x, p2.y,
-                intArrayOf(Color.argb(0, 40, 255, 10), Color.argb((175f * energy).toInt(), 40, 255, 5),
-                    Color.argb((220f * energy).toInt(), 180, 255, 35)),
-                floatArrayOf(0f, 0.58f, 1f), Shader.TileMode.CLAMP
-            )
-            canvas.drawPath(path, flameFill)
-            flameFill.shader = null
-            canvas.drawPath(path, flameCore)
-        }
-
-        // Fast tiny embers drift around the rim; deterministic positions keep rendering inexpensive.
-        val emberPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.rgb(155, 255, 70)
-            setShadowLayer(side * 0.035f, 0f, 0f, Color.GREEN)
-        }
-        for (i in 0 until 18) {
-            val a = i * (Math.PI.toFloat() * 2f / 18f) + t * (0.32f + (i % 3) * 0.08f)
-            val radius = baseRadius + side * (0.025f + 0.025f * kotlin.math.sin(t * 2f + i * 2.4f))
-            val p = point(a, radius)
-            emberPaint.alpha = (100 + 130 * (0.5f + 0.5f * kotlin.math.sin(t * 5f + i))).toInt()
-            val r = side * (0.004f + 0.003f * (0.5f + 0.5f * kotlin.math.sin(t * 4f + i)))
-            canvas.drawCircle(p.x, p.y, r, emberPaint)
-        }
+        val frame = buttonFrames[frameIndex]
+        val dst = RectF(left, top, left + side, top + side)
+        framePaint.alpha = 255
+        canvas.drawBitmap(frame, null, dst, framePaint)
 
         // The artwork contains an intentionally empty neon capsule. Draw the
         // live VPN status there so it can change without editing the PNG.
