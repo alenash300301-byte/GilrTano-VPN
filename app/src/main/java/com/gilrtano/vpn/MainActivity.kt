@@ -126,12 +126,12 @@ class MainActivity : Activity() {
                 }
                 updateServerCard(false)
                 resetConnectButtonGlow()
-            } else if (message.startsWith("Подключаю") || message.startsWith("Запускаю") || message.startsWith("Запуск Xray") || message.startsWith("Переключаю")) {
+            } else if (message.startsWith("Подключаю") || message.startsWith("Запускаю") || message.startsWith("Запуск Meow") || message.startsWith("Переключаю")) {
                 status.setTextColor(Color.rgb(255, 166, 55))
                 connectButton.setState(PowerOrbButtonView.State.CONNECTING)
                 // Keep the ignition animation visible while the tunnel is starting.
             }
-            val busy = message.startsWith("Подключаю") || message.startsWith("Запускаю") || message.startsWith("Запуск Xray") || message.startsWith("Переключаю") || message.startsWith("Приостанавливаю") || message.startsWith("Возобновляю")
+            val busy = message.startsWith("Подключаю") || message.startsWith("Запускаю") || message.startsWith("Запуск Meow") || message.startsWith("Переключаю") || message.startsWith("Приостанавливаю") || message.startsWith("Возобновляю")
             // The single power button remains usable while connecting so it can cancel,
             // and while connected so it can disconnect.
             connectButton.isEnabled = true
@@ -225,7 +225,7 @@ class MainActivity : Activity() {
                 val isConnected = currentStatus.contains("Подключено")
                 val isSuspended = currentStatus.contains("Приостановлено")
                 val isConnecting = currentStatus.startsWith("Подключаю") ||
-                    currentStatus.startsWith("Запускаю") || currentStatus.startsWith("Запуск Xray") ||
+                    currentStatus.startsWith("Запускаю") || currentStatus.startsWith("Запуск Meow") ||
                     currentStatus.startsWith("Переключаю") || currentStatus.startsWith("Приостанавливаю") ||
                     currentStatus.startsWith("Возобновляю")
                 if (isConnected) {
@@ -1494,7 +1494,7 @@ class MainActivity : Activity() {
                         val labels = fastest.map { pair -> "${pair.first.name} · ${pair.second} мс" }
                         servers.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, labels)
                         servers.setSelection(0)
-                        pingStatus.text = "Проверка через Xray: ${fastest.first().second} мс"
+                        pingStatus.text = "Проверка через Meow: ${fastest.first().second} мс"
                         status.text = "Найдено рабочих серверов: ${fastest.size}. Лучший выбран."
                         if (autoConnectWhenReady) {
                             activeFree = true
