@@ -224,7 +224,9 @@ class MainActivity : Activity() {
                 val isConnected = currentStatus.contains("Подключено")
                 val isSuspended = currentStatus.contains("Приостановлено")
                 val isConnecting = currentStatus.startsWith("Подключаю") ||
-                    currentStatus.startsWith("Запускаю") || currentStatus.startsWith("Запуск Xray") || currentStatus.startsWith("Переключаю")
+                    currentStatus.startsWith("Запускаю") || currentStatus.startsWith("Запуск Xray") ||
+                    currentStatus.startsWith("Переключаю") || currentStatus.startsWith("Приостанавливаю") ||
+                    currentStatus.startsWith("Возобновляю")
                 if (isConnected) {
                     status.text = "Приостанавливаю VPN…"
                     startService(Intent(this@MainActivity, GilrTanoVpnService::class.java)
@@ -286,7 +288,8 @@ class MainActivity : Activity() {
         }
         connectButton.setOnLongClickListener {
             val currentStatus = status.text.toString()
-            if (currentStatus.contains("Подключено") || currentStatus.contains("Приостановлено")) {
+            if (currentStatus.contains("Подключено") || currentStatus.contains("Приостановлено") ||
+                currentStatus.contains("Приостанавливаю") || currentStatus.contains("Возобновляю")) {
                 status.text = "Отключаю VPN…"
                 startService(Intent(this@MainActivity, GilrTanoVpnService::class.java)
                     .setAction(GilrTanoVpnService.ACTION_STOP))
