@@ -49,19 +49,19 @@ class GilrTanoVpnService : VpnService() {
                 fallbackConfig = null
                 preferredConfig = null
                 usingFallback = false
-                intent.getStringExtra(EXTRA_CONFIG)?.takeIf { it.isNotBlank() }?.let {
+                readConfigExtra(intent, EXTRA_CONFIG)?.takeIf { it.isNotBlank() }?.let {
                     startTunnel(it, null, null, false, false)
                 } ?: stopTunnel()
             }
             ACTION_START, null -> {
-                val config = intent?.getStringExtra(EXTRA_CONFIG)
+                val config = intent?.let { readConfigExtra(it, EXTRA_CONFIG) }
                 if (config.isNullOrBlank()) {
                     broadcastStatus("Добавьте VLESS-ссылку или Clash YAML")
                     stopSelf()
                 } else {
                     automaticMode = intent.getBooleanExtra(EXTRA_AUTO, false)
-                    fallbackConfig = intent.getStringExtra(EXTRA_FALLBACK_CONFIG)
-                    preferredConfig = intent.getStringExtra(EXTRA_PREFERRED_CONFIG)
+                    fallbackConfig = readConfigExtra(intent, EXTRA_FALLBACK_CONFIG)
+                    preferredConfig = readConfigExtra(intent, EXTRA_PREFERRED_CONFIG)
                     usingFallback = false
                     consecutiveProbeFailures = 0
                     startTunnel(config, fallbackConfig, preferredConfig, automaticMode, false)
@@ -154,6 +154,12 @@ class GilrTanoVpnService : VpnService() {
                 }
             }
         }, "GilrTano-Meow-start").start()
+    }
+
+    private fun readConfigExtra(intent: Intent, key: String): String? {
+        val value = intent.getStringExtra(key)?.takeIf { it.isNotBlank() } ?: return null
+        val file = File(value)
+        return if (file.isFile) file.readText() else value
     }
 
     private fun prepareYaml(raw: String): String {
