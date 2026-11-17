@@ -337,32 +337,41 @@ class PowerOrbButtonView @JvmOverloads constructor(
         framePaint.alpha = 255
         canvas.drawBitmap(frame, null, dst, framePaint)
 
-        // Compact status caption is drawn directly into the button, matching
-        // the original in-orb layout. No opaque overlay covers the flame artwork.
+        // Large, readable status capsule matching the supplied reference:
+        // centered below the power glyph, with a dark glass fill and neon outline.
         val captionColor = when (state) {
-            State.DISCONNECTED, State.CONNECTED -> Color.rgb(125, 255, 135)
+            State.DISCONNECTED, State.CONNECTED -> Color.rgb(125, 255, 70)
             State.CONNECTING -> Color.rgb(255, 205, 105)
             State.SUSPENDED -> Color.LTGRAY
         }
+        val capsuleWidth = side * 0.66f
+        val capsuleHeight = side * 0.17f
+        val capsule = RectF(
+            cx - capsuleWidth / 2f, top + side * 0.565f,
+            cx + capsuleWidth / 2f, top + side * 0.565f + capsuleHeight
+        )
+        val capsuleFill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+            color = Color.argb(235, 0, 12, 3)
+        }
+        canvas.drawRoundRect(capsule, capsuleHeight / 2f, capsuleHeight / 2f, capsuleFill)
+        captionPlatePaint.color = captionColor
+        captionPlatePaint.strokeWidth = 1.6f * d
+        captionPlatePaint.alpha = 245
+        canvas.drawRoundRect(capsule, capsuleHeight / 2f, capsuleHeight / 2f, captionPlatePaint)
+
         captionPaint.color = captionColor
-        captionPaint.textSize = 8.5f * d
-        val captionMaxWidth = side * 0.58f
-        while (captionPaint.measureText(caption) > captionMaxWidth && captionPaint.textSize > 6f * d) {
+        captionPaint.textAlign = Paint.Align.CENTER
+        captionPaint.typeface = Typeface.create("sans-serif", Typeface.BOLD)
+        captionPaint.textSize = side * 0.083f
+        captionPaint.setShadowLayer(4f * d, 0f, 0f, captionColor)
+        val captionMaxWidth = capsuleWidth * 0.88f
+        while (captionPaint.measureText(caption) > captionMaxWidth && captionPaint.textSize > side * 0.052f) {
             captionPaint.textSize -= 0.5f * d
         }
-        val captionY = top + side * 0.665f
+        val captionY = capsule.centerY() - (captionPaint.ascent() + captionPaint.descent()) / 2f
         canvas.drawText(caption, cx, captionY, captionPaint)
-
-        // The slim empty status slot below the caption is part of the button's
-        // compact visual treatment; it does not modify or replace any PNG.
-        captionPlatePaint.color = captionColor
-        captionPlatePaint.strokeWidth = 1.1f * d
-        captionPlatePaint.alpha = 210
-        val slotWidth = side * 0.40f
-        val slotHeight = side * 0.075f
-        val slot = RectF(cx - slotWidth / 2f, top + side * 0.705f,
-            cx + slotWidth / 2f, top + side * 0.705f + slotHeight)
-        canvas.drawRoundRect(slot, slotHeight / 2f, slotHeight / 2f, captionPlatePaint)
+        captionPaint.clearShadowLayer()
 
         // Subtle breathing halo and animated contact ripple stay independent
         // of the static artwork.
