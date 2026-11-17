@@ -211,15 +211,20 @@ class GilrTanoVpnService : VpnService() {
     }
 
     private fun seedGeoAssets(home: File) {
-        for (name in listOf("country.mmdb", "GeoLite2-ASN.mmdb")) {
-            val target = File(home, if (name == "country.mmdb") "Country.mmdb" else name)
+        val databases = listOf(
+            "country.mmdb" to "Country.mmdb",
+            "GeoLite2-ASN.mmdb" to "GeoLite2-ASN.mmdb",
+            "geosite.mrs" to "geosite.mrs",
+        )
+        for ((assetName, targetName) in databases) {
+            val target = File(home, targetName)
             if (target.exists() && target.length() > 0) continue
             try {
-                assets.open("geox/$name").use { input ->
+                assets.open("geox/$assetName").use { input ->
                     target.outputStream().use { output -> input.copyTo(output) }
                 }
             } catch (e: Exception) {
-                Log.w(TAG, "Geo database not bundled: geox/$name", e)
+                Log.w(TAG, "Geo database not bundled: geox/$assetName", e)
             }
         }
     }
