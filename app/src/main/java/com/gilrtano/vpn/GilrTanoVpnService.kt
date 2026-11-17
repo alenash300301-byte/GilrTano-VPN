@@ -395,7 +395,7 @@ class GilrTanoVpnService : VpnService() {
             }
 
             val proxy = linkedMapOf<String, Any>(
-                "name" to node.name.ifBlank { "GilrTano" },
+                "name" to "GilrTanoProxy",
                 "type" to "vless",
                 "server" to parsed.host!!,
                 "port" to (parsed.port.takeIf { it > 0 } ?: 443),
@@ -412,8 +412,9 @@ class GilrTanoVpnService : VpnService() {
                 }
             }
             if (security == "reality") {
-                val reality = linkedMapOf<String, Any>()
-                parsed.getQueryParameter("pbk")?.let { reality["public-key"] = it }
+                val publicKey = parsed.getQueryParameter("pbk")
+                    ?: error("В VLESS REALITY-ссылке отсутствует public key")
+                val reality = linkedMapOf<String, Any>("public-key" to publicKey)
                 parsed.getQueryParameter("sid")?.let { reality["short-id"] = it }
                 proxy["reality-opts"] = reality
             }
@@ -434,7 +435,7 @@ class GilrTanoVpnService : VpnService() {
                     proxy["xhttp-opts"] = options
                 }
             }
-            val proxyName = node.name.ifBlank { "GilrTano" }
+            val proxyName = "GilrTanoProxy"
             val config = linkedMapOf<String, Any>(
                 "mode" to "rule",
                 "proxies" to listOf(proxy),
