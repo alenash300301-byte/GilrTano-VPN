@@ -62,11 +62,6 @@ class PowerOrbButtonView @JvmOverloads constructor(
         color = Color.rgb(2, 9, 5)
         style = Paint.Style.FILL
     }
-    private val orbEdgePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.rgb(63, 255, 105)
-        style = Paint.Style.STROKE
-        strokeWidth = 2.2f * d
-    }
     private val powerGlyphPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.rgb(112, 255, 125)
         style = Paint.Style.STROKE
@@ -333,19 +328,6 @@ class PowerOrbButtonView @JvmOverloads constructor(
         val cy = top + side * 0.445f
         val orbRadius = side * 0.292f
         canvas.drawCircle(cx, cy, orbRadius, orbDiskPaint)
-        orbEdgePaint.alpha = when (state) {
-            State.DISCONNECTED -> 245
-            State.CONNECTING -> 230
-            State.CONNECTED -> 185
-            State.SUSPENDED -> 125
-        }
-        orbEdgePaint.color = when (state) {
-            State.DISCONNECTED, State.CONNECTED -> Color.rgb(65, 255, 105)
-            State.CONNECTING -> Color.rgb(255, 190, 70)
-            State.SUSPENDED -> Color.rgb(145, 150, 145)
-        }
-        canvas.drawCircle(cx, cy, orbRadius, orbEdgePaint)
-
         // A single, clear power glyph replaces the multiple competing rings
         // baked into the artwork. Its color follows the connection state.
         powerGlyphPaint.color = when (state) {
