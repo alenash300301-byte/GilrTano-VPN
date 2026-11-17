@@ -345,14 +345,16 @@ class PowerOrbButtonView @JvmOverloads constructor(
         }
         captionPaint.textAlign = Paint.Align.CENTER
         captionPaint.typeface = Typeface.create("sans-serif", Typeface.BOLD)
-        captionPaint.textSize = side * 0.060f
+        // Align the live text with the capsule already embedded in the PNG.
+        // Keep the artwork untouched; only center and size the changing label.
+        captionPaint.textSize = side * 0.085f
         captionPaint.color = captionColor
         captionPaint.setShadowLayer(5f * d, 0f, 0f, captionColor)
-        val maxWidth = side * 0.57f
-        while (captionPaint.measureText(caption) > maxWidth && captionPaint.textSize > side * 0.035f) {
+        val maxWidth = side * 0.58f
+        while (captionPaint.measureText(caption) > maxWidth && captionPaint.textSize > side * 0.052f) {
             captionPaint.textSize -= 0.5f * d
         }
-        val captionY = top + side * 0.594f - (captionPaint.ascent() + captionPaint.descent()) / 2f
+        val captionY = top + side * 0.735f - (captionPaint.ascent() + captionPaint.descent()) / 2f
         canvas.drawText(caption, cx, captionY, captionPaint)
         captionPaint.clearShadowLayer()
 
