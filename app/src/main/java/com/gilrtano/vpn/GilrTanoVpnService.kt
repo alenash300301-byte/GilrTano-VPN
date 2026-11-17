@@ -19,6 +19,8 @@ import javax.net.ssl.SSLSocketFactory
 class GilrTanoVpnService : VpnService() {
     private var tun: ParcelFileDescriptor? = null
     @Volatile private var stopping = false
+    @Volatile private var paused = false
+    @Volatile private var resuming = false
 
     // Core environment and socket protection are process-wide setup; keep them
     // ready across reconnects instead of repeating native initialization.
@@ -35,6 +37,8 @@ class GilrTanoVpnService : VpnService() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> stopTunnel()
+            ACTION_PAUSE -> pauseTunnel()
+            ACTION_RESUME -> resumeTunnel()
             ACTION_START, ACTION_SWITCH -> {
                 val config = intent.getStringExtra(EXTRA_CONFIG)
                 if (config.isNullOrBlank()) {
@@ -57,6 +61,8 @@ class GilrTanoVpnService : VpnService() {
     }
 
     private fun switchTunnel(config: String) {
+        paused = false
+        resuming = false
         stopping = true
         broadcastStatus("Переключаю сервер…")
         Thread({
@@ -73,6 +79,8 @@ class GilrTanoVpnService : VpnService() {
 
     private fun startTunnel(config: String) {
         stopping = false
+        paused = false
+        resuming = false
         activeConfig = config
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, notification("Запуск Xray…"))
@@ -127,7 +135,7 @@ class GilrTanoVpnService : VpnService() {
     }
 
     @Synchronized private fun establishTun() {
-        if (stopping || tun != null) return
+        if (stopping || paused || tun != null) return
         try {
             val pfd = Builder()
                 .setSession("GilrTano VPN")
@@ -175,11 +183,11 @@ class GilrTanoVpnService : VpnService() {
                 throw IllegalStateException("Не все обязательные сервисы доступны через VPN")
             }
 
-            broadcastStatus(
-                if (automaticMode) {
-                    if (usingFallback) "Подключено · бесплатный резерв" else "Подключено · Quattro"
-                } else "Подключено · Xray и TUN работают"
-            )
+            val connectedMessage = if (automaticMode) {
+                if (usingFallback) "Quattro · бесплатный резерв" else "Quattro"
+            } else "Xray и TUN работают"
+            broadcastStatus(if (resuming) "Возобновлено · $connectedMessage" else "Подключено · $connectedMessage")
+            resuming = false
             updateNotification("Подключено · защищённый трафик")
             startConnectionMonitor()
         } catch (e: Exception) {
@@ -209,6 +217,7 @@ class GilrTanoVpnService : VpnService() {
                 try {
                     Thread.sleep(MONITOR_INTERVAL_MS)
                     if (!monitorRunning || !automaticMode || stopping) break
+                    if (paused) continue
                     val latency = probeTunnel()
                     if (latency < 0L || latency > POOR_LATENCY_MS) consecutiveProbeFailures++
                     else consecutiveProbeFailures = 0
@@ -337,8 +346,44 @@ class GilrTanoVpnService : VpnService() {
         }
     }
 
+    /**
+     * Stop routing without destroying the Xray core. Closing the routed TUN
+     * interface sends app traffic back over the device's ordinary network.
+     */
+    private fun pauseTunnel() {
+        if (stopping || paused || tun == null) return
+        paused = true
+        broadcastStatus("Приостанавливаю VPN…")
+        Thread({
+            synchronized(this) {
+                runCatching { Teapodcore.stopTun2Socks() }
+                runCatching { tun?.close() }
+                tun = null
+            }
+            if (paused && !stopping) {
+                updateNotification("VPN приостановлен · трафик идёт напрямую")
+                broadcastStatus("Приостановлено")
+            }
+        }, "GilrTano-Xray-pause").start()
+    }
+
+    private fun resumeTunnel() {
+        if (stopping || !paused) return
+        resuming = true
+        paused = false
+        broadcastStatus("Возобновляю VPN…")
+        updateNotification("Возобновление VPN…")
+        Thread({
+            synchronized(this) {
+                if (!stopping && !paused && tun == null) establishTun()
+            }
+        }, "GilrTano-Xray-resume").start()
+    }
+
     private fun stopTunnel() {
         stopping = true
+        paused = false
+        resuming = false
         monitorRunning = false
         automaticMode = false
         broadcastStatus("Отменяю подключение…")
@@ -392,6 +437,16 @@ class GilrTanoVpnService : VpnService() {
             .setVisibility(Notification.VISIBILITY_PUBLIC)
             .setOnlyAlertOnce(true)
             .setOngoing(true)
+            .addAction(
+                if (paused) android.R.drawable.ic_media_play else android.R.drawable.ic_media_pause,
+                if (paused) "Возобновить" else "Пауза",
+                PendingIntent.getService(
+                    this, 3,
+                    Intent(this, GilrTanoVpnService::class.java)
+                        .setAction(if (paused) ACTION_RESUME else ACTION_PAUSE),
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+            )
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Отключить", disconnect)
             .build()
     }
@@ -409,6 +464,8 @@ class GilrTanoVpnService : VpnService() {
         const val ACTION_START = "com.gilrtano.vpn.START"
         const val ACTION_SWITCH = "com.gilrtano.vpn.SWITCH"
         const val ACTION_STOP = "com.gilrtano.vpn.STOP"
+        const val ACTION_PAUSE = "com.gilrtano.vpn.PAUSE"
+        const val ACTION_RESUME = "com.gilrtano.vpn.RESUME"
         const val ACTION_STATUS = "com.gilrtano.vpn.STATUS"
         const val EXTRA_CONFIG = "xray_config"
         const val EXTRA_STATUS = "status"
