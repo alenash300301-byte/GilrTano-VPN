@@ -3,8 +3,10 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
     <application android:allowBackup="false" android:icon="@drawable/gilrtano_icon" android:roundIcon="@drawable/gilrtano_icon" android:label="GilrTano VPN" android:theme="@android:style/Theme.Material.Light.NoActionBar">
         <activity android:name=".SplashActivity" android:exported="true" android:theme="@style/GilrTanoSplashTheme">
             <intent-filter>
@@ -22,8 +24,7 @@
                 <data android:scheme="flclash" android:host="install-config" />
             </intent-filter>
         </activity>
-        <service android:name=".GilrTanoVpnService" android:permission="android.permission.BIND_VPN_SERVICE" android:exported="false" android:foregroundServiceType="specialUse">
-            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="VPN tunnel" />
+        <service android:name=".GilrTanoVpnService" android:permission="android.permission.BIND_VPN_SERVICE" android:exported="false" android:foregroundServiceType="systemExempted">
             <intent-filter><action android:name="android.net.VpnService" /></intent-filter>
         </service>
     </application>
