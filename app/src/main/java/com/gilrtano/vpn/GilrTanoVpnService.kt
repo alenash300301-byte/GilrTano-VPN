@@ -6,6 +6,8 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
 import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
@@ -35,6 +37,8 @@ class GilrTanoVpnService : VpnService() {
     @Volatile private var preferredConfig: String? = null
 
     private val connectivity by lazy { getSystemService(ConnectivityManager::class.java) }
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    private var lastUnderlyingNetwork: Network? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
@@ -108,6 +112,7 @@ class GilrTanoVpnService : VpnService() {
                 if (engineResult != 0) {
                     throw IllegalStateException("Meow: ${MeowCore.nativeGetLastError()}")
                 }
+                registerNetworkCallback()
                 if (stopping) return@Thread
 
                 val builder = Builder()
@@ -275,6 +280,41 @@ class GilrTanoVpnService : VpnService() {
         }, "GilrTano-Meow-monitor").apply { isDaemon = true }.start()
     }
 
+    private fun registerNetworkCallback() {
+        unregisterNetworkCallback()
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                val previous = lastUnderlyingNetwork
+                if (previous != null && previous != network) {
+                    runCatching { MeowCore.nativeResetOutbound(network.toString()) }
+                }
+                lastUnderlyingNetwork = network
+            }
+
+            override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
+                val label = when {
+                    capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "WIFI"
+                    capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "CELLULAR"
+                    capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "ETHERNET"
+                    else -> "OTHER"
+                }
+                runCatching { MeowCore.nativeSetTrafficInterface(label) }
+            }
+        }
+        runCatching {
+            connectivity.registerDefaultNetworkCallback(callback)
+            networkCallback = callback
+        }.onFailure { Log.w(TAG, "Could not register network callback", it) }
+    }
+
+    private fun unregisterNetworkCallback() {
+        networkCallback?.let { callback ->
+            runCatching { connectivity.unregisterNetworkCallback(callback) }
+        }
+        networkCallback = null
+        lastUnderlyingNetwork = null
+    }
+
     private fun pauseTunnel() {
         if (stopping || paused || tun == null) return
         paused = true
@@ -305,6 +345,7 @@ class GilrTanoVpnService : VpnService() {
     }
 
     private fun stopEngineAndTun() {
+        unregisterNetworkCallback()
         runCatching { MeowCore.nativeStopEngine() }
         runCatching { tun?.close() }
         tun = null
