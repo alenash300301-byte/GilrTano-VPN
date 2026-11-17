@@ -103,9 +103,17 @@ class GilrTanoVpnService : VpnService() {
                 File(home, "config.yaml").writeText(prepareYaml(config))
                 MeowCore.nativeSetHomeDir(home.absolutePath)
 
+                val controllerSecret = UUID.randomUUID().toString()
+                File(home, "controller.secret").apply {
+                    writeText(controllerSecret)
+                    setReadable(false, false)
+                    setReadable(true, true)
+                    setWritable(false, false)
+                    setWritable(true, true)
+                }
                 val engineResult = MeowCore.nativeStartEngine(
                     "127.0.0.1:9090",
-                    UUID.randomUUID().toString(),
+                    controllerSecret,
                     "",
                     false,
                 )
