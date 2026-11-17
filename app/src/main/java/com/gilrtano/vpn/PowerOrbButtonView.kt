@@ -204,7 +204,7 @@ class PowerOrbButtonView @JvmOverloads constructor(
         holdRunnable = Runnable {
             holdTriggered = true
             performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-            performClick()
+            performLongClick()
         }.also { holdHandler.postDelayed(it, 5000L) }
     }
 
