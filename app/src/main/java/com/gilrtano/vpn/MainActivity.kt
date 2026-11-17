@@ -61,6 +61,7 @@ class MainActivity : Activity() {
     private lateinit var freeTab: Button
     private lateinit var autoTab: Button
     private var autoMode = true
+    private var buttonShellAnimator: ValueAnimator? = null
     private var activeMode: String = "auto"
     private lateinit var bestFreeButton: Button
     private lateinit var checkPing: Button
@@ -127,10 +128,11 @@ class MainActivity : Activity() {
             // and while connected so it can disconnect.
             connectButton.isEnabled = true
             setPowerButtonLabel(
-                if (message.startsWith("Подключено") || message.startsWith("Отключаю")) "ОТКЛЮЧИТЬ"
+                if (message.startsWith("Подключено")) "■ 00:00"
+                else if (message.startsWith("Отключаю")) "ОТКЛЮЧЕНИЕ…"
                 else if (message.startsWith("Переключаю")) "ПЕРЕКЛЮЧЕНИЕ…"
                 else if (busy) "ПОДКЛЮЧЕНИЕ…"
-                else "ПОДКЛЮЧИТЬ"
+                else "▶ ПОДКЛЮЧИТЬ"
             )
             connectButton.contentDescription = when {
                 message.startsWith("Подключено") -> "Отключить VPN"
@@ -336,6 +338,11 @@ class MainActivity : Activity() {
                     setTextColor(Color.WHITE)
                     format = "%s"
                     visibility = View.VISIBLE
+                    onChronometerTickListener = Chronometer.OnChronometerTickListener { timer ->
+                        if (status.text.toString().contains("Подключено")) {
+                            connectButton.setCaption("■  ${timer.text}")
+                        }
+                    }
                 }
                 // Connection duration is displayed in the lower live-statistics panel.
                 // The timer remains driven by the existing VPN status receiver.
@@ -849,10 +856,43 @@ class MainActivity : Activity() {
     }
 
     private fun updatePowerOrb(connected: Boolean) {
+        updatePowerOrb(
+            if (connected) PowerOrbButtonView.State.CONNECTED
+            else PowerOrbButtonView.State.DISCONNECTED
+        )
+    }
+
+    private fun updatePowerOrb(next: PowerOrbButtonView.State) {
         if (!::powerOrb.isInitialized) return
-        powerOrb.setState(if (connected) PowerOrbButtonView.State.CONNECTED else PowerOrbButtonView.State.DISCONNECTED)
+        val connected = next == PowerOrbButtonView.State.CONNECTED
+        powerOrb.setState(next)
         powerOrb.setTextColor(if (connected) Color.rgb(90, 255, 120) else Color.WHITE)
         powerOrb.elevation = dp(if (connected) 20 else 12).toFloat()
+
+        val startFill = if (connected) Color.rgb(3, 24, 10) else Color.TRANSPARENT
+        val endFill = if (connected) Color.TRANSPARENT else Color.rgb(3, 24, 10)
+        val startStroke = if (connected) Color.rgb(45, 255, 82) else Color.rgb(0, 255, 48)
+        val endStroke = if (connected) Color.rgb(0, 255, 48) else Color.rgb(45, 255, 82)
+        val shell = GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(startFill)
+            setStroke(dp(3), startStroke)
+        }
+        buttonShellAnimator?.cancel()
+        powerOrb.background = shell
+        buttonShellAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 300L
+            interpolator = android.view.animation.PathInterpolator(0.42f, 0f, 0.58f, 1f)
+            addUpdateListener { animator ->
+                val fraction = animator.animatedValue as Float
+                shell.setColor(ArgbEvaluator().evaluate(fraction, startFill, endFill) as Int)
+                shell.setStroke(
+                    dp(3),
+                    ArgbEvaluator().evaluate(fraction, startStroke, endStroke) as Int
+                )
+            }
+            start()
+        }
         powerOrb.invalidate()
     }
 

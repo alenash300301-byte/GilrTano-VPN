@@ -1,6 +1,11 @@
 package com.gilrtano.vpn
 
 import android.content.Context
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.os.VibrationEffect
+import android.os.Vibrator
 import android.graphics.Canvas
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -29,7 +34,7 @@ import kotlin.math.sin
 class PowerOrbButtonView @JvmOverloads constructor(
     context: Context, attrs: AttributeSet? = null
 ) : TextView(context, attrs) {
-    enum class State { DISCONNECTED, CONNECTING, CONNECTED }
+    enum class State { DISCONNECTED, CONNECTING, CONNECTED, SUSPENDED }
 
     private val d = resources.displayMetrics.density
     private val glyphPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -63,6 +68,10 @@ class PowerOrbButtonView @JvmOverloads constructor(
     private var pressAmount = 0f
     private var breath = 0f
     private var animationsAllowed = true
+    private val holdHandler = Handler(Looper.getMainLooper())
+    private val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+    private var holdTriggered = false
+    private var holdRunnable: Runnable? = null
     var useGlArtwork: Boolean = false
 
     init {
@@ -97,15 +106,15 @@ class PowerOrbButtonView @JvmOverloads constructor(
         if (animationsAllowed) {
             morph = 0f
             morphAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
-                duration = 360L
-                interpolator = PathInterpolator(0.4f, 0f, 0.2f, 1f)
+                duration = 300L
+                interpolator = PathInterpolator(0.42f, 0f, 0.58f, 1f)
                 addUpdateListener { morph = it.animatedValue as Float; invalidate() }
                 start()
             }
             when (next) {
                 State.CONNECTING -> startMotion(1000L, true)
                 State.CONNECTED -> startMotion(1100L, false)
-                State.DISCONNECTED -> {
+                State.DISCONNECTED, State.SUSPENDED -> {
                     phase = 0f
                     animate().cancel()
                     animate().scaleX(1f).scaleY(1f).setDuration(220L).start()
@@ -119,11 +128,13 @@ class PowerOrbButtonView @JvmOverloads constructor(
             State.DISCONNECTED -> Color.WHITE
             State.CONNECTING -> Color.rgb(255, 184, 74)
             State.CONNECTED -> Color.rgb(85, 255, 125)
+            State.SUSPENDED -> Color.rgb(150, 150, 150)
         }
         contentDescription = when (next) {
             State.DISCONNECTED -> "VPN отключён. Нажмите, чтобы подключиться"
             State.CONNECTING -> "VPN подключается"
             State.CONNECTED -> "VPN подключён. Нажмите, чтобы отключиться"
+            State.SUSPENDED -> "VPN приостановлен"
         }
         invalidate()
     }
@@ -163,12 +174,14 @@ class PowerOrbButtonView @JvmOverloads constructor(
             when (state) {
                 State.CONNECTING -> startMotion(1000L, true)
                 State.CONNECTED -> startMotion(1100L, false)
-                State.DISCONNECTED -> Unit
+                State.DISCONNECTED, State.SUSPENDED -> Unit
             }
         }
     }
 
     override fun onDetachedFromWindow() {
+        holdHandler.removeCallbacksAndMessages(null)
+        vibrator?.cancel()
         pulse?.cancel()
         morphAnimator?.cancel()
         pressAnimator?.cancel()
@@ -177,9 +190,34 @@ class PowerOrbButtonView @JvmOverloads constructor(
         super.onDetachedFromWindow()
     }
 
+    private fun startRisingHold() {
+        holdTriggered = false
+        holdRunnable?.let(holdHandler::removeCallbacks)
+        val timings = longArrayOf(0, 350, 150, 350, 150, 350, 150, 350, 150, 350, 150, 350, 150, 350, 150, 350, 150, 350, 150, 350, 150)
+        val amplitudes = intArrayOf(0, 35, 0, 55, 0, 75, 0, 95, 0, 115, 0, 135, 0, 155, 0, 180, 0, 205, 0, 230, 0)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            vibrator?.vibrate(VibrationEffect.createWaveform(timings, amplitudes, -1))
+        } else {
+            @Suppress("DEPRECATION")
+            vibrator?.vibrate(5000L)
+        }
+        holdRunnable = Runnable {
+            holdTriggered = true
+            performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+            performClick()
+        }.also { holdHandler.postDelayed(it, 5000L) }
+    }
+
+    private fun cancelRisingHold() {
+        holdRunnable?.let(holdHandler::removeCallbacks)
+        holdRunnable = null
+        vibrator?.cancel()
+    }
+
     override fun onTouchEvent(event: MotionEvent): Boolean {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
+                startRisingHold()
                 performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
                 pressAnimator?.cancel()
                 pressFeedback?.cancel()
@@ -203,6 +241,7 @@ class PowerOrbButtonView @JvmOverloads constructor(
                 }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                cancelRisingHold()
                 pressAnimator?.cancel()
                 pressFeedback?.cancel()
                 pressFeedback = ValueAnimator.ofFloat(pressAmount, 0f).apply {
@@ -225,6 +264,11 @@ class PowerOrbButtonView @JvmOverloads constructor(
                 }
             }
         }
+        if (event.actionMasked == MotionEvent.ACTION_UP && holdTriggered) {
+            setPressed(false)
+            return true
+        }
+        if (event.actionMasked == MotionEvent.ACTION_CANCEL) holdTriggered = false
         return super.onTouchEvent(event)
     }
 
@@ -260,6 +304,7 @@ class PowerOrbButtonView @JvmOverloads constructor(
             State.DISCONNECTED -> 0
             State.CONNECTING -> (phase * buttonFrames.size).toInt().coerceIn(0, buttonFrames.lastIndex)
             State.CONNECTED -> 4 + (phase * 5).toInt().coerceIn(0, 4)
+            State.SUSPENDED -> 0
         }
         val frame = buttonFrames[frameIndex]
         val dst = RectF(left, top, left + side, top + side)
