@@ -112,28 +112,43 @@ class PowerOrbButtonView @JvmOverloads constructor(
     fun setState(next: State) {
         if (state == next) return
         state = next
+        // State transitions take priority over decorative and touch animations.
         pulse?.cancel()
         morphAnimator?.cancel()
+        idleBreath?.cancel()
+        pressAnimator?.cancel()
+        pressFeedback?.cancel()
+        pressAmount = 0f
+        animate().cancel()
+        scaleX = 1f
+        scaleY = 1f
+        translationZ = 0f
+        rotationX = 0f
+        rotationY = 0f
+
         if (animationsAllowed) {
             morph = 0f
             morphAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
                 duration = 300L
                 interpolator = PathInterpolator(0.42f, 0f, 0.58f, 1f)
                 addUpdateListener { morph = it.animatedValue as Float; invalidate() }
+                addListener(object : android.animation.AnimatorListenerAdapter() {
+                    override fun onAnimationEnd(animation: android.animation.Animator) {
+                        if (state != next) return
+                        when (next) {
+                            State.CONNECTING -> startMotion(1000L, true)
+                            State.CONNECTED -> startMotion(1100L, false)
+                            State.DISCONNECTED -> startIdleBreath()
+                            State.SUSPENDED -> { phase = 0f; invalidate() }
+                        }
+                    }
+                })
                 start()
-            }
-            when (next) {
-                State.CONNECTING -> startMotion(1000L, true)
-                State.CONNECTED -> startMotion(1100L, false)
-                State.DISCONNECTED, State.SUSPENDED -> {
-                    phase = 0f
-                    animate().cancel()
-                    animate().scaleX(1f).scaleY(1f).setDuration(220L).start()
-                }
             }
         } else {
             morph = 1f
             phase = 0f
+            if (next == State.DISCONNECTED) breath = 0f
         }
         glyphPaint.color = when (next) {
             State.DISCONNECTED -> Color.WHITE
@@ -181,11 +196,11 @@ class PowerOrbButtonView @JvmOverloads constructor(
             ) > 0f
         }.getOrDefault(true)
         if (animationsAllowed) {
-            startIdleBreath()
             when (state) {
+                State.DISCONNECTED -> startIdleBreath()
                 State.CONNECTING -> startMotion(1000L, true)
                 State.CONNECTED -> startMotion(1100L, false)
-                State.DISCONNECTED, State.SUSPENDED -> Unit
+                State.SUSPENDED -> Unit
             }
         }
     }
