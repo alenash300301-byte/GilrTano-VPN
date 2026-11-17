@@ -22,6 +22,8 @@ object MeowCore {
     external fun nativeGetUploadTraffic(): Long
     external fun nativeGetDownloadTraffic(): Long
     external fun nativeGetLastError(): String
+    external fun nativeSetTrafficInterface(label: String)
+    external fun nativeResetOutbound(network: String)
     external fun nativeVersion(): String
     external fun nativeGetLogs(): String
     external fun nativeValidateConfig(yaml: String): Int
