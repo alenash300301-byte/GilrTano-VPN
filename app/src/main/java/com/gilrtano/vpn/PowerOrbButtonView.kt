@@ -315,6 +315,10 @@ class PowerOrbButtonView @JvmOverloads constructor(
         }
     }
     private val framePaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+    // Static transparent power emblem layered above the animated flame artwork.
+    private val powerIconBitmap: Bitmap by lazy {
+        BitmapFactory.decodeResource(resources, R.drawable.power_icon)
+    }
 
     override fun onDraw(canvas: Canvas) {
         // Use the exact artwork uploaded to the repository. Clip its black
@@ -336,6 +340,8 @@ class PowerOrbButtonView @JvmOverloads constructor(
         val dst = RectF(left, top, left + side, top + side)
         framePaint.alpha = 255
         canvas.drawBitmap(frame, null, dst, framePaint)
+        // Keep the power symbol visually fixed while the nine-frame fire artwork animates beneath it.
+        if (!powerIconBitmap.isRecycled) canvas.drawBitmap(powerIconBitmap, null, dst, framePaint)
 
         // Draw only the changing caption inside the capsule already present in the PNG.
         val captionColor = when (state) {
