@@ -1434,10 +1434,27 @@ class MainActivity : Activity() {
         scanningFree = true
         bestFreeButton.isEnabled = false
         status.text = "Быстрый поиск: проверяю лучшие серверы…"
+        // A Clash/Mihomo profile may contain several proxy groups and does
+        // not expose one host to TCP-ping here. Let Meow evaluate it on connect.
+        if (freeNodes.all { it.uri.isBlank() }) {
+            scanningFree = false
+            bestFreeButton.isEnabled = true
+            status.text = "Clash/Mihomo профиль готов. Проверка при подключении."
+            if (autoConnectWhenReady) {
+                activeFree = true
+                autoMode = true
+                activeMode = "auto"
+                prefs.edit().putString("connection_mode", "auto").putBoolean("active_free_mode", true).apply()
+                refreshMode()
+                servers.setSelection(0)
+                connectAutomaticallySelected()
+            }
+            return
+        }
         // Public free nodes expire frequently. Check a much larger portion of the
         // imported catalogue and allow slow handshakes, rather than rejecting all
         // candidates after one short 25-second window.
-        val candidates = freeNodes.take(80)
+        val candidates = freeNodes.take(80).filter { it.uri.isNotBlank() }
         Thread {
             val pool = Executors.newFixedThreadPool(8)
             val completion = java.util.concurrent.ExecutorCompletionService<Pair<ImportedNode, Long>?>(pool)
