@@ -17,9 +17,9 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="clash" />
-                <data android:scheme="clashmeta" />
-                <data android:scheme="flclash" />
+                <data android:scheme="clash" android:host="install-config" />
+                <data android:scheme="clashmeta" android:host="install-config" />
+                <data android:scheme="flclash" android:host="install-config" />
             </intent-filter>
         </activity>
         <service android:name=".GilrTanoVpnService" android:permission="android.permission.BIND_VPN_SERVICE" android:exported="false" android:foregroundServiceType="specialUse">
