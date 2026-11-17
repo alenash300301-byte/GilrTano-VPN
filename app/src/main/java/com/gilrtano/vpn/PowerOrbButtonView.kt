@@ -210,6 +210,7 @@ class PowerOrbButtonView @JvmOverloads constructor(
         vibrator?.cancel()
         pulse?.cancel()
         morphAnimator?.cancel()
+        ignitionAnimator?.cancel()
         pressAnimator?.cancel()
         pressFeedback?.cancel()
         idleBreath?.cancel()
@@ -245,17 +246,27 @@ class PowerOrbButtonView @JvmOverloads constructor(
             MotionEvent.ACTION_DOWN -> {
                 startRisingHold()
                 performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                // Keep the button and its power emblem geometrically fixed on touch.
-                // Haptic feedback remains, but no scale, rotation, or translation animation is applied.
+                // Play the nine-frame ignition sequence immediately on touch.
+                // The PNG frames include the power emblem, so the artwork stays a single layer.
+                ignitionAnimator?.cancel()
+                ignitionAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
+                    duration = 720L
+                    interpolator = DecelerateInterpolator()
+                    addUpdateListener {
+                        phase = it.animatedValue as Float
+                        invalidate()
+                    }
+                    start()
+                }
                 pressAnimator?.cancel()
                 pressFeedback?.cancel()
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 cancelRisingHold()
-                // No rebound animation: the power emblem stays at the same size and position.
+                // Finish the touch ignition cleanly; the active connection animation
+                // takes over as soon as the service reports CONNECTING.
                 pressAnimator?.cancel()
                 pressFeedback?.cancel()
-                pressAmount = 0f
             }
         }
         if (event.actionMasked == MotionEvent.ACTION_UP && holdTriggered) {
@@ -283,10 +294,9 @@ class PowerOrbButtonView @JvmOverloads constructor(
         }
     }
     private val framePaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
-    // Static transparent power emblem layered above the animated flame artwork.
-    private val powerIconBitmap: Bitmap by lazy {
-        BitmapFactory.decodeResource(resources, R.drawable.gilrtano_power_icon_transparent_1)
-    }
+    // The nine frame PNGs already contain the complete power emblem.
+    // Do not draw a second transparent power-icon layer over them.
+    private var ignitionAnimator: ValueAnimator? = null
 
     override fun onDraw(canvas: Canvas) {
         // Use the exact artwork uploaded to the repository. Clip its black
@@ -308,9 +318,6 @@ class PowerOrbButtonView @JvmOverloads constructor(
         val dst = RectF(left, top, left + side, top + side)
         framePaint.alpha = 255
         canvas.drawBitmap(frame, null, dst, framePaint)
-        // Keep the power symbol visually fixed while the nine-frame fire artwork animates beneath it.
-        if (!powerIconBitmap.isRecycled) canvas.drawBitmap(powerIconBitmap, null, dst, framePaint)
-
         // Draw the state label INSIDE the capsule embedded in the artwork.
         // For pause/resume states, render a separate pause glyph and the word as one centered group.
         val captionColor = when (state) {
