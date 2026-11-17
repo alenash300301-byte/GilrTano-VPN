@@ -171,15 +171,30 @@ class GilrTanoVpnService : VpnService() {
             Regex("(?m)^subscriptions:.*?(?=^[a-zA-Z][\\w-]*:|\\z)", RegexOption.DOT_MATCHES_ALL),
             "",
         ).trim()
-        if (!Regex("(?m)^dns\\s*:").containsMatchIn(yaml)) {
-            yaml += "\n\ndns:\n  enable: true\n  enhanced-mode: fake-ip\n  nameserver:\n    - https://1.1.1.1/dns-query\n    - https://8.8.8.8/dns-query\n  default-nameserver:\n    - 1.1.1.1\n    - 8.8.8.8\n"
-        }
-        val root = Yaml().load<Any?>(yaml)
-        require(root is Map<*, *>) { "Конфигурация должна быть Clash/Mihomo YAML" }
-        require(root.containsKey("proxies") || root.containsKey("proxy-providers")) {
+        val root = Yaml(SafeConstructor(LoaderOptions())).load<Any?>(yaml)
+        require(root is MutableMap<*, *>) { "Конфигурация должна быть Clash/Mihomo YAML" }
+        @Suppress("UNCHECKED_CAST")
+        val config = root as MutableMap<Any?, Any?>
+        require(config.containsKey("proxies") || config.containsKey("proxy-providers")) {
             "В YAML не найдены proxies или proxy-providers"
         }
-        return yaml
+        val dns = LinkedHashMap<Any?, Any?>()
+        (config["dns"] as? Map<*, *>)?.forEach { (key, value) -> dns[key] = value }
+        fun hasValue(value: Any?): Boolean = when (value) {
+            is Collection<*> -> value.isNotEmpty()
+            is String -> value.isNotBlank()
+            null -> false
+            else -> true
+        }
+        if (!hasValue(dns["nameserver"])) {
+            dns["nameserver"] = listOf("https://1.1.1.1/dns-query", "https://8.8.8.8/dns-query")
+        }
+        if (!hasValue(dns["default-nameserver"])) {
+            dns["default-nameserver"] = listOf("1.1.1.1", "8.8.8.8")
+        }
+        dns["enable"] = true
+        config["dns"] = dns
+        return Yaml().dump(config)
     }
 
     private fun seedGeoAssets(home: File) {
