@@ -137,8 +137,8 @@ class PowerOrbButtonView @JvmOverloads constructor(
                         if (state != next) return
                         when (next) {
                             State.CONNECTING -> startMotion(1000L, true)
-                            State.CONNECTED -> startMotion(1100L, false)
-                            State.DISCONNECTED -> startIdleBreath()
+                            State.CONNECTED -> { phase = 0f; invalidate() }
+                            State.DISCONNECTED -> { phase = 0f; breath = 0f; invalidate() }
                             State.SUSPENDED -> { phase = 0f; invalidate() }
                         }
                     }
@@ -148,7 +148,7 @@ class PowerOrbButtonView @JvmOverloads constructor(
         } else {
             morph = 1f
             phase = 0f
-            if (next == State.DISCONNECTED) breath = 0f
+            if (next == State.DISCONNECTED) { breath = 0f; phase = 0f }
         }
         glyphPaint.color = when (next) {
             State.DISCONNECTED -> Color.WHITE
@@ -197,9 +197,9 @@ class PowerOrbButtonView @JvmOverloads constructor(
         }.getOrDefault(true)
         if (animationsAllowed) {
             when (state) {
-                State.DISCONNECTED -> startIdleBreath()
+                State.DISCONNECTED -> Unit
                 State.CONNECTING -> startMotion(1000L, true)
-                State.CONNECTED -> startMotion(1100L, false)
+                State.CONNECTED -> Unit
                 State.SUSPENDED -> Unit
             }
         }
@@ -301,7 +301,7 @@ class PowerOrbButtonView @JvmOverloads constructor(
         val frameIndex = when (state) {
             State.DISCONNECTED -> 0
             State.CONNECTING -> (phase * buttonFrames.size).toInt().coerceIn(0, buttonFrames.lastIndex)
-            State.CONNECTED -> 4 + (phase * 5).toInt().coerceIn(0, 4)
+            State.CONNECTED -> 8
             State.SUSPENDED -> 0
         }
         val frame = buttonFrames[frameIndex]
