@@ -294,6 +294,10 @@ class PowerOrbButtonView @JvmOverloads constructor(
         }
     }
     private val framePaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+    // Fixed-size transparent power emblem layered over the animated flame frames.
+    private val powerOverlay: Bitmap by lazy {
+        BitmapFactory.decodeResource(resources, R.drawable.gilrtano_power_icon_transparent_1)
+    }
     // The nine frame PNGs already contain the complete power emblem.
     // Do not draw a second transparent power-icon layer over them.
     private var ignitionAnimator: ValueAnimator? = null
@@ -307,9 +311,7 @@ class PowerOrbButtonView @JvmOverloads constructor(
         val left = (width - side) / 2f
         val top = (height - side) / 2f
 
-        val connecting = state == State.CONNECTING
-        // Animate the nine supplied artwork frames during touch ignition and
-        // while connecting. Keep the final full-flame frame for stable states.
+        // Animate the flame independently; the fixed emblem is drawn above it.
         val frameIndex = when (state) {
             State.CONNECTING -> (phase * buttonFrames.size).toInt()
                 .coerceIn(0, buttonFrames.lastIndex)
@@ -323,6 +325,9 @@ class PowerOrbButtonView @JvmOverloads constructor(
         val dst = RectF(left, top, left + side, top + side)
         framePaint.alpha = 255
         canvas.drawBitmap(frame, null, dst, framePaint)
+        // Overlay the separate transparent emblem so it never changes size
+        // while the nine underlying flame frames animate.
+        canvas.drawBitmap(powerOverlay, null, dst, framePaint)
         // Draw the state label INSIDE the capsule embedded in the artwork.
         // For pause/resume states, render a separate pause glyph and the word as one centered group.
         val captionColor = when (state) {
