@@ -1,20 +1,27 @@
-name: Build GilrTano VPN APK
+name: Build GilrTano VPN with Meow
 
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, meow-engine-integration]
 
 permissions:
   contents: read
 
 jobs:
   build:
-    runs-on: ubuntu-latest
-    timeout-minutes: 100
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
     steps:
-      - name: Checkout
+      - name: Checkout GilrTano
         uses: actions/checkout@v4
+
+      - name: Checkout pinned Meow Android core
+        uses: actions/checkout@v4
+        with:
+          repository: meow-rs/meow-android
+          ref: ad3b6e32292215a62feed27ab74157251b1575fb
+          path: meow-android
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -22,46 +29,56 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Setup Go
-        uses: actions/setup-go@v5
+      - name: Setup Rust for Android ARM64
+        uses: dtolnay/rust-toolchain@stable
         with:
-          go-version: '1.25.x'
-          cache-dependency-path: upstream/teapod-core/go.sum
+          targets: aarch64-linux-android
 
-      - name: Install Android NDK
+      - name: Install Android SDK and NDK
         run: |
           echo "ANDROID_HOME=/usr/local/lib/android/sdk" >> "$GITHUB_ENV"
           echo "ANDROID_SDK_ROOT=/usr/local/lib/android/sdk" >> "$GITHUB_ENV"
           SDKMANAGER=$(find /usr/local/lib/android/sdk/cmdline-tools -type f -name sdkmanager | head -n1)
           test -n "$SDKMANAGER"
           echo "$(dirname "$SDKMANAGER")" >> "$GITHUB_PATH"
-          "$SDKMANAGER" --install "ndk;28.2.13676358"
+          yes | "$SDKMANAGER" --licenses >/dev/null
+          "$SDKMANAGER" --install \
+            "platforms;android-36" \
+            "build-tools;36.0.0" \
+            "cmake;3.22.1" \
+            "ndk;27.0.12077973" \
+            "ndk;28.2.13676358"
           echo "ANDROID_NDK_HOME=/usr/local/lib/android/sdk/ndk/28.2.13676358" >> "$GITHUB_ENV"
-          echo "$HOME/go/bin" >> "$GITHUB_PATH"
+          echo "sdk.dir=/usr/local/lib/android/sdk" > meow-android/local.properties
 
-      - name: Install gomobile
-        run: |
-          go install golang.org/x/mobile/cmd/gomobile@latest
-          gomobile init
-
-      - name: Build native Xray AAR
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y patch unzip zip perl
-          chmod +x scripts/build-native-aar.sh
-          ./scripts/build-native-aar.sh
-          test -s app/libs/teapod-core-1.7.7.aar
+      - name: Install cargo-ndk
+        run: command -v cargo-ndk || cargo install cargo-ndk --locked
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.13'
+        uses: gradle/actions/setup-gradle@v6
 
-      - name: Build APK
-        run: gradle --no-daemon assembleDebug
+      - name: Build Meow Android ARM64 native core
+        working-directory: meow-android
+        run: ./gradlew :core:assembleDebug -PTARGET_ABI=arm64 -PCARGO_PROFILE=release --no-daemon --stacktrace
+
+      - name: Stage Meow native library and GeoIP assets
+        run: |
+          set -eux
+          mkdir -p app/src/main/jniLibs/arm64-v8a app/src/main/assets/geox
+          test -s meow-android/core/build/rustJniLibs/android/arm64-v8a/libmeow_android_ffi.so
+          cp meow-android/core/build/rustJniLibs/android/arm64-v8a/libmeow_android_ffi.so app/src/main/jniLibs/arm64-v8a/
+          curl -fL --retry 3 "https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/country.mmdb" -o app/src/main/assets/geox/country.mmdb
+          curl -fL --retry 3 "https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/GeoLite2-ASN.mmdb" -o app/src/main/assets/geox/GeoLite2-ASN.mmdb
+          test -s app/src/main/assets/geox/country.mmdb
+          test -s app/src/main/assets/geox/GeoLite2-ASN.mmdb
+
+      - name: Build GilrTano APK
+        run: gradle --no-daemon assembleDebug --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: GilrTano-VPN-APK
+          name: GilrTano-VPN-Meow-ARM64
           path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
