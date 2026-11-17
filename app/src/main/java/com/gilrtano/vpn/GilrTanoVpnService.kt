@@ -214,7 +214,7 @@ class GilrTanoVpnService : VpnService() {
         val databases = listOf(
             "country.mmdb" to "Country.mmdb",
             "GeoLite2-ASN.mmdb" to "GeoLite2-ASN.mmdb",
-            "geosite.mrs" to "geosite.mrs",
+            "geosite.dat" to "geosite.dat",
         )
         for ((assetName, targetName) in databases) {
             val target = File(home, targetName)
