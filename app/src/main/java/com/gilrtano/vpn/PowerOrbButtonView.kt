@@ -337,39 +337,22 @@ class PowerOrbButtonView @JvmOverloads constructor(
         framePaint.alpha = 255
         canvas.drawBitmap(frame, null, dst, framePaint)
 
-        // Large, readable status capsule matching the supplied reference:
-        // centered below the power glyph, with a dark glass fill and neon outline.
+        // Draw only the changing caption inside the capsule already present in the PNG.
         val captionColor = when (state) {
-            State.DISCONNECTED, State.CONNECTED -> Color.rgb(125, 255, 70)
-            State.CONNECTING -> Color.rgb(255, 205, 105)
+            State.DISCONNECTED, State.CONNECTED -> Color.rgb(125, 255, 95)
+            State.CONNECTING -> Color.rgb(255, 205, 90)
             State.SUSPENDED -> Color.LTGRAY
         }
-        val capsuleWidth = side * 0.66f
-        val capsuleHeight = side * 0.17f
-        val capsule = RectF(
-            cx - capsuleWidth / 2f, top + side * 0.565f,
-            cx + capsuleWidth / 2f, top + side * 0.565f + capsuleHeight
-        )
-        val capsuleFill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.FILL
-            color = Color.argb(235, 0, 12, 3)
-        }
-        canvas.drawRoundRect(capsule, capsuleHeight / 2f, capsuleHeight / 2f, capsuleFill)
-        captionPlatePaint.color = captionColor
-        captionPlatePaint.strokeWidth = 1.6f * d
-        captionPlatePaint.alpha = 245
-        canvas.drawRoundRect(capsule, capsuleHeight / 2f, capsuleHeight / 2f, captionPlatePaint)
-
-        captionPaint.color = captionColor
         captionPaint.textAlign = Paint.Align.CENTER
         captionPaint.typeface = Typeface.create("sans-serif", Typeface.BOLD)
-        captionPaint.textSize = side * 0.083f
-        captionPaint.setShadowLayer(4f * d, 0f, 0f, captionColor)
-        val captionMaxWidth = capsuleWidth * 0.88f
-        while (captionPaint.measureText(caption) > captionMaxWidth && captionPaint.textSize > side * 0.052f) {
+        captionPaint.textSize = side * 0.060f
+        captionPaint.color = captionColor
+        captionPaint.setShadowLayer(5f * d, 0f, 0f, captionColor)
+        val maxWidth = side * 0.57f
+        while (captionPaint.measureText(caption) > maxWidth && captionPaint.textSize > side * 0.035f) {
             captionPaint.textSize -= 0.5f * d
         }
-        val captionY = capsule.centerY() - (captionPaint.ascent() + captionPaint.descent()) / 2f
+        val captionY = top + side * 0.594f - (captionPaint.ascent() + captionPaint.descent()) / 2f
         canvas.drawText(caption, cx, captionY, captionPaint)
         captionPaint.clearShadowLayer()
 
