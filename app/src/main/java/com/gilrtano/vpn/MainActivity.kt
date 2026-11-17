@@ -1054,7 +1054,7 @@ class MainActivity : Activity() {
     private fun handleSubscriptionIntent(sourceIntent: Intent?) {
         val data = sourceIntent?.data ?: return
         val scheme = data.scheme?.lowercase()
-        if (scheme !in setOf("clash", "clashmeta", "flclash")) return
+        if (scheme == null || scheme !in setOf("clash", "clashmeta", "flclash")) return
         if (data.host != "install-config") {
             Toast.makeText(this, "Неизвестный формат ссылки профиля", Toast.LENGTH_LONG).show()
             return
@@ -1065,8 +1065,9 @@ class MainActivity : Activity() {
             return
         }
         val subscriptionUri = runCatching { Uri.parse(incoming) }.getOrNull()
-        if (subscriptionUri?.scheme?.lowercase() !in setOf("http", "https") ||
-            subscriptionUri?.host.isNullOrBlank()) {
+        val subscriptionScheme = subscriptionUri?.scheme?.lowercase()
+        if (subscriptionUri == null || subscriptionScheme == null ||
+            subscriptionScheme !in setOf("http", "https") || subscriptionUri.host.isNullOrBlank()) {
             Toast.makeText(this, "Подписка должна иметь HTTP- или HTTPS-адрес", Toast.LENGTH_LONG).show()
             return
         }
