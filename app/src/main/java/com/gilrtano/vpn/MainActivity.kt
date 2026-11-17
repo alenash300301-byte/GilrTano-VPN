@@ -1311,7 +1311,17 @@ class MainActivity : Activity() {
 
     private fun saveNodes(key: String, nodes: List<ImportedNode>) {
         val array = JSONArray()
-        nodes.forEach { array.put(JSONObject().put("name", it.name).put("uri", it.uri).put("yamlConfig", it.yamlConfig)) }
+        nodes.forEachIndexed { index, node ->
+            val yamlPath = node.yamlConfig?.takeIf { it.isNotBlank() }?.let { yaml ->
+                val fileName = "${key}_profile_${index}.yaml"
+                java.io.File(filesDir, fileName).writeText(yaml)
+                fileName
+            }
+            array.put(JSONObject()
+                .put("name", node.name)
+                .put("uri", node.uri)
+                .put("yamlPath", yamlPath))
+        }
         prefs.edit().putString(key, array.toString()).apply()
     }
 
@@ -1321,7 +1331,11 @@ class MainActivity : Activity() {
             val array = JSONArray(raw)
             (0 until array.length()).map { i ->
                 val item = array.getJSONObject(i)
-                ImportedNode(item.getString("name"), item.optString("uri", ""), if (item.isNull("yamlConfig")) null else item.optString("yamlConfig"))
+                val yamlPath = item.optString("yamlPath").takeIf { it.isNotBlank() && it != "null" }
+                val yamlConfig = yamlPath?.let { path ->
+                    java.io.File(filesDir, path).takeIf { it.isFile }?.readText()
+                } ?: if (!item.isNull("yamlConfig")) item.optString("yamlConfig") else null
+                ImportedNode(item.getString("name"), item.optString("uri", ""), yamlConfig)
             }
         }.getOrDefault(emptyList())
     }
