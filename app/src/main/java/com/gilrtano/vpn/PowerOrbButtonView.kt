@@ -340,7 +340,7 @@ class PowerOrbButtonView @JvmOverloads constructor(
         captionPaint.textSize = side * 0.062f
         captionPaint.setShadowLayer(4f * d, 0f, 0f, captionColor)
 
-        val capsuleCenterY = top + side * 0.724f
+        val capsuleCenterY = top + side * 0.52f
         val isPauseAction = caption.startsWith("Ⅱ")
         val visibleCaption = if (isPauseAction) caption.substring(1).trim() else caption
         val maxTextWidth = side * if (isPauseAction) 0.47f else 0.53f
