@@ -337,33 +337,6 @@ class PowerOrbButtonView @JvmOverloads constructor(
         framePaint.alpha = 255
         canvas.drawBitmap(frame, null, dst, framePaint)
 
-        // Simplify the busy center of the source artwork while preserving
-        // the animated outer flame ring and all nine original frames.
-        val cx = width / 2f
-        val cy = top + side * 0.445f
-        val orbRadius = side * 0.292f
-        canvas.drawCircle(cx, cy, orbRadius, orbDiskPaint)
-        // A single, clear power glyph replaces the multiple competing rings
-        // baked into the artwork. Its color follows the connection state.
-        powerGlyphPaint.color = when (state) {
-            State.DISCONNECTED, State.CONNECTED -> Color.rgb(105, 255, 120)
-            State.CONNECTING -> Color.rgb(255, 205, 105)
-            State.SUSPENDED -> Color.rgb(155, 160, 155)
-        }
-        val glyph = Path().apply {
-            moveTo(cx, cy - side * 0.155f)
-            lineTo(cx, cy + side * 0.005f)
-        }
-        canvas.drawPath(glyph, powerGlyphPaint)
-        val powerArc = Path().apply {
-            moveTo(cx - side * 0.105f, cy - side * 0.070f)
-            cubicTo(cx - side * 0.205f, cy + side * 0.015f,
-                cx - side * 0.175f, cy + side * 0.155f, cx, cy + side * 0.155f)
-            cubicTo(cx + side * 0.175f, cy + side * 0.155f,
-                cx + side * 0.205f, cy + side * 0.015f, cx + side * 0.105f, cy - side * 0.070f)
-        }
-        canvas.drawPath(powerArc, powerGlyphPaint)
-
         // Compact status caption is drawn directly into the button, matching
         // the original in-orb layout. No opaque overlay covers the flame artwork.
         val captionColor = when (state) {
