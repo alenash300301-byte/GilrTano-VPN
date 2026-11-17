@@ -72,7 +72,6 @@ class MainActivity : Activity() {
     private lateinit var pingMetric: TextView
     private lateinit var protocolMetric: TextView
     private lateinit var connectButton: PowerOrbButtonView
-    private lateinit var connectButtonLabel: TextView
     @Volatile private var scanningFree = false
     private var activeFree = false
     private var settingsExpanded = false
@@ -359,33 +358,6 @@ class MainActivity : Activity() {
                 heroFrame.addView(connectButton, FrameLayout.LayoutParams(dp(174), dp(174),
                     android.view.Gravity.CENTER).apply {
                     topMargin = dp(150)
-                })
-                // Independent foreground label: always above every PNG frame.
-                connectButtonLabel = TextView(this@MainActivity).apply {
-                    text = "ПОДКЛЮЧИТЬ"
-                    gravity = android.view.Gravity.CENTER
-                    textAlignment = View.TEXT_ALIGNMENT_CENTER
-                    maxLines = 1
-                    includeFontPadding = false
-                    textSize = 12f
-                    typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.BOLD)
-                    setTextColor(Color.WHITE)
-                    setPadding(dp(12), dp(7), dp(12), dp(7))
-                    background = GradientDrawable().apply {
-                        shape = GradientDrawable.RECTANGLE
-                        cornerRadius = dp(9).toFloat()
-                        setColor(Color.argb(242, 0, 0, 0))
-                        setStroke(dp(1), Color.rgb(105, 255, 120))
-                    }
-                    isClickable = false
-                    isFocusable = false
-                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-                    elevation = dp(30).toFloat()
-                }
-                heroFrame.addView(connectButtonLabel, FrameLayout.LayoutParams(
-                    dp(150), dp(32), android.view.Gravity.CENTER
-                ).apply {
-                    topMargin = dp(182)
                 })
                 addView(heroFrame, LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, dp(500)
@@ -964,16 +936,8 @@ class MainActivity : Activity() {
     }
 
     private fun setPowerButtonLabel(label: String) {
-        if (!::connectButtonLabel.isInitialized) return
-        connectButtonLabel.text = label
-        val tint = when {
-            label.contains("ПОДКЛЮЧ") -> Color.rgb(145, 255, 155)
-            label.contains("ПОДКЛЮЧЕНИ") || label.contains("ПЕРЕКЛЮЧ") -> Color.rgb(255, 205, 115)
-            label.contains("ПАУЗ") || label.contains("ВОЗОБНОВ") -> Color.LTGRAY
-            else -> Color.rgb(145, 255, 155)
-        }
-        connectButtonLabel.setTextColor(tint)
-        (connectButtonLabel.background as? GradientDrawable)?.setStroke(dp(1), tint)
+        if (!::connectButton.isInitialized) return
+        connectButton.setCaption(label)
     }
 
     private fun igniteConnectButton() { connectButton.elevation = dp(12).toFloat() }
