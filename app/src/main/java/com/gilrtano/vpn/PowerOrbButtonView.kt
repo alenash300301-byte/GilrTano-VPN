@@ -355,7 +355,7 @@ class PowerOrbButtonView @JvmOverloads constructor(
             captionPaint.textSize -= 0.5f * d
         }
         val captionY = top + side * 0.735f - (captionPaint.ascent() + captionPaint.descent()) / 2f
-        canvas.drawText(caption, cx, captionY, captionPaint)
+        canvas.drawText(caption, width / 2f, captionY, captionPaint)
         captionPaint.clearShadowLayer()
 
         // No additional outer rings or ripple circles; preserve the nine PNG frames as-is.
