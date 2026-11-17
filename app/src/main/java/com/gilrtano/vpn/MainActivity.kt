@@ -832,11 +832,8 @@ class MainActivity : Activity() {
             maxLines = 1
             setTextColor(Color.WHITE)
             isAllCaps = false
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(Color.rgb(3, 24, 10))
-                setStroke(dp(3), Color.rgb(45, 255, 82))
-            }
+            // The PNG frames provide the complete button artwork; no extra oval border.
+            background = android.graphics.drawable.ColorDrawable(Color.TRANSPARENT)
             elevation = dp(18).toFloat()
             minWidth = dp(174)
             minHeight = dp(174)
@@ -908,30 +905,9 @@ class MainActivity : Activity() {
         powerOrb.setTextColor(if (connected) Color.rgb(90, 255, 120) else if (suspended) Color.LTGRAY else Color.WHITE)
         powerOrb.elevation = dp(if (connected) 20 else 12).toFloat()
 
-        val startFill = if (connected) Color.rgb(3, 24, 10) else Color.TRANSPARENT
-        val endFill = if (connected) Color.TRANSPARENT else if (suspended) Color.rgb(22, 22, 24) else Color.rgb(3, 24, 10)
-        val startStroke = if (suspended) Color.GRAY else if (connected) Color.rgb(45, 255, 82) else Color.rgb(0, 255, 48)
-        val endStroke = if (suspended) Color.LTGRAY else if (connected) Color.rgb(0, 255, 48) else Color.rgb(45, 255, 82)
-        val shell = GradientDrawable().apply {
-            shape = GradientDrawable.OVAL
-            setColor(startFill)
-            setStroke(dp(3), startStroke)
-        }
-        buttonShellAnimator?.cancel()
-        powerOrb.background = shell
-        buttonShellAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = 300L
-            interpolator = android.view.animation.PathInterpolator(0.42f, 0f, 0.58f, 1f)
-            addUpdateListener { animator ->
-                val fraction = animator.animatedValue as Float
-                shell.setColor(ArgbEvaluator().evaluate(fraction, startFill, endFill) as Int)
-                shell.setStroke(
-                    dp(3),
-                    ArgbEvaluator().evaluate(fraction, startStroke, endStroke) as Int
-                )
-            }
-            start()
-        }
+        // Keep the button background transparent. The artwork in the nine PNG
+        // frames is the only source of rings and borders.
+        powerOrb.background = android.graphics.drawable.ColorDrawable(Color.TRANSPARENT)
         powerOrb.invalidate()
     }
 
