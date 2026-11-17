@@ -1202,7 +1202,7 @@ class MainActivity : Activity() {
             status.text = "Переключаю на ${if (free) "бесплатный сервер" else "Quattro"}…"
             startService(Intent(this, GilrTanoVpnService::class.java)
                 .setAction(GilrTanoVpnService.ACTION_SWITCH)
-                .putExtra(GilrTanoVpnService.EXTRA_CONFIG, config))
+                .putExtra(GilrTanoVpnService.EXTRA_CONFIG, storeEngineConfig(config, "switch")))
         } else {
             Toast.makeText(this, if (free) "Выбран бесплатный резерв" else "Выбран Quattro", Toast.LENGTH_SHORT).show()
         }
@@ -1592,6 +1592,13 @@ class MainActivity : Activity() {
         }.start()
     }
 
+    private fun storeEngineConfig(config: String, slot: String): String {
+        val directory = java.io.File(filesDir, "engine-configs").apply { mkdirs() }
+        val file = java.io.File(directory, "$slot.yaml")
+        file.writeText(config)
+        return file.absolutePath
+    }
+
     private fun startVpn(
         config: String,
         fallbackConfig: String? = null,
@@ -1601,10 +1608,14 @@ class MainActivity : Activity() {
         connectButton.isEnabled = true
         val intent = Intent(this, GilrTanoVpnService::class.java)
             .setAction(GilrTanoVpnService.ACTION_START)
-            .putExtra(GilrTanoVpnService.EXTRA_CONFIG, config)
+            .putExtra(GilrTanoVpnService.EXTRA_CONFIG, storeEngineConfig(config, "active"))
             .putExtra(GilrTanoVpnService.EXTRA_AUTO, automatic)
-        fallbackConfig?.let { intent.putExtra(GilrTanoVpnService.EXTRA_FALLBACK_CONFIG, it) }
-        preferredConfig?.let { intent.putExtra(GilrTanoVpnService.EXTRA_PREFERRED_CONFIG, it) }
+        fallbackConfig?.let {
+            intent.putExtra(GilrTanoVpnService.EXTRA_FALLBACK_CONFIG, storeEngineConfig(it, "fallback"))
+        }
+        preferredConfig?.let {
+            intent.putExtra(GilrTanoVpnService.EXTRA_PREFERRED_CONFIG, storeEngineConfig(it, "preferred"))
+        }
         startForegroundService(intent)
         status.text = "Запускаю VPN…"
         connectButton.setState(PowerOrbButtonView.State.CONNECTING)
