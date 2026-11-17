@@ -308,10 +308,17 @@ class PowerOrbButtonView @JvmOverloads constructor(
         val top = (height - side) / 2f
 
         val connecting = state == State.CONNECTING
-        // Keep the central power emblem at a completely fixed visual size.
-        // The source animation frames change the emblem's apparent scale, so use
-        // the same full-flame frame for every connection state.
-        val frameIndex = 8
+        // Animate the nine supplied artwork frames during touch ignition and
+        // while connecting. Keep the final full-flame frame for stable states.
+        val frameIndex = when (state) {
+            State.CONNECTING -> (phase * buttonFrames.size).toInt()
+                .coerceIn(0, buttonFrames.lastIndex)
+            State.DISCONNECTED -> if (ignitionAnimator?.isRunning == true) {
+                (phase * buttonFrames.size).toInt().coerceIn(0, buttonFrames.lastIndex)
+            } else 8
+            State.CONNECTED -> 8
+            State.SUSPENDED -> 0
+        }
         val frame = buttonFrames[frameIndex]
         val dst = RectF(left, top, left + side, top + side)
         framePaint.alpha = 255
