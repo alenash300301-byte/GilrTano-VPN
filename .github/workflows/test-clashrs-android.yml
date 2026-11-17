@@ -1,0 +1,64 @@
+name: Experimental ClashRS Android ARM64 check
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/test-clashrs-android.yml"
+  push:
+    branches: [mihomo-integration]
+    paths:
+      - ".github/workflows/test-clashrs-android.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-clashrs:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout GilrTano
+        uses: actions/checkout@v4
+
+      - name: Checkout ClashRS source
+        uses: actions/checkout@v4
+        with:
+          repository: ibigbug/clash-rs
+          ref: master
+          path: native/clash-rs
+
+      - name: Install Rust toolchain and Android target
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.99.1
+          targets: aarch64-linux-android
+
+      - name: Set up Android SDK and NDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android NDK
+        run: |
+          sdkmanager --install "ndk;28.2.13676358"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
+
+      - name: Configure Android linker
+        run: |
+          TOOLCHAIN="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          echo "CC_aarch64_linux_android=$TOOLCHAIN/aarch64-linux-android24-clang" >> "$GITHUB_ENV"
+          echo "AR_aarch64_linux_android=$TOOLCHAIN/llvm-ar" >> "$GITHUB_ENV"
+
+      - name: Build ClashRS FFI for Android ARM64
+        working-directory: native/clash-rs
+        run: |
+          cargo build --locked --manifest-path clash-ffi/Cargo.toml --target aarch64-linux-android --release
+          test -s target/aarch64-linux-android/release/libclashrs.so
+          file target/aarch64-linux-android/release/libclashrs.so
+
+      - name: Upload experimental native library
+        uses: actions/upload-artifact@v4
+        with:
+          name: clashrs-android-arm64-experiment
+          path: native/clash-rs/target/aarch64-linux-android/release/libclashrs.so
+          if-no-files-found: error
