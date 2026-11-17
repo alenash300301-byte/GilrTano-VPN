@@ -291,22 +291,29 @@ class GilrTanoVpnService : VpnService() {
     private fun registerNetworkCallback() {
         unregisterNetworkCallback()
         val callback = object : ConnectivityManager.NetworkCallback() {
-            override fun onAvailable(network: Network) {
+            override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
                 val previous = lastUnderlyingNetwork
                 if (previous != null && previous != network) {
-                    runCatching { MeowCore.nativeResetOutbound(network.toString()) }
+                    val kind = when {
+                        capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "Wi-Fi"
+                        capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "cellular"
+                        capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "Ethernet"
+                        else -> "network"
+                    }
+                    runCatching { MeowCore.nativeResetOutbound("$kind $network") }
                 }
                 lastUnderlyingNetwork = network
-            }
-
-            override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
                 val label = when {
-                    capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "WIFI"
-                    capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "CELLULAR"
-                    capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "ETHERNET"
-                    else -> "OTHER"
+                    capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "Wi-Fi"
+                    capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "Cellular"
+                    capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "Ethernet"
+                    else -> "Other"
                 }
                 runCatching { MeowCore.nativeSetTrafficInterface(label) }
+            }
+
+            override fun onLost(network: Network) {
+                if (lastUnderlyingNetwork == network) lastUnderlyingNetwork = null
             }
         }
         runCatching {
