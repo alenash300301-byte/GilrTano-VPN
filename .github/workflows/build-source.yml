@@ -73,8 +73,10 @@ jobs:
           cp meow-android/core/build/rustJniLibs/android/arm64-v8a/libmeow_android_ffi.so app/src/main/jniLibs/arm64-v8a/
           curl -fL --retry 3 "https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/country.mmdb" -o app/src/main/assets/geox/country.mmdb
           curl -fL --retry 3 "https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/GeoLite2-ASN.mmdb" -o app/src/main/assets/geox/GeoLite2-ASN.mmdb
+          curl -fL --retry 3 "https://github.com/MetaCubeX/meta-rules-dat/releases/latest/download/geosite.mrs" -o app/src/main/assets/geox/geosite.mrs
           test -s app/src/main/assets/geox/country.mmdb
           test -s app/src/main/assets/geox/GeoLite2-ASN.mmdb
+          test -s app/src/main/assets/geox/geosite.mrs
 
       - name: Build GilrTano APK
         run: gradle --no-daemon assembleDebug --stacktrace
