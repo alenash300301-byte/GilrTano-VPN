@@ -81,7 +81,6 @@ class MainActivity : Activity() {
     private var pendingFallbackConfig: String? = null
     private var pendingPreferredConfig: String? = null
     private var pendingAutomatic = false
-    private var lastHandledSubscriptionLink: String? = null
     private val requestCode = 4101
     private val docxRequestCode = 4102
 
@@ -1071,8 +1070,6 @@ class MainActivity : Activity() {
             Toast.makeText(this, "Подписка должна иметь HTTP- или HTTPS-адрес", Toast.LENGTH_LONG).show()
             return
         }
-        if (lastHandledSubscriptionLink == incoming) return
-        lastHandledSubscriptionLink = incoming
         activeFree = false
         primarySource.setText(incoming)
         Toast.makeText(this, "Получена ссылка подписки. Загружаю профиль…", Toast.LENGTH_LONG).show()
