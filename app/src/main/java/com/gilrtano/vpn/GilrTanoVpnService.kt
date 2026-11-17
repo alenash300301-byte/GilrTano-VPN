@@ -187,7 +187,7 @@ class GilrTanoVpnService : VpnService() {
             else -> true
         }
         if (!hasValue(dns["nameserver"])) {
-            dns["nameserver"] = listOf("https://1.1.1.1/dns-query", "https://8.8.8.8/dns-query")
+            dns["nameserver"] = listOf("https://cloudflare-dns.com/dns-query", "https://dns.google/dns-query")
         }
         if (!hasValue(dns["default-nameserver"])) {
             dns["default-nameserver"] = listOf("1.1.1.1", "8.8.8.8")
@@ -215,6 +215,7 @@ class GilrTanoVpnService : VpnService() {
         val endpoints = listOf(
             "https://www.gstatic.com/generate_204",
             "https://cp.cloudflare.com/generate_204",
+            "https://www.msftconnecttest.com/connecttest.txt",
         )
         for (endpoint in endpoints) {
             val started = System.nanoTime()
@@ -466,7 +467,7 @@ class GilrTanoVpnService : VpnService() {
                 "dns" to linkedMapOf(
                     "enable" to true,
                     "enhanced-mode" to "fake-ip",
-                    "nameserver" to listOf("https://1.1.1.1/dns-query", "https://8.8.8.8/dns-query"),
+                    "nameserver" to listOf("https://cloudflare-dns.com/dns-query", "https://dns.google/dns-query"),
                     "default-nameserver" to listOf("1.1.1.1", "8.8.8.8"),
                 ),
             )
