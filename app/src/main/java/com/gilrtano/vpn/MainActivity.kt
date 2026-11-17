@@ -262,13 +262,13 @@ class MainActivity : Activity() {
                     Toast.makeText(this@MainActivity, "В этом режиме пока нет серверов", Toast.LENGTH_LONG).show()
                 } else {
                     try {
-                        val config = GilrTanoVpnService.meowConfigForNode(node.uri)
+                        val config = GilrTanoVpnService.meowConfigForNode(node)
                         val fallbackConfig = if (autoMode) {
                             (if (activeFree) quattroNodes.firstOrNull() else freeNodes.firstOrNull())
-                                ?.let { runCatching { GilrTanoVpnService.meowConfigForNode(it.uri) }.getOrNull() }
+                                ?.let { runCatching { GilrTanoVpnService.meowConfigForNode(it) }.getOrNull() }
                         } else null
                         val preferredConfig = if (autoMode) {
-                            quattroNodes.firstOrNull()?.let { runCatching { GilrTanoVpnService.meowConfigForNode(it.uri) }.getOrNull() }
+                            quattroNodes.firstOrNull()?.let { runCatching { GilrTanoVpnService.meowConfigForNode(it) }.getOrNull() }
                         } else null
                         pendingConfig = config
                         pendingFallbackConfig = fallbackConfig
@@ -1195,7 +1195,7 @@ class MainActivity : Activity() {
             val index = prefs.getInt(selectedKey, 0).coerceIn(0, targetNodes.lastIndex)
             servers.setSelection(index)
             val node = targetNodes[index]
-            val config = runCatching { GilrTanoVpnService.meowConfigForNode(node.uri) }.getOrElse {
+            val config = runCatching { GilrTanoVpnService.meowConfigForNode(node) }.getOrElse {
                 Toast.makeText(this, "Не удалось подготовить сервер: ${it.message}", Toast.LENGTH_LONG).show()
                 return
             }
@@ -1430,14 +1430,8 @@ class MainActivity : Activity() {
             try {
                 candidates.forEach { node ->
                     completion.submit(Callable<Pair<ImportedNode, Long>?> {
-                        val config = runCatching { GilrTanoVpnService.meowConfigForNode(node.uri) }
-                            .getOrNull() ?: return@Callable null
-                        runCatching {
-                            val delayMs = teapodcore.Teapodcore.measureOutboundDelay(
-                                config, "https://www.gstatic.com/generate_204"
-                            )
-                            if (delayMs <= 0L) null else node to delayMs
-                        }.getOrNull()
+                        val delayMs = measureNodeTcpLatency(node.uri) ?: return@Callable null
+                        node to delayMs
                     })
                 }
                 val checked = mutableListOf<Pair<ImportedNode, Long>>()
@@ -1514,10 +1508,10 @@ class MainActivity : Activity() {
     private fun connectAutomaticallySelected() {
         val node = activeNodes.getOrNull(servers.selectedItemPosition) ?: return
         try {
-            val config = GilrTanoVpnService.meowConfigForNode(node.uri)
+            val config = GilrTanoVpnService.meowConfigForNode(node)
             val fallbackNode = if (activeFree) freeNodes.getOrNull(1) else freeNodes.firstOrNull()
             val fallback = fallbackNode
-                ?.let { runCatching { GilrTanoVpnService.meowConfigForNode(it.uri) }.getOrNull() }
+                ?.let { runCatching { GilrTanoVpnService.meowConfigForNode(it) }.getOrNull() }
             pendingConfig = config
             pendingFallbackConfig = fallback
             pendingPreferredConfig = config
