@@ -343,25 +343,57 @@ class PowerOrbButtonView @JvmOverloads constructor(
         // Keep the power symbol visually fixed while the nine-frame fire artwork animates beneath it.
         if (!powerIconBitmap.isRecycled) canvas.drawBitmap(powerIconBitmap, null, dst, framePaint)
 
-        // Draw only the changing caption inside the capsule already present in the PNG.
+        // Draw the state label INSIDE the capsule embedded in the artwork.
+        // For pause/resume states, render a separate pause glyph and the word as one centered group.
         val captionColor = when (state) {
             State.DISCONNECTED, State.CONNECTED -> Color.rgb(125, 255, 95)
             State.CONNECTING -> Color.rgb(255, 205, 90)
             State.SUSPENDED -> Color.LTGRAY
         }
-        captionPaint.textAlign = Paint.Align.CENTER
         captionPaint.typeface = Typeface.create("sans-serif", Typeface.BOLD)
-        // Align the live text with the capsule already embedded in the PNG.
-        // Keep the artwork untouched; only center and size the changing label.
-        captionPaint.textSize = side * 0.085f
         captionPaint.color = captionColor
-        captionPaint.setShadowLayer(5f * d, 0f, 0f, captionColor)
-        val maxWidth = side * 0.58f
-        while (captionPaint.measureText(caption) > maxWidth && captionPaint.textSize > side * 0.052f) {
+        captionPaint.textAlign = Paint.Align.LEFT
+        captionPaint.textSize = side * 0.062f
+        captionPaint.setShadowLayer(4f * d, 0f, 0f, captionColor)
+
+        val capsuleCenterY = top + side * 0.724f
+        val isPauseAction = caption.startsWith("Ⅱ")
+        val visibleCaption = if (isPauseAction) caption.substring(1).trim() else caption
+        val maxTextWidth = side * if (isPauseAction) 0.47f else 0.53f
+        while (captionPaint.measureText(visibleCaption) > maxTextWidth && captionPaint.textSize > side * 0.047f) {
             captionPaint.textSize -= 0.5f * d
         }
-        val captionY = top + side * 0.594f - (captionPaint.ascent() + captionPaint.descent()) / 2f
-        canvas.drawText(caption, width / 2f, captionY, captionPaint)
+        val textWidth = captionPaint.measureText(visibleCaption)
+        val pauseWidth = if (isPauseAction) side * 0.045f else 0f
+        val gap = if (isPauseAction) side * 0.018f else 0f
+        val groupWidth = pauseWidth + gap + textWidth
+        val groupLeft = width / 2f - groupWidth / 2f
+        val textBaseline = capsuleCenterY - (captionPaint.ascent() + captionPaint.descent()) / 2f
+
+        if (isPauseAction) {
+            val barPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = captionColor
+                style = Paint.Style.FILL
+                setShadowLayer(4f * d, 0f, 0f, captionColor)
+            }
+            val barWidth = side * 0.012f
+            val barHeight = side * 0.060f
+            val barGap = side * 0.010f
+            val barsLeft = groupLeft + (pauseWidth - (barWidth * 2f + barGap)) / 2f
+            val barsTop = capsuleCenterY - barHeight / 2f
+            canvas.drawRoundRect(
+                RectF(barsLeft, barsTop, barsLeft + barWidth, barsTop + barHeight),
+                barWidth / 2f, barWidth / 2f, barPaint
+            )
+            canvas.drawRoundRect(
+                RectF(barsLeft + barWidth + barGap, barsTop,
+                    barsLeft + barWidth * 2f + barGap, barsTop + barHeight),
+                barWidth / 2f, barWidth / 2f, barPaint
+            )
+            barPaint.clearShadowLayer()
+        }
+
+        canvas.drawText(visibleCaption, groupLeft + pauseWidth + gap, textBaseline, captionPaint)
         captionPaint.clearShadowLayer()
 
         // No additional outer rings or ripple circles; preserve the nine PNG frames as-is.
