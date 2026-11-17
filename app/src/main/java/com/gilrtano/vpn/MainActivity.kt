@@ -81,6 +81,7 @@ class MainActivity : Activity() {
     private var pendingFallbackConfig: String? = null
     private var pendingPreferredConfig: String? = null
     private var pendingAutomatic = false
+    private var lastHandledSubscriptionLink: String? = null
     private val requestCode = 4101
     private val docxRequestCode = 4102
 
@@ -844,6 +845,7 @@ class MainActivity : Activity() {
         refreshMode()
         updatePowerOrb(false)
         updateServerCard(false)
+        handleSubscriptionIntent(intent)
     }
 
     private fun showServerPicker() {
@@ -1045,11 +1047,46 @@ class MainActivity : Activity() {
         }
     }
 
+    /**
+     * Accept FlClash-compatible profile links:
+     * clash://install-config?url=<encoded-http(s)-subscription>
+     * clashmeta:// and flclash:// use the same format.
+     */
+    private fun handleSubscriptionIntent(sourceIntent: Intent?) {
+        val data = sourceIntent?.data ?: return
+        val scheme = data.scheme?.lowercase()
+        if (scheme !in setOf("clash", "clashmeta", "flclash")) return
+        if (data.host != "install-config") {
+            Toast.makeText(this, "Неизвестный формат ссылки профиля", Toast.LENGTH_LONG).show()
+            return
+        }
+        val incoming = data.getQueryParameter("url")?.trim().orEmpty()
+        if (incoming.isBlank() || incoming.length > 8192) {
+            Toast.makeText(this, "В ссылке нет корректного адреса подписки", Toast.LENGTH_LONG).show()
+            return
+        }
+        val subscriptionUri = runCatching { Uri.parse(incoming) }.getOrNull()
+        if (subscriptionUri?.scheme?.lowercase() !in setOf("http", "https") ||
+            subscriptionUri?.host.isNullOrBlank()) {
+            Toast.makeText(this, "Подписка должна иметь HTTP- или HTTPS-адрес", Toast.LENGTH_LONG).show()
+            return
+        }
+        if (lastHandledSubscriptionLink == incoming) return
+        lastHandledSubscriptionLink = incoming
+        activeFree = false
+        primarySource.setText(incoming)
+        Toast.makeText(this, "Получена ссылка подписки. Загружаю профиль…", Toast.LENGTH_LONG).show()
+        importFrom(incoming, false)
+    }
+
     override fun onNewIntent(intent: Intent?) {
         super.onNewIntent(intent)
         if (intent == null) return
         setIntent(intent)
-        if (intent.action != ACTION_INSTALL_STATUS) return
+        if (intent.action != ACTION_INSTALL_STATUS) {
+            handleSubscriptionIntent(intent)
+            return
+        }
         when (intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)) {
             PackageInstaller.STATUS_PENDING_USER_ACTION -> {
                 val confirmation = if (android.os.Build.VERSION.SDK_INT >= 33) {
