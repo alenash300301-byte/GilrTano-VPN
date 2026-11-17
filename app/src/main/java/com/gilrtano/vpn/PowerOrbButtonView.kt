@@ -353,17 +353,40 @@ class PowerOrbButtonView @JvmOverloads constructor(
         // in a clean text zone below it.
         captionPaint.textAlign = Paint.Align.CENTER
         captionPaint.typeface = Typeface.create("sans-serif", Typeface.BOLD)
-        captionPaint.textSize = side * 0.060f
-        captionPaint.color = if (connecting) Color.rgb(255, 205, 90) else Color.rgb(125, 255, 95)
-        captionPaint.setShadowLayer(5f * d, 0f, 0f, captionPaint.color)
+        captionPaint.textSize = side * 0.066f
         val label = caption
-        val maxWidth = side * 0.57f
+        val maxWidth = side * 0.70f
         var size = captionPaint.textSize
-        while (captionPaint.measureText(label) > maxWidth && size > side * 0.035f) {
+        while (captionPaint.measureText(label) > maxWidth && size > side * 0.040f) {
             size -= 0.5f * d
             captionPaint.textSize = size
         }
         val baseline = top + side * 0.594f - (captionPaint.ascent() + captionPaint.descent()) / 2f
+        val textWidth = captionPaint.measureText(label)
+        val plate = RectF(
+            width / 2f - textWidth / 2f - 12f * d,
+            baseline + captionPaint.ascent() - 6f * d,
+            width / 2f + textWidth / 2f + 12f * d,
+            baseline + captionPaint.descent() + 6f * d
+        )
+        val labelColor = when (state) {
+            State.DISCONNECTED -> Color.WHITE
+            State.CONNECTING -> Color.rgb(255, 211, 130)
+            State.CONNECTED -> Color.rgb(145, 255, 160)
+            State.SUSPENDED -> Color.rgb(205, 210, 205)
+        }
+        captionPlatePaint.color = Color.argb(235, 0, 0, 0)
+        captionPlatePaint.strokeWidth = 1.2f * d
+        canvas.drawRoundRect(plate, 9f * d, 9f * d, fillPaint.apply { color = Color.argb(235, 0, 0, 0); style = Paint.Style.FILL })
+        captionPlatePaint.color = when (state) {
+            State.DISCONNECTED -> Color.argb(180, 130, 255, 140)
+            State.CONNECTING -> Color.argb(190, 255, 195, 90)
+            State.CONNECTED -> Color.argb(190, 105, 255, 130)
+            State.SUSPENDED -> Color.argb(150, 180, 185, 180)
+        }
+        canvas.drawRoundRect(plate, 9f * d, 9f * d, captionPlatePaint)
+        captionPaint.color = labelColor
+        captionPaint.setShadowLayer(4f * d, 0f, 0f, Color.BLACK)
         canvas.drawText(label, width / 2f, baseline, captionPaint)
         captionPaint.clearShadowLayer()
 
