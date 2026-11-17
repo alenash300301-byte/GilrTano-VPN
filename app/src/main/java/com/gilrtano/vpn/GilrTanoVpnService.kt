@@ -5,401 +5,309 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
+import android.net.ConnectivityManager
 import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.util.Log
-import teapodcore.Teapodcore
-import teapodcore.VpnProtector
-import teapodcore.XrayCallback
-import org.json.JSONObject
-import java.net.Socket
-import javax.net.ssl.SSLSocketFactory
+import io.github.madeye.meow.core.MeowCore
+import org.yaml.snakeyaml.Yaml
+import java.io.File
+import java.net.HttpURLConnection
+import java.net.InetAddress
+import java.net.InetSocketAddress
+import java.net.URL
+import java.util.UUID
 
 class GilrTanoVpnService : VpnService() {
     private var tun: ParcelFileDescriptor? = null
     @Volatile private var stopping = false
     @Volatile private var paused = false
-    @Volatile private var resuming = false
-
-    // Core environment and socket protection are process-wide setup; keep them
-    // ready across reconnects instead of repeating native initialization.
-    @Volatile private var coreInitialized = false
+    @Volatile private var monitorRunning = false
+    @Volatile private var automaticMode = false
+    @Volatile private var usingFallback = false
+    @Volatile private var consecutiveProbeFailures = 0
+    @Volatile private var lastSwitchAt = 0L
     @Volatile private var activeConfig: String? = null
     @Volatile private var fallbackConfig: String? = null
     @Volatile private var preferredConfig: String? = null
-    @Volatile private var automaticMode = false
-    @Volatile private var monitorRunning = false
-    @Volatile private var consecutiveProbeFailures = 0
-    @Volatile private var lastAutomaticSwitchAt = 0L
-    @Volatile private var usingFallback = false
+
+    private val connectivity by lazy { getSystemService(ConnectivityManager::class.java) }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> stopTunnel()
             ACTION_PAUSE -> pauseTunnel()
-            ACTION_RESUME -> resumeTunnel()
-            ACTION_START, ACTION_SWITCH -> {
-                val config = intent.getStringExtra(EXTRA_CONFIG)
+            ACTION_RESUME -> {
+                val config = activeConfig
+                if (paused && !config.isNullOrBlank()) {
+                    startTunnel(config, fallbackConfig, preferredConfig, automaticMode, true)
+                }
+            }
+            ACTION_SWITCH -> {
+                automaticMode = false
+                fallbackConfig = null
+                preferredConfig = null
+                usingFallback = false
+                intent.getStringExtra(EXTRA_CONFIG)?.takeIf { it.isNotBlank() }?.let {
+                    startTunnel(it, null, null, false, false)
+                } ?: stopTunnel()
+            }
+            ACTION_START, null -> {
+                val config = intent?.getStringExtra(EXTRA_CONFIG)
                 if (config.isNullOrBlank()) {
-                    broadcastStatus("Добавьте VLESS-ссылку")
+                    broadcastStatus("Добавьте VLESS-ссылку или Clash YAML")
                     stopSelf()
-                } else if (intent.action == ACTION_SWITCH) {
-                    automaticMode = false
-                    switchTunnel(config)
                 } else {
                     automaticMode = intent.getBooleanExtra(EXTRA_AUTO, false)
                     fallbackConfig = intent.getStringExtra(EXTRA_FALLBACK_CONFIG)
                     preferredConfig = intent.getStringExtra(EXTRA_PREFERRED_CONFIG)
                     usingFallback = false
                     consecutiveProbeFailures = 0
-                    startTunnel(config)
+                    startTunnel(config, fallbackConfig, preferredConfig, automaticMode, false)
                 }
             }
         }
         return START_NOT_STICKY
     }
 
-    private fun switchTunnel(config: String) {
-        paused = false
-        resuming = false
-        stopping = true
-        broadcastStatus("Переключаю сервер…")
-        Thread({
-            synchronized(this) {
-                runCatching { Teapodcore.stopTun2Socks() }
-                runCatching { Teapodcore.stopXray() }
-                runCatching { tun?.close() }
-                tun = null
-            }
-            stopping = false
-            startTunnel(config)
-        }, "GilrTano-Xray-switch").start()
-    }
-
-    private fun startTunnel(config: String) {
+    private fun startTunnel(
+        config: String,
+        fallback: String?,
+        preferred: String?,
+        automatic: Boolean,
+        resumed: Boolean,
+    ) {
         stopping = false
         paused = false
-        resuming = false
+        monitorRunning = false
         activeConfig = config
+        fallbackConfig = fallback
+        preferredConfig = preferred
+        automaticMode = automatic
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, notification("Запуск Xray…"))
-        // Native core initialization/start can block; never run it on Android's service main thread.
+        startForeground(NOTIFICATION_ID, notification("Запуск Meow…"))
         Thread({
             try {
-                if (!coreInitialized) {
-                    synchronized(this@GilrTanoVpnService) {
-                        if (!coreInitialized) {
-                            Teapodcore.initCoreEnv(filesDir.absolutePath, "")
-                            Teapodcore.registerVpnProtector(object : VpnProtector {
-                                override fun protect(fd: Long): Boolean =
-                                    this@GilrTanoVpnService.protect(fd.toInt())
-                            })
-                            coreInitialized = true
-                        }
-                    }
+                synchronized(this) { stopEngineAndTun() }
+                if (stopping) return@Thread
+
+                val home = File(noBackupFilesDir, "meow").apply { mkdirs() }
+                seedGeoAssets(home)
+                File(home, "config.yaml").writeText(prepareYaml(config))
+                MeowCore.nativeSetHomeDir(home.absolutePath)
+
+                val engineResult = MeowCore.nativeStartEngine(
+                    "127.0.0.1:9090",
+                    UUID.randomUUID().toString(),
+                    "",
+                    false,
+                )
+                if (engineResult != 0) {
+                    throw IllegalStateException("Meow: ${MeowCore.nativeGetLastError()}")
                 }
                 if (stopping) return@Thread
-                Teapodcore.startXray(config, object : XrayCallback {
-                    override fun onStatus(status: Long, message: String) {
-                        Log.i(TAG, "Xray status=$status $message")
-                        if (status == 0L && !stopping) establishTun()
-                        else if (status < 0L && !stopping) {
-                            if (automaticMode && !usingFallback && !fallbackConfig.isNullOrBlank()) {
-                                usingFallback = true
-                                lastAutomaticSwitchAt = System.currentTimeMillis()
-                                broadcastStatus("Quattro недоступен. Запускаю бесплатный резерв…")
-                                switchTunnel(fallbackConfig!!)
-                            } else {
-                                broadcastStatus("Ошибка Xray: $message")
-                                stopTunnel()
-                            }
-                        }
-                    }
-                })
+
+                val builder = Builder()
+                    .setSession("GilrTano VPN")
+                    .setMtu(1500)
+                    .addAddress("172.19.0.1", 30)
+                    .addDnsServer("172.19.0.2")
+                    .addRoute("0.0.0.0", 0)
+                if (MeowCore.nativeTunIpv6()) {
+                    builder.addAddress("fdfe:dcba:9876::1", 126)
+                        .addRoute("::", 0)
+                }
+                val pfd = builder.establish()
+                    ?: throw IllegalStateException("Android не создал VPN-интерфейс")
+                tun = pfd
+
+                val tunResult = MeowCore.nativeStartTun2Socks(this, pfd.fd, DNS_PORT)
+                if (tunResult != 0) {
+                    throw IllegalStateException("TUN Meow: ${MeowCore.nativeGetLastError()}")
+                }
+                if (!MeowCore.nativeIsRunning()) {
+                    throw IllegalStateException("Движок Meow остановился во время запуска")
+                }
+
+                val latency = probeTunnel()
+                if (latency < 0L) {
+                    throw IllegalStateException("Туннель запущен, но интернет через него не отвечает")
+                }
+                if (stopping) return@Thread
+
+                val label = if (automaticMode && usingFallback) "Quattro · резерв" else "Meow"
+                broadcastStatus(if (resumed) "Возобновлено · $label" else "Подключено · $label")
+                updateNotification("Подключено · защищённый трафик")
+                if (automaticMode) startConnectionMonitor()
+                Log.i(TAG, "Meow connected, latency=${latency}ms, ipv6=${MeowCore.nativeTunIpv6()}")
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to start Xray", e)
-                if (!stopping) {
-                    if (automaticMode && !usingFallback && !fallbackConfig.isNullOrBlank()) {
-                        usingFallback = true
-                        lastAutomaticSwitchAt = System.currentTimeMillis()
-                        broadcastStatus("Не удалось запустить Quattro. Пробую бесплатный резерв…")
-                        switchTunnel(fallbackConfig!!)
-                    } else {
-                        broadcastStatus("Ошибка запуска: ${e.message}")
-                        stopTunnel()
-                    }
+                Log.e(TAG, "Failed to start Meow VPN", e)
+                if (!stopping && automaticMode && !usingFallback && !fallbackConfig.isNullOrBlank()) {
+                    usingFallback = true
+                    lastSwitchAt = System.currentTimeMillis()
+                    broadcastStatus("Quattro недоступен. Запускаю резерв…")
+                    startTunnel(fallbackConfig!!, fallbackConfig, preferredConfig, true, false)
+                } else if (!stopping) {
+                    broadcastStatus("Ошибка запуска: ${e.message ?: "неизвестная ошибка"}")
+                    stopTunnel()
                 }
             }
-        }, "GilrTano-Xray-start").start()
+        }, "GilrTano-Meow-start").start()
     }
 
-    @Synchronized private fun establishTun() {
-        if (stopping || paused || tun != null) return
-        try {
-            val pfd = Builder()
-                .setSession("GilrTano VPN")
-                .setMtu(1280)
-                .addAddress("10.77.0.2", 32)
-                .addRoute("0.0.0.0", 0)
-                .addDnsServer("1.1.1.1")
-                .addDnsServer("8.8.8.8")
-                .establish() ?: throw IllegalStateException("Android не создал VPN-интерфейс")
-            tun = pfd
-            // Force HTTP/3 apps to fall back to HTTPS/TCP because many public
-            // free SOCKS nodes do not relay UDP reliably. This avoids apps
-            // hanging on a broken QUIC path; ICMP is not needed here.
-            val error = Teapodcore.startTun2Socks(
-                pfd.fd.toLong(), 1280L, SOCKS_PORT.toLong(),
-                "", "", false, true, null
-            )
-            if (error.isNotEmpty()) throw IllegalStateException("tun2socks: $error")
+    private fun prepareYaml(raw: String): String {
+        var yaml = raw.trim()
+        require(yaml.isNotBlank()) { "Пустая конфигурация" }
+        yaml = yaml.replace(
+            Regex("(?m)^subscriptions:.*?(?=^[a-zA-Z][\\w-]*:|\\z)", RegexOption.DOT_MATCHES_ALL),
+            "",
+        ).trim()
+        if (!Regex("(?m)^dns\\s*:").containsMatchIn(yaml)) {
+            yaml += "\n\ndns:\n  enable: true\n  enhanced-mode: fake-ip\n  nameserver:\n    - https://1.1.1.1/dns-query\n    - https://8.8.8.8/dns-query\n  default-nameserver:\n    - 1.1.1.1\n    - 8.8.8.8\n"
+        }
+        val root = Yaml().load<Any?>(yaml)
+        require(root is Map<*, *>) { "Конфигурация должна быть Clash/Mihomo YAML" }
+        require(root.containsKey("proxies") || root.containsKey("proxy-providers")) {
+            "В YAML не найдены proxies или proxy-providers"
+        }
+        return yaml
+    }
 
-            // StartTun2Socks returns after scheduling its engine. Do not tell the
-            // user VPN is connected until the native bridge reports it running.
-            var running = false
-            for (attempt in 0 until 20) {
-                if (Teapodcore.isTunRunning()) {
-                    running = true
-                    break
+    private fun seedGeoAssets(home: File) {
+        for (name in listOf("country.mmdb", "GeoLite2-ASN.mmdb")) {
+            val target = File(home, if (name == "country.mmdb") "Country.mmdb" else name)
+            if (target.exists() && target.length() > 0) continue
+            try {
+                assets.open("geox/$name").use { input ->
+                    target.outputStream().use { output -> input.copyTo(output) }
                 }
-                Thread.sleep(100)
-            }
-            if (!running) throw IllegalStateException("TUN-мост не запустился")
-
-            // Verify actual HTTPS traffic through this profile before showing
-            // a successful connection; a running TUN bridge alone is insufficient.
-            var internetReady = false
-            repeat(3) { attempt ->
-                if (!internetReady && !stopping) {
-                    internetReady = probeTunnel() >= 0L
-                    if (!internetReady && attempt < 2) Thread.sleep(650)
-                }
-            }
-            if (!internetReady) {
-                throw IllegalStateException("Сервер ответил, но интернет через VPN не проходит")
-            }
-            if (!verifyRequiredServices()) {
-                throw IllegalStateException("Не все обязательные сервисы доступны через VPN")
-            }
-
-            val connectedMessage = if (automaticMode) {
-                if (usingFallback) "Quattro · бесплатный резерв" else "Quattro"
-            } else "Xray и TUN работают"
-            broadcastStatus(if (resuming) "Возобновлено · $connectedMessage" else "Подключено · $connectedMessage")
-            resuming = false
-            updateNotification("Подключено · защищённый трафик")
-            startConnectionMonitor()
-        } catch (e: Exception) {
-            Log.w(TAG, "VPN tunnel did not pass internet verification", e)
-            if (automaticMode && !usingFallback && !fallbackConfig.isNullOrBlank() && !stopping) {
-                usingFallback = true
-                lastAutomaticSwitchAt = System.currentTimeMillis()
-                broadcastStatus("У выбранного сервера нет интернета. Пробую бесплатный резерв…")
-                switchTunnel(fallbackConfig!!)
-            } else {
-                broadcastStatus("Не удалось подключиться: ${e.message}")
-                stopTunnel()
+            } catch (e: Exception) {
+                Log.w(TAG, "Geo database not bundled: geox/$name", e)
             }
         }
     }
 
+    private fun probeTunnel(): Long {
+        val endpoints = listOf(
+            "https://www.gstatic.com/generate_204",
+            "https://cp.cloudflare.com/generate_204",
+        )
+        for (endpoint in endpoints) {
+            val started = System.nanoTime()
+            var connection: HttpURLConnection? = null
+            try {
+                connection = URL(endpoint).openConnection() as HttpURLConnection
+                connection.connectTimeout = PROBE_TIMEOUT_MS
+                connection.readTimeout = PROBE_TIMEOUT_MS
+                connection.requestMethod = "GET"
+                connection.instanceFollowRedirects = false
+                connection.useCaches = false
+                val code = connection.responseCode
+                if (code in 200..399) return (System.nanoTime() - started) / 1_000_000L
+            } catch (_: Exception) {
+                // Try the next independent connectivity endpoint.
+            } finally {
+                connection?.disconnect()
+            }
+        }
+        return -1L
+    }
 
-    /**
-     * End-to-end health check through the running local SOCKS inbound. This does
-     * not start a second Xray core and therefore cannot contend with the active tunnel.
-     */
     private fun startConnectionMonitor() {
-        if (!automaticMode || monitorRunning) return
+        if (monitorRunning || !automaticMode) return
         monitorRunning = true
         Thread({
-            while (monitorRunning && automaticMode && !stopping) {
+            while (monitorRunning && automaticMode && !stopping && !paused) {
                 try {
                     Thread.sleep(MONITOR_INTERVAL_MS)
-                    if (!monitorRunning || !automaticMode || stopping) break
-                    if (paused) continue
-                    val latency = probeTunnel()
-                    if (latency < 0L || latency > POOR_LATENCY_MS) consecutiveProbeFailures++
-                    else consecutiveProbeFailures = 0
-
+                    if (!monitorRunning || stopping || paused) break
+                    if (probeTunnel() < 0L) consecutiveProbeFailures++ else consecutiveProbeFailures = 0
                     if (consecutiveProbeFailures >= FAILURE_LIMIT &&
-                        System.currentTimeMillis() - lastAutomaticSwitchAt > SWITCH_COOLDOWN_MS) {
+                        System.currentTimeMillis() - lastSwitchAt >= SWITCH_COOLDOWN_MS) {
                         if (!usingFallback && !fallbackConfig.isNullOrBlank()) {
-                            val target = fallbackConfig!!
                             usingFallback = true
-                            lastAutomaticSwitchAt = System.currentTimeMillis()
+                            lastSwitchAt = System.currentTimeMillis()
                             consecutiveProbeFailures = 0
-                            broadcastStatus("Связь ухудшилась. Переключаю на бесплатный резерв…")
-                            switchTunnel(target)
-                        } else if (usingFallback && !preferredConfig.isNullOrBlank() &&
-                            System.currentTimeMillis() - lastAutomaticSwitchAt >= RECOVERY_INTERVAL_MS) {
-                            val target = preferredConfig!!
-                            usingFallback = false
-                            lastAutomaticSwitchAt = System.currentTimeMillis()
-                            consecutiveProbeFailures = 0
-                            broadcastStatus("Проверяю восстановление Quattro…")
-                            switchTunnel(target)
+                            broadcastStatus("Связь ухудшилась. Переключаю на резерв…")
+                            startTunnel(fallbackConfig!!, fallbackConfig, preferredConfig, true, false)
+                            break
                         }
                     }
-
-                    // When using the backup, periodically give the preferred Quattro
-                    // profile another chance. A failed trial is automatically rolled back.
                     if (usingFallback && !preferredConfig.isNullOrBlank() &&
-                        System.currentTimeMillis() - lastAutomaticSwitchAt >= RECOVERY_INTERVAL_MS &&
-                        consecutiveProbeFailures == 0) {
-                        lastAutomaticSwitchAt = System.currentTimeMillis()
+                        System.currentTimeMillis() - lastSwitchAt >= RECOVERY_INTERVAL_MS) {
                         usingFallback = false
-                        broadcastStatus("Проверяю, восстановился ли Quattro…")
-                        switchTunnel(preferredConfig!!)
+                        lastSwitchAt = System.currentTimeMillis()
+                        consecutiveProbeFailures = 0
+                        broadcastStatus("Проверяю восстановление Quattro…")
+                        startTunnel(preferredConfig!!, fallbackConfig, preferredConfig, true, false)
+                        break
                     }
-                } catch (e: InterruptedException) {
+                } catch (_: InterruptedException) {
                     break
-                } catch (e: Exception) {
-                    Log.w(TAG, "Connection monitor error", e)
                 }
             }
             monitorRunning = false
-        }, "GilrTano-connection-monitor").apply { isDaemon = true }.start()
+        }, "GilrTano-Meow-monitor").apply { isDaemon = true }.start()
     }
 
-    private fun probeTunnel(): Long = probeTunnelHost("www.gstatic.com", "/generate_204", 204)
-
-    private fun verifyRequiredServices(): Boolean {
-        val hosts = listOf(
-            "www.youtube.com",
-            "www.instagram.com",
-            "api.telegram.org"
-        )
-        val pool = java.util.concurrent.Executors.newFixedThreadPool(hosts.size)
-        return try {
-            val checks = hosts.map { host ->
-                pool.submit<Boolean> {
-                    probeTunnelHost(host, "/", null) >= 0L
-                }
-            }
-            checks.all { runCatching { it.get(4, java.util.concurrent.TimeUnit.SECONDS) }.getOrDefault(false) }
-        } finally {
-            pool.shutdownNow()
-        }
-    }
-
-    private fun probeTunnelHost(hostName: String, path: String, expectedCode: Int?): Long {
-        val started = System.nanoTime()
-        val socket = Socket()
-        try {
-            socket.connect(java.net.InetSocketAddress("127.0.0.1", SOCKS_PORT), PROBE_TIMEOUT_MS)
-            socket.soTimeout = PROBE_TIMEOUT_MS
-            val out = socket.getOutputStream()
-            val input = socket.getInputStream()
-
-            out.write(byteArrayOf(0x05, 0x01, 0x00))
-            out.flush()
-            val greeting = ByteArray(2)
-            readFully(input, greeting)
-            if (greeting[0].toInt() != 5 || greeting[1].toInt() != 0) return -1L
-
-            val host = hostName.toByteArray(Charsets.US_ASCII)
-            out.write(byteArrayOf(0x05, 0x01, 0x00, 0x03, host.size.toByte()) + host +
-                byteArrayOf(0x01, 0xbb.toByte()))
-            out.flush()
-            val reply = ByteArray(4)
-            readFully(input, reply)
-            if (reply[1].toInt() != 0) return -1L
-            val addressLength = when (reply[3].toInt() and 0xff) {
-                1 -> 4
-                3 -> input.read()
-                4 -> 16
-                else -> return -1L
-            }
-            if (addressLength <= 0) return -1L
-            readFully(input, ByteArray(addressLength + 2))
-
-            val tls = (SSLSocketFactory.getDefault() as SSLSocketFactory)
-                .createSocket(socket, hostName, 443, true) as javax.net.ssl.SSLSocket
-            tls.soTimeout = PROBE_TIMEOUT_MS
-            tls.startHandshake()
-            tls.getOutputStream().write(
-                "GET $path HTTP/1.1\r\nHost: $hostName\r\nUser-Agent: Mozilla/5.0 GilrTanoVPN\r\nConnection: close\r\n\r\n"
-                    .toByteArray(Charsets.US_ASCII)
-            )
-            tls.getOutputStream().flush()
-            val line = tls.getInputStream().bufferedReader().readLine() ?: return -1L
-            tls.close()
-            val code = Regex("HTTP/\\d(?:\\.\\d)?\\s+(\\d{3})").find(line)?.groupValues?.get(1)?.toIntOrNull()
-                ?: return -1L
-            if (expectedCode != null && code != expectedCode) return -1L
-            if (expectedCode == null && code !in 200..499) return -1L
-            return (System.nanoTime() - started) / 1_000_000L
-        } catch (_: Exception) {
-            return -1L
-        } finally {
-            runCatching { socket.close() }
-        }
-    }
-
-    private fun readFully(input: java.io.InputStream, buffer: ByteArray) {
-        var offset = 0
-        while (offset < buffer.size) {
-            val count = input.read(buffer, offset, buffer.size - offset)
-            if (count < 0) throw java.io.EOFException("SOCKS probe ended early")
-            offset += count
-        }
-    }
-
-    /**
-     * Stop routing without destroying the Xray core. Closing the routed TUN
-     * interface sends app traffic back over the device's ordinary network.
-     */
     private fun pauseTunnel() {
         if (stopping || paused || tun == null) return
         paused = true
+        monitorRunning = false
         broadcastStatus("Приостанавливаю VPN…")
         Thread({
-            synchronized(this) {
-                runCatching { Teapodcore.stopTun2Socks() }
-                runCatching { tun?.close() }
-                tun = null
-            }
+            synchronized(this) { stopEngineAndTun() }
             if (paused && !stopping) {
                 updateNotification("VPN приостановлен · трафик идёт напрямую")
                 broadcastStatus("Приостановлено")
             }
-        }, "GilrTano-Xray-pause").start()
-    }
-
-    private fun resumeTunnel() {
-        if (stopping || !paused) return
-        resuming = true
-        paused = false
-        broadcastStatus("Возобновляю VPN…")
-        updateNotification("Возобновление VPN…")
-        Thread({
-            synchronized(this) {
-                if (!stopping && !paused && tun == null) establishTun()
-            }
-        }, "GilrTano-Xray-resume").start()
+        }, "GilrTano-Meow-pause").start()
     }
 
     private fun stopTunnel() {
+        if (stopping) return
         stopping = true
         paused = false
-        resuming = false
         monitorRunning = false
         automaticMode = false
-        broadcastStatus("Отменяю подключение…")
-        // Native shutdown may block; run it away from Android's main thread.
+        broadcastStatus("Отключаю VPN…")
         Thread({
-            synchronized(this) {
-                runCatching { Teapodcore.stopTun2Socks() }
-                runCatching { Teapodcore.stopXray() }
-                runCatching { tun?.close() }
-                tun = null
-            }
-            if (Build.VERSION.SDK_INT >= 24) stopForeground(STOP_FOREGROUND_REMOVE) else @Suppress("DEPRECATION") stopForeground(true)
+            synchronized(this) { stopEngineAndTun() }
+            runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
             broadcastStatus("Отключено")
             stopSelf()
-        }, "GilrTano-Xray-stop").start()
+        }, "GilrTano-Meow-stop").start()
     }
+
+    private fun stopEngineAndTun() {
+        runCatching { MeowCore.nativeStopEngine() }
+        runCatching { tun?.close() }
+        tun = null
+    }
+
+    @Suppress("unused")
+    fun connectionOwnerUid(
+        protocol: Int,
+        localAddr: ByteArray,
+        localPort: Int,
+        remoteAddr: ByteArray,
+        remotePort: Int,
+    ): Int {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return -1
+        return try {
+            connectivity.getConnectionOwnerUid(
+                protocol,
+                InetSocketAddress(InetAddress.getByAddress(localAddr), localPort),
+                InetSocketAddress(InetAddress.getByAddress(remoteAddr), remotePort),
+            )
+        } catch (_: Exception) {
+            -1
+        }
+    }
+
+    @Suppress("unused")
+    fun packageForUid(uid: Int): String? = packageManager.getPackagesForUid(uid)?.firstOrNull()
 
     private fun broadcastStatus(value: String) {
         sendBroadcast(Intent(ACTION_STATUS).setPackage(packageName).putExtra(EXTRA_STATUS, value))
@@ -407,28 +315,26 @@ class GilrTanoVpnService : VpnService() {
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= 26) {
-            val manager = getSystemService(NotificationManager::class.java)
-            manager.createNotificationChannel(NotificationChannel(CHANNEL_ID, "GilrTano VPN", NotificationManager.IMPORTANCE_LOW))
+            getSystemService(NotificationManager::class.java).createNotificationChannel(
+                NotificationChannel(CHANNEL_ID, "GilrTano VPN", NotificationManager.IMPORTANCE_LOW),
+            )
         }
     }
 
     private fun notification(text: String): Notification {
         val openApp = PendingIntent.getActivity(
-            this, 1, Intent(this, MainActivity::class.java).apply {
+            this, 1,
+            Intent(this, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            }, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         val disconnect = PendingIntent.getService(
-            this, 2, Intent(this, GilrTanoVpnService::class.java).setAction(ACTION_STOP),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            this, 2,
+            Intent(this, GilrTanoVpnService::class.java).setAction(ACTION_STOP),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        val builder = if (Build.VERSION.SDK_INT >= 26) {
-            Notification.Builder(this, CHANNEL_ID)
-        } else {
-            @Suppress("DEPRECATION")
-            Notification.Builder(this)
-        }
-        return builder
+        return Notification.Builder(this, CHANNEL_ID)
             .setContentTitle("GilrTano VPN")
             .setContentText(text)
             .setSmallIcon(R.drawable.ic_stat_vpn)
@@ -437,16 +343,6 @@ class GilrTanoVpnService : VpnService() {
             .setVisibility(Notification.VISIBILITY_PUBLIC)
             .setOnlyAlertOnce(true)
             .setOngoing(true)
-            .addAction(
-                if (paused) android.R.drawable.ic_media_play else android.R.drawable.ic_media_pause,
-                if (paused) "Возобновить" else "Пауза",
-                PendingIntent.getService(
-                    this, 3,
-                    Intent(this, GilrTanoVpnService::class.java)
-                        .setAction(if (paused) ACTION_RESUME else ACTION_PAUSE),
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                )
-            )
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Отключить", disconnect)
             .build()
     }
@@ -456,7 +352,8 @@ class GilrTanoVpnService : VpnService() {
     }
 
     override fun onDestroy() {
-        stopTunnel()
+        monitorRunning = false
+        Thread({ synchronized(this) { stopEngineAndTun() } }, "GilrTano-Meow-destroy").start()
         super.onDestroy()
     }
 
@@ -472,89 +369,84 @@ class GilrTanoVpnService : VpnService() {
         const val EXTRA_AUTO = "automatic_mode"
         const val EXTRA_FALLBACK_CONFIG = "fallback_config"
         const val EXTRA_PREFERRED_CONFIG = "preferred_config"
+
         private const val TAG = "GilrTanoVPN"
         private const val CHANNEL_ID = "gilrtano_vpn"
         private const val NOTIFICATION_ID = 76
-        private const val SOCKS_PORT = 10808
+        private const val DNS_PORT = 1053
+        private const val PROBE_TIMEOUT_MS = 5000
         private const val MONITOR_INTERVAL_MS = 15_000L
-        private const val PROBE_TIMEOUT_MS = 3_500
-        private const val POOR_LATENCY_MS = 500L
         private const val FAILURE_LIMIT = 2
         private const val SWITCH_COOLDOWN_MS = 60_000L
         private const val RECOVERY_INTERVAL_MS = 5 * 60_000L
 
-        fun xrayConfigFromVless(uri: String): String {
-            val parsed = android.net.Uri.parse(uri.trim())
-            require(parsed.scheme == "vless" && !parsed.host.isNullOrBlank()) { "Нужна ссылка vless://" }
-            val uuid = parsed.userInfo ?: parsed.encodedUserInfo ?: error("В ссылке нет UUID")
-            val port = if (parsed.port > 0) parsed.port else 443
-            val q = parsed
-            val security = q.getQueryParameter("security") ?: "none"
-            val network = q.getQueryParameter("type") ?: "tcp"
-            // Xray supports VLESS with TLS, REALITY, and plaintext transport.
-            // Public free lists often contain security=none; rejecting it here
-            // discarded otherwise valid VLESS profiles before Xray could test them.
-            require(security in setOf("reality", "tls", "none")) {
-                "Неизвестный тип защиты VLESS: $security"
+        fun meowConfigForNode(node: ImportedNode): String {
+            node.yamlConfig?.takeIf { it.isNotBlank() }?.let { return it }
+            val parsed = android.net.Uri.parse(node.uri.trim())
+            require(parsed.scheme == "vless" && !parsed.host.isNullOrBlank()) {
+                "Нужна VLESS-ссылка или Clash/Mihomo YAML"
             }
+            val uuid = parsed.userInfo ?: parsed.encodedUserInfo ?: error("В ссылке нет UUID")
+            val security = parsed.getQueryParameter("security") ?: "none"
+            val network = parsed.getQueryParameter("type") ?: "tcp"
+            require(security in setOf("reality", "tls", "none")) { "Неизвестный тип защиты VLESS: $security" }
             require(network in setOf("tcp", "ws", "grpc", "httpupgrade", "xhttp")) {
                 "Неподдерживаемый транспорт VLESS: $network"
             }
-            val stream = JSONObject().put("network", network).put("security", security)
+
+            val proxy = linkedMapOf<String, Any>(
+                "name" to node.name.ifBlank { "GilrTano" },
+                "type" to "vless",
+                "server" to parsed.host!!,
+                "port" to (parsed.port.takeIf { it > 0 } ?: 443),
+                "uuid" to uuid,
+                "network" to network,
+            )
+            parsed.getQueryParameter("flow")?.takeIf { it.isNotBlank() }?.let { proxy["flow"] = it }
+            if (security != "none") {
+                proxy["tls"] = true
+                proxy["servername"] = parsed.getQueryParameter("sni")
+                    ?: parsed.getQueryParameter("serverName") ?: parsed.host!!
+                parsed.getQueryParameter("fp")?.takeIf { it.isNotBlank() }?.let {
+                    proxy["client-fingerprint"] = it
+                }
+            }
             if (security == "reality") {
-                val serverName = q.getQueryParameter("sni") ?: q.getQueryParameter("serverName") ?: ""
-                val publicKey = q.getQueryParameter("pbk") ?: ""
-                val shortId = q.getQueryParameter("sid") ?: ""
-                require(serverName.isNotBlank() && publicKey.isNotBlank()) {
-                    "В REALITY-профиле отсутствует SNI или public key"
-                }
-                // REALITY shortId is optional in Xray; an empty value is valid.
-                val reality = JSONObject()
-                    .put("show", false)
-                    .put("serverName", serverName)
-                    .put("fingerprint", q.getQueryParameter("fp") ?: "chrome")
-                    .put("publicKey", publicKey)
-                    .put("shortId", shortId)
-                    .put("spiderX", q.getQueryParameter("spx") ?: "")
-                stream.put("realitySettings", reality)
-            } else if (security == "tls") {
-                val tls = JSONObject()
-                    .put("serverName", q.getQueryParameter("sni") ?: q.getQueryParameter("serverName") ?: parsed.host)
-                q.getQueryParameter("fp")?.takeIf { it.isNotBlank() }?.let { tls.put("fingerprint", it) }
-                q.getQueryParameter("alpn")?.takeIf { it.isNotBlank() }?.let { value ->
-                    tls.put("alpn", org.json.JSONArray(value.split(',').map { it.trim() }.filter { it.isNotEmpty() }))
-                }
-                stream.put("tlsSettings", tls)
+                val reality = linkedMapOf<String, Any>()
+                parsed.getQueryParameter("pbk")?.let { reality["public-key"] = it }
+                parsed.getQueryParameter("sid")?.let { reality["short-id"] = it }
+                proxy["reality-opts"] = reality
             }
-            if (network == "ws" || network == "httpupgrade") {
-                val ws = JSONObject().put("path", q.getQueryParameter("path") ?: "/")
-                q.getQueryParameter("host")?.takeIf { it.isNotBlank() }?.let {
-                    ws.put("headers", JSONObject().put("Host", it))
+            when (network) {
+                "ws", "httpupgrade" -> {
+                    val options = linkedMapOf<String, Any>()
+                    parsed.getQueryParameter("path")?.let { options["path"] = it }
+                    parsed.getQueryParameter("host")?.let { options["headers"] = mapOf("Host" to it) }
+                    proxy[if (network == "ws") "ws-opts" else "http-upgrade-opts"] = options
                 }
-                stream.put(if (network == "ws") "wsSettings" else "httpupgradeSettings", ws)
-            } else if (network == "grpc") {
-                stream.put("grpcSettings", JSONObject()
-                    .put("serviceName", q.getQueryParameter("serviceName") ?: "")
-                    .put("multiMode", q.getQueryParameter("mode") == "multi"))
-            } else if (network == "xhttp") {
-                stream.put("xhttpSettings", JSONObject()
-                    .put("path", q.getQueryParameter("path") ?: "/")
-                    .put("mode", q.getQueryParameter("mode") ?: "auto"))
+                "grpc" -> parsed.getQueryParameter("serviceName")?.let {
+                    proxy["grpc-opts"] = mapOf("grpc-service-name" to it)
+                }
+                "xhttp" -> {
+                    val options = linkedMapOf<String, Any>()
+                    parsed.getQueryParameter("path")?.let { options["path"] = it }
+                    parsed.getQueryParameter("mode")?.let { options["mode"] = it }
+                    proxy["xhttp-opts"] = options
+                }
             }
-            val outbound = JSONObject()
-                .put("tag", "proxy").put("protocol", "vless")
-                .put("settings", JSONObject().put("vnext", org.json.JSONArray().put(
-                    JSONObject().put("address", parsed.host).put("port", port)
-                        .put("users", org.json.JSONArray().put(JSONObject().put("id", uuid).put("encryption", "none").put("flow", q.getQueryParameter("flow") ?: "")))
-                )))
-                .put("streamSettings", stream)
-            val inbound = JSONObject().put("tag", "socks-in").put("listen", "127.0.0.1").put("port", SOCKS_PORT)
-                .put("protocol", "socks").put("settings", JSONObject().put("auth", "noauth").put("udp", true))
-            return JSONObject().put("log", JSONObject().put("loglevel", "warning"))
-                .put("inbounds", org.json.JSONArray().put(inbound))
-                .put("outbounds", org.json.JSONArray().put(outbound).put(JSONObject().put("tag", "direct").put("protocol", "freedom")))
-                .put("routing", JSONObject().put("rules", org.json.JSONArray().put(JSONObject().put("type", "field").put("inboundTag", org.json.JSONArray().put("socks-in")).put("outboundTag", "proxy"))))
-                .toString()
+            val proxyName = node.name.ifBlank { "GilrTano" }
+            val config = linkedMapOf<String, Any>(
+                "mode" to "rule",
+                "proxies" to listOf(proxy),
+                "rules" to listOf("MATCH,$proxyName"),
+                "dns" to linkedMapOf(
+                    "enable" to true,
+                    "enhanced-mode" to "fake-ip",
+                    "nameserver" to listOf("https://1.1.1.1/dns-query", "https://8.8.8.8/dns-query"),
+                    "default-nameserver" to listOf("1.1.1.1", "8.8.8.8"),
+                ),
+            )
+            return Yaml().dump(config)
         }
     }
 }
