@@ -354,7 +354,7 @@ class PowerOrbButtonView @JvmOverloads constructor(
         while (captionPaint.measureText(caption) > maxWidth && captionPaint.textSize > side * 0.052f) {
             captionPaint.textSize -= 0.5f * d
         }
-        val captionY = top + side * 0.735f - (captionPaint.ascent() + captionPaint.descent()) / 2f
+        val captionY = top + side * 0.594f - (captionPaint.ascent() + captionPaint.descent()) / 2f
         canvas.drawText(caption, width / 2f, captionY, captionPaint)
         captionPaint.clearShadowLayer()
 
