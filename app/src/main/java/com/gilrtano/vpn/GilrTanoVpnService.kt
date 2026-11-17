@@ -136,7 +136,7 @@ class GilrTanoVpnService : VpnService() {
                 }
                 if (stopping) return@Thread
 
-                val label = if (automaticMode && usingFallback) "Quattro · резерв" else "Meow"
+                val label = when { automaticMode && usingFallback -> "бесплатный резерв"; automaticMode -> "Quattro · Meow"; else -> "Meow" }
                 broadcastStatus(if (resumed) "Возобновлено · $label" else "Подключено · $label")
                 updateNotification("Подключено · защищённый трафик")
                 if (automaticMode) startConnectionMonitor()
