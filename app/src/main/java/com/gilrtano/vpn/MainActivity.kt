@@ -262,13 +262,13 @@ class MainActivity : Activity() {
                     Toast.makeText(this@MainActivity, "В этом режиме пока нет серверов", Toast.LENGTH_LONG).show()
                 } else {
                     try {
-                        val config = GilrTanoVpnService.xrayConfigFromVless(node.uri)
+                        val config = GilrTanoVpnService.meowConfigForNode(node.uri)
                         val fallbackConfig = if (autoMode) {
                             (if (activeFree) quattroNodes.firstOrNull() else freeNodes.firstOrNull())
-                                ?.let { runCatching { GilrTanoVpnService.xrayConfigFromVless(it.uri) }.getOrNull() }
+                                ?.let { runCatching { GilrTanoVpnService.meowConfigForNode(it.uri) }.getOrNull() }
                         } else null
                         val preferredConfig = if (autoMode) {
-                            quattroNodes.firstOrNull()?.let { runCatching { GilrTanoVpnService.xrayConfigFromVless(it.uri) }.getOrNull() }
+                            quattroNodes.firstOrNull()?.let { runCatching { GilrTanoVpnService.meowConfigForNode(it.uri) }.getOrNull() }
                         } else null
                         pendingConfig = config
                         pendingFallbackConfig = fallbackConfig
@@ -641,7 +641,7 @@ class MainActivity : Activity() {
                             typeface = android.graphics.Typeface.DEFAULT_BOLD
                         })
                         addView(TextView(this@MainActivity).apply {
-                            text = node.uri.substringBefore("://").uppercase()
+                            text = if (node.yamlConfig != null) "CLASH / MIHOMO" else node.uri.substringBefore("://").uppercase()
                             textSize = 11f; setTextColor(Color.rgb(169, 184, 255)); setPadding(0, dp(8), 0, 0)
                         })
                         addView(TextView(this@MainActivity).apply {
@@ -1195,7 +1195,7 @@ class MainActivity : Activity() {
             val index = prefs.getInt(selectedKey, 0).coerceIn(0, targetNodes.lastIndex)
             servers.setSelection(index)
             val node = targetNodes[index]
-            val config = runCatching { GilrTanoVpnService.xrayConfigFromVless(node.uri) }.getOrElse {
+            val config = runCatching { GilrTanoVpnService.meowConfigForNode(node.uri) }.getOrElse {
                 Toast.makeText(this, "Не удалось подготовить сервер: ${it.message}", Toast.LENGTH_LONG).show()
                 return
             }
@@ -1282,7 +1282,7 @@ class MainActivity : Activity() {
                 val imported = SubscriptionImporter.load(source)
                 runOnUiThread {
                     if (imported.isEmpty()) {
-                        status.text = "Не найдено поддерживаемых VLESS-серверов"
+                        status.text = "Не найдено поддерживаемых серверов или Clash/Mihomo-профилей"
                         return@runOnUiThread
                     }
                     if (isFree) {
@@ -1311,7 +1311,7 @@ class MainActivity : Activity() {
 
     private fun saveNodes(key: String, nodes: List<ImportedNode>) {
         val array = JSONArray()
-        nodes.forEach { array.put(JSONObject().put("name", it.name).put("uri", it.uri)) }
+        nodes.forEach { array.put(JSONObject().put("name", it.name).put("uri", it.uri).put("yamlConfig", it.yamlConfig)) }
         prefs.edit().putString(key, array.toString()).apply()
     }
 
@@ -1321,7 +1321,7 @@ class MainActivity : Activity() {
             val array = JSONArray(raw)
             (0 until array.length()).map { i ->
                 val item = array.getJSONObject(i)
-                ImportedNode(item.getString("name"), item.getString("uri"))
+                ImportedNode(item.getString("name"), item.optString("uri", ""), if (item.isNull("yamlConfig")) null else item.optString("yamlConfig"))
             }
         }.getOrDefault(emptyList())
     }
@@ -1430,7 +1430,7 @@ class MainActivity : Activity() {
             try {
                 candidates.forEach { node ->
                     completion.submit(Callable<Pair<ImportedNode, Long>?> {
-                        val config = runCatching { GilrTanoVpnService.xrayConfigFromVless(node.uri) }
+                        val config = runCatching { GilrTanoVpnService.meowConfigForNode(node.uri) }
                             .getOrNull() ?: return@Callable null
                         runCatching {
                             val delayMs = teapodcore.Teapodcore.measureOutboundDelay(
@@ -1514,10 +1514,10 @@ class MainActivity : Activity() {
     private fun connectAutomaticallySelected() {
         val node = activeNodes.getOrNull(servers.selectedItemPosition) ?: return
         try {
-            val config = GilrTanoVpnService.xrayConfigFromVless(node.uri)
+            val config = GilrTanoVpnService.meowConfigForNode(node.uri)
             val fallbackNode = if (activeFree) freeNodes.getOrNull(1) else freeNodes.firstOrNull()
             val fallback = fallbackNode
-                ?.let { runCatching { GilrTanoVpnService.xrayConfigFromVless(it.uri) }.getOrNull() }
+                ?.let { runCatching { GilrTanoVpnService.meowConfigForNode(it.uri) }.getOrNull() }
             pendingConfig = config
             pendingFallbackConfig = fallback
             pendingPreferredConfig = config
@@ -1531,10 +1531,27 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun measureNodeTcpLatency(uri: String): Long? {
+        if (uri.isBlank()) return null
+        val parsed = Uri.parse(uri)
+        val host = parsed.host?.takeIf { it.isNotBlank() } ?: return null
+        val port = parsed.port.takeIf { it > 0 } ?: 443
+        val started = System.nanoTime()
+        return runCatching {
+            Socket().use { socket -> socket.connect(InetSocketAddress(host, port), 3500) }
+            (System.nanoTime() - started) / 1_000_000L
+        }.getOrNull()
+    }
+
     private fun measureSelectedPing() {
         val node = activeNodes.getOrNull(servers.selectedItemPosition)
         if (node == null) {
             pingStatus.text = "Пинг: нет сервера"
+            return
+        }
+        if (node.uri.isBlank()) {
+            pingStatus.text = "Пинг: для профиля определяется при подключении"
+            if (::pingMetric.isInitialized) pingMetric.text = "— мс"
             return
         }
         val parsed = Uri.parse(node.uri)
