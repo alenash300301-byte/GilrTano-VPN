@@ -219,7 +219,8 @@ class MainActivity : Activity() {
             setOnClickListener { importFrom(freeSource.text.toString().trim(), true) }
         }
         connectButton = PowerOrbButtonView(this).apply {
-            text = "⏻\nПОДКЛЮЧИТЬ"
+            // The power glyph is drawn by PowerOrbButtonView; the caption lives only in the foreground overlay.
+            text = ""
             setOnClickListener {
                 val currentStatus = status.text.toString()
                 val isConnected = currentStatus.contains("Подключено")
