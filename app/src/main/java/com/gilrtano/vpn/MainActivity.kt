@@ -415,6 +415,10 @@ class MainActivity : Activity() {
                         serverCardTitle = TextView(this@MainActivity).apply {
                             text = "Автоматический сервер"; textSize = 16f
                             setTextColor(Color.WHITE)
+                            setOnLongClickListener {
+                                showMeowGroupsDialog()
+                                true
+                            }
                         }
                         serverCardSubtitle = TextView(this@MainActivity).apply {
                             text = "Автовыбор"; textSize = 12f
@@ -873,6 +877,70 @@ class MainActivity : Activity() {
                 dialog.dismiss()
             }
             .setNegativeButton("Закрыть", null)
+            .show()
+    }
+
+    /**
+     * Long-press the selected profile title to switch a proxy inside a
+     * Clash/Mihomo profile without adding another visible control.
+     */
+    private fun showMeowGroupsDialog() {
+        val node = activeNodes.getOrNull(servers.selectedItemPosition)
+        if (node?.yamlConfig == null) {
+            Toast.makeText(this, "Сначала выберите Clash/Mihomo профиль", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (!status.text.toString().contains("Подключено")) {
+            Toast.makeText(this, "Сначала подключите VPN", Toast.LENGTH_SHORT).show()
+            return
+        }
+        Toast.makeText(this, "Загружаю прокси-группы…", Toast.LENGTH_SHORT).show()
+        Thread({
+            val result = runCatching { MeowController.listGroups(this) }
+            runOnUiThread {
+                val groups = result.getOrElse {
+                    Toast.makeText(this, "Meow API: ${it.message}", Toast.LENGTH_LONG).show()
+                    return@runOnUiThread
+                }
+                if (groups.isEmpty()) {
+                    Toast.makeText(this, "В профиле нет переключаемых прокси-групп", Toast.LENGTH_LONG).show()
+                    return@runOnUiThread
+                }
+                val labels = groups.map { "${it.name} · ${it.type}" }.toTypedArray()
+                AlertDialog.Builder(this)
+                    .setTitle("Прокси-группы")
+                    .setItems(labels) { _, index -> showMeowGroupMembers(groups[index]) }
+                    .setNegativeButton("Закрыть", null)
+                    .show()
+            }
+        }, "GilrTano-Meow-groups").start()
+    }
+
+    private fun showMeowGroupMembers(group: MeowProxyGroup) {
+        if (group.members.isEmpty()) {
+            Toast.makeText(this, "В группе нет доступных серверов", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val selected = group.members.indexOf(group.selected).coerceAtLeast(0)
+        AlertDialog.Builder(this)
+            .setTitle(group.name)
+            .setSingleChoiceItems(group.members.toTypedArray(), selected) { dialog, which ->
+                val member = group.members[which]
+                dialog.dismiss()
+                Thread({
+                    val result = runCatching { MeowController.selectMember(this, group.name, member) }
+                    runOnUiThread {
+                        if (result.isSuccess) {
+                            Toast.makeText(this, "Выбран: $member", Toast.LENGTH_SHORT).show()
+                            serverCardSubtitle.text = "${group.name}: $member"
+                            updateServerPage()
+                        } else {
+                            Toast.makeText(this, "Не удалось переключить: ${result.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }, "GilrTano-Meow-select").start()
+            }
+            .setNegativeButton("Назад", null)
             .show()
     }
 
