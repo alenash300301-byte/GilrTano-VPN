@@ -58,6 +58,22 @@ class PowerOrbButtonView @JvmOverloads constructor(
         typeface = Typeface.create("sans-serif", Typeface.BOLD)
     }
     private val captionPlatePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
+    private val orbDiskPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.rgb(2, 9, 5)
+        style = Paint.Style.FILL
+    }
+    private val orbEdgePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.rgb(63, 255, 105)
+        style = Paint.Style.STROKE
+        strokeWidth = 2.2f * d
+    }
+    private val powerGlyphPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.rgb(112, 255, 125)
+        style = Paint.Style.STROKE
+        strokeWidth = 7.5f * d
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+    }
     private var phase = 0f
     private var morph = 1f
     private var pulse: ValueAnimator? = null
@@ -311,8 +327,48 @@ class PowerOrbButtonView @JvmOverloads constructor(
         framePaint.alpha = 255
         canvas.drawBitmap(frame, null, dst, framePaint)
 
-        // The artwork contains an intentionally empty neon capsule. Draw the
-        // live VPN status there so it can change without editing the PNG.
+        // Simplify the busy center of the source artwork while preserving
+        // the animated outer flame ring and all nine original frames.
+        val cx = width / 2f
+        val cy = top + side * 0.445f
+        val orbRadius = side * 0.292f
+        canvas.drawCircle(cx, cy, orbRadius, orbDiskPaint)
+        orbEdgePaint.alpha = when (state) {
+            State.DISCONNECTED -> 245
+            State.CONNECTING -> 230
+            State.CONNECTED -> 185
+            State.SUSPENDED -> 125
+        }
+        orbEdgePaint.color = when (state) {
+            State.DISCONNECTED, State.CONNECTED -> Color.rgb(65, 255, 105)
+            State.CONNECTING -> Color.rgb(255, 190, 70)
+            State.SUSPENDED -> Color.rgb(145, 150, 145)
+        }
+        canvas.drawCircle(cx, cy, orbRadius, orbEdgePaint)
+
+        // A single, clear power glyph replaces the multiple competing rings
+        // baked into the artwork. Its color follows the connection state.
+        powerGlyphPaint.color = when (state) {
+            State.DISCONNECTED, State.CONNECTED -> Color.rgb(105, 255, 120)
+            State.CONNECTING -> Color.rgb(255, 205, 105)
+            State.SUSPENDED -> Color.rgb(155, 160, 155)
+        }
+        val glyph = Path().apply {
+            moveTo(cx, cy - side * 0.155f)
+            lineTo(cx, cy + side * 0.005f)
+        }
+        canvas.drawPath(glyph, powerGlyphPaint)
+        val powerArc = Path().apply {
+            moveTo(cx - side * 0.105f, cy - side * 0.070f)
+            cubicTo(cx - side * 0.205f, cy + side * 0.015f,
+                cx - side * 0.175f, cy + side * 0.155f, cx, cy + side * 0.155f)
+            cubicTo(cx + side * 0.175f, cy + side * 0.155f,
+                cx + side * 0.205f, cy + side * 0.015f, cx + side * 0.105f, cy - side * 0.070f)
+        }
+        canvas.drawPath(powerArc, powerGlyphPaint)
+
+        // The status label is kept separate from the power symbol and centered
+        // in a clean text zone below it.
         captionPaint.textAlign = Paint.Align.CENTER
         captionPaint.typeface = Typeface.create("sans-serif", Typeface.BOLD)
         captionPaint.textSize = side * 0.060f
