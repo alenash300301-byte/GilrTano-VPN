@@ -100,13 +100,35 @@ jobs:
               path.write_text(source.replace("mavenCentral()", mirror))
           PY
 
+      - name: Configure Gradle plugin dependency mirror
+        working-directory: FlClashX/android
+        run: |
+          cat > /tmp/flclashx-repositories.init.gradle <<'EOF'
+          settingsEvaluated { settings ->
+              settings.pluginManagement.repositories {
+                  maven {
+                      name = "MavenCentralGoogleMirror"
+                      url = uri("https://maven-central.storage-download.googleapis.com/maven2/")
+                  }
+              }
+          }
+          allprojects {
+              repositories {
+                  maven {
+                      name = "MavenCentralGoogleMirror"
+                      url = uri("https://maven-central.storage-download.googleapis.com/maven2/")
+                  }
+              }
+          }
+          EOF
+
       - name: Build FlClashX gomobile core (ARM64 only)
         working-directory: FlClashX/android
         env:
           ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
         run: |
           for attempt in 1 2 3 4; do
-            if ./gradlew :core:assembleDebug \
+            if ./gradlew --init-script /tmp/flclashx-repositories.init.gradle :core:bindCore :core:assembleDebug \
               -Ptarget-platform=android-arm64 \
               -x :app:compileFlutterBuildDebug \
               -x :app:copyFlutterAssetsDebug \
