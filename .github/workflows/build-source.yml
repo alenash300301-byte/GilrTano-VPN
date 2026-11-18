@@ -1,20 +1,196 @@
-name: Build GilrTano VPN APK
+name: Build GilrTano VPN with Meow
+# Builds include the Quattro automatic fastest-node monitor.
 
 on:
   workflow_dispatch:
   push:
+    branches: [meow-engine-integration]
+  pull_request:
     branches: [main]
 
 permissions:
   contents: read
 
+concurrency:
+  group: gilrtano-meow-apk-build-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
-    runs-on: ubuntu-latest
-    timeout-minutes: 100
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
     steps:
-      - name: Checkout
+      - name: Checkout GilrTano
         uses: actions/checkout@v4
+
+      - name: Checkout pinned Meow Android core
+        uses: actions/checkout@v4
+        with:
+          repository: meow-rs/meow-android
+          ref: ad3b6e32292215a62feed27ab74157251b1575fb
+          path: meow-android
+
+      - name: Expand Meow HTTP probe body cap for service checks
+        working-directory: meow-android
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          source = Path("core/src/main/rust/meow-android-ffi/src/probe/http.rs")
+          text = source.read_text()
+          old = "const GET_BODY_CAP: usize = 64 * 1024;"
+          new = "const GET_BODY_CAP: usize = 1024 * 1024;"
+          if old not in text:
+              raise SystemExit("Pinned Meow HTTP probe source changed; refusing an unsafe patch")
+          source.write_text(text.replace(old, new, 1))
+
+          http = source
+          http_text = http.read_text()
+          get_block = '''pub(super) async fn get(proxy: &dyn ProxyAdapter, url: &str) -> ProbeResult {
+              let Some(url) = Url::parse(url) else {
+                  return Err(ProbeError::new(
+                      "bad-request",
+                      format!("not an http(s) URL: {url}"),
+                  ));
+              };
+              timeout(GET_TIMEOUT, fetch(proxy, &url))
+                  .await
+                  .unwrap_or_else(|_| Err(ProbeError::timeout("no answer in time")))
+          }
+          '''
+          get_replacement = '''pub(super) async fn get(proxy: &dyn ProxyAdapter, url: &str) -> ProbeResult {
+              get_with_cap(proxy, url, GET_BODY_CAP).await
+          }
+
+          pub(super) async fn get_large(proxy: &dyn ProxyAdapter, url: &str) -> ProbeResult {
+              get_with_cap(proxy, url, 8 * 1024 * 1024).await
+          }
+
+          async fn get_with_cap(proxy: &dyn ProxyAdapter, url: &str, max_body: usize) -> ProbeResult {
+              let Some(url) = Url::parse(url) else {
+                  return Err(ProbeError::new(
+                      "bad-request",
+                      format!("not an http(s) URL: {url}"),
+                  ));
+              };
+              timeout(GET_TIMEOUT, fetch(proxy, &url, max_body))
+                  .await
+                  .unwrap_or_else(|_| Err(ProbeError::timeout("no answer in time")))
+          }
+          '''
+          if get_block not in http_text:
+              raise SystemExit("Pinned Meow HTTP GET function changed")
+          http_text = http_text.replace(get_block, get_replacement, 1)
+          fetch_marker = "async fn fetch(proxy: &dyn ProxyAdapter, url: &Url) -> ProbeResult {"
+          if fetch_marker not in http_text:
+              raise SystemExit("Pinned Meow HTTP fetch function changed")
+          http_text = http_text.replace(
+              fetch_marker,
+              "async fn fetch(proxy: &dyn ProxyAdapter, url: &Url, max_body: usize) -> ProbeResult {",
+              1,
+          )
+          fetch_start = http_text.index("async fn fetch(")
+          fetch_end = http_text.index("// ---------------------------------------------------------------------------\n// Bandwidth", fetch_start)
+          fetch_part = http_text[fetch_start:fetch_end]
+          if "if raw.len() > GET_BODY_CAP {" not in fetch_part:
+              raise SystemExit("Pinned Meow HTTP body cap check changed")
+          fetch_part = fetch_part.replace("if raw.len() > GET_BODY_CAP {", "if raw.len() > max_body {", 1)
+          http_text = http_text[:fetch_start] + fetch_part + http_text[fetch_end:]
+          post_marker = "async fn fetch(proxy: &dyn ProxyAdapter, url: &Url, max_body: usize) -> ProbeResult {"
+          post_impl = r'''
+          pub(super) async fn probe_post(
+              proxy: &dyn ProxyAdapter,
+              url: &str,
+              headers: &[(String, String)],
+              body: &str,
+          ) -> ProbeResult {
+              let Some(url) = Url::parse(url) else {
+                  return Err(ProbeError::new(
+                      "bad-request",
+                      format!("not an http(s) URL: {url}"),
+                  ));
+              };
+              timeout(GET_TIMEOUT, fetch_post(proxy, &url, headers, body.as_bytes()))
+                  .await
+                  .unwrap_or_else(|_| Err(ProbeError::timeout("no answer in time")))
+          }
+
+          async fn fetch_post(
+              proxy: &dyn ProxyAdapter,
+              url: &Url,
+              headers: &[(String, String)],
+              body: &[u8],
+          ) -> ProbeResult {
+              let mut conn = open(proxy, url).await?;
+              let mut request = format!(
+                  "POST {} HTTP/1.1\r\nHost: {}\r\nUser-Agent: {USER_AGENT}\r\nAccept: */*\r\nConnection: close\r\n",
+                  url.target,
+                  url.host_header(),
+              );
+              for (name, value) in headers {
+                  request.push_str(&format!("{name}: {value}\r\n"));
+              }
+              request.push_str(&format!("Content-Length: {}\r\n\r\n", body.len()));
+              write_all(&mut conn, request.as_bytes()).await?;
+              write_all(&mut conn, body).await?;
+
+              let mut raw = Vec::new();
+              let head = read_head(&mut conn, &mut raw).await?;
+              let mut chunk = [0u8; 4096];
+              let body = loop {
+                  if let Some(body) = complete_body(&raw, head.framing)? {
+                      break body;
+                  }
+                  if raw.len() > GET_BODY_CAP {
+                      return Err(ProbeError::failed("response body too large"));
+                  }
+                  let n = conn.read(&mut chunk).await
+                      .map_err(|e| ProbeError::failed(format!("read: {e}")))?;
+                  if n == 0 {
+                      if head.framing == Framing::UntilClose {
+                          break raw;
+                      }
+                      return Err(ProbeError::failed("connection closed mid-body"));
+                  }
+                  raw.extend_from_slice(&chunk[..n]);
+              };
+              Ok(json!({
+                  "status": head.status,
+                  "body": String::from_utf8_lossy(&body),
+              }))
+          }
+
+          '''
+          if post_marker not in http_text:
+              raise SystemExit("Pinned Meow HTTP probe fetch marker changed")
+          if "pub(super) async fn probe_post(" not in http_text:
+              http_text = http_text.replace(post_marker, post_impl + post_marker, 1)
+              http.write_text(http_text)
+
+          probe_mod = Path("core/src/main/rust/meow-android-ffi/src/probe/mod.rs")
+          mod_text = probe_mod.read_text()
+          get_line = '        "http-get" => http::get(proxy, arg).await,'
+          large_line = '        "http-get-large" => http::get_large(proxy, arg).await,'
+          post_line = '''        "http-post" => {
+              let value: Value = serde_json::from_str(arg)
+                  .map_err(|e| ProbeError::failed(format!("bad POST probe arguments: {e}")))?;
+              let url = value.get("url").and_then(Value::as_str)
+                  .ok_or_else(|| ProbeError::failed("POST probe URL is missing"))?;
+              let body = value.get("body").and_then(Value::as_str).unwrap_or("");
+              let headers = value.get("headers").and_then(Value::as_object)
+                  .map(|map| map.iter().filter_map(|(k, v)| {
+                      v.as_str().map(|value| (k.clone(), value.to_string()))
+                  }).collect::<Vec<_>>())
+                  .unwrap_or_default();
+              http::probe_post(proxy, url, &headers, body).await
+          },'''
+          if get_line not in mod_text:
+              raise SystemExit("Pinned Meow HTTP GET probe dispatch changed")
+          if '"http-get-large" =>' not in mod_text:
+              mod_text = mod_text.replace(get_line, get_line + "\n" + large_line, 1)
+          if '"http-post" =>' not in mod_text:
+              mod_text = mod_text.replace(get_line, get_line + "\n" + post_line, 1)
+          probe_mod.write_text(mod_text)
+          PY
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -22,46 +198,60 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Setup Go
-        uses: actions/setup-go@v5
+      - name: Setup Rust for Android ARM64
+        uses: dtolnay/rust-toolchain@stable
         with:
-          go-version: '1.25.x'
-          cache-dependency-path: upstream/teapod-core/go.sum
+          targets: aarch64-linux-android
 
-      - name: Install Android NDK
+      - name: Install Android SDK and NDK
         run: |
           echo "ANDROID_HOME=/usr/local/lib/android/sdk" >> "$GITHUB_ENV"
           echo "ANDROID_SDK_ROOT=/usr/local/lib/android/sdk" >> "$GITHUB_ENV"
           SDKMANAGER=$(find /usr/local/lib/android/sdk/cmdline-tools -type f -name sdkmanager | head -n1)
           test -n "$SDKMANAGER"
           echo "$(dirname "$SDKMANAGER")" >> "$GITHUB_PATH"
-          "$SDKMANAGER" --install "ndk;28.2.13676358"
+          yes | "$SDKMANAGER" --licenses >/dev/null
+          "$SDKMANAGER" --install \
+            "platforms;android-36" \
+            "build-tools;36.0.0" \
+            "cmake;3.22.1" \
+            "ndk;27.0.12077973" \
+            "ndk;28.2.13676358"
           echo "ANDROID_NDK_HOME=/usr/local/lib/android/sdk/ndk/28.2.13676358" >> "$GITHUB_ENV"
-          echo "$HOME/go/bin" >> "$GITHUB_PATH"
+          echo "sdk.dir=/usr/local/lib/android/sdk" > meow-android/local.properties
 
-      - name: Install gomobile
-        run: |
-          go install golang.org/x/mobile/cmd/gomobile@latest
-          gomobile init
-
-      - name: Build native Xray AAR
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y patch unzip zip perl
-          chmod +x scripts/build-native-aar.sh
-          ./scripts/build-native-aar.sh
-          test -s app/libs/teapod-core-1.7.7.aar
+      - name: Install cargo-ndk
+        run: command -v cargo-ndk || cargo install cargo-ndk --locked
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: '8.13'
 
-      - name: Build APK
-        run: gradle --no-daemon assembleDebug
+      - name: Build Meow Android ARM64 native core
+        working-directory: meow-android
+        run: ./gradlew :core:assembleDebug -PTARGET_ABI=arm64 -PCARGO_PROFILE=release --no-daemon --stacktrace
+
+      - name: Stage Meow native library and GeoIP assets
+        run: |
+          set -eux
+          mkdir -p app/src/main/jniLibs/arm64-v8a app/src/main/assets/geox
+          test -s meow-android/core/build/rustJniLibs/android/arm64-v8a/libmeow_android_ffi.so
+          cp meow-android/core/build/rustJniLibs/android/arm64-v8a/libmeow_android_ffi.so app/src/main/jniLibs/arm64-v8a/
+          curl -fL --retry 3 "https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/country.mmdb" -o app/src/main/assets/geox/country.mmdb
+          curl -fL --retry 3 "https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/GeoLite2-ASN.mmdb" -o app/src/main/assets/geox/GeoLite2-ASN.mmdb
+          curl -fL --retry 3 "https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geosite.dat" -o app/src/main/assets/geox/geosite.dat
+          test -s app/src/main/assets/geox/country.mmdb
+          test -s app/src/main/assets/geox/GeoLite2-ASN.mmdb
+          test -s app/src/main/assets/geox/geosite.dat
+
+      - name: Build GilrTano APK
+        run: gradle --no-daemon assembleDebug --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: GilrTano-VPN-APK
+          name: GilrTano-VPN-Meow-ARM64
           path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14

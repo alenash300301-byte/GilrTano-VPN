@@ -1,0 +1,70 @@
+name: Test meow-rs Android ARM64 core
+
+on:
+  push:
+    branches: [meow-integration-test]
+    paths:
+      - ".github/workflows/test-meow-android.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-meow-core:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout GilrTano
+        uses: actions/checkout@v4
+
+      - name: Checkout meow-android source
+        uses: actions/checkout@v4
+        with:
+          repository: meow-rs/meow-android
+          ref: main
+          path: meow-android
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Rust for Android ARM64
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Install Android SDK and NDK
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install \
+            "platforms;android-36" \
+            "build-tools;36.0.0" \
+            "cmake;3.22.1" \
+            "ndk;27.0.12077973" \
+            "ndk;28.2.13676358"
+          echo "sdk.dir=$ANDROID_HOME" > meow-android/local.properties
+
+      - name: Install cargo-ndk
+        run: command -v cargo-ndk || cargo install cargo-ndk --locked
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Build native Android core (ARM64)
+        working-directory: meow-android
+        run: ./gradlew :core:assembleDebug -PTARGET_ABI=arm64 -PCARGO_PROFILE=release --no-daemon --stacktrace
+
+      - name: Upload AAR and native build outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: meow-android-core-arm64
+          path: |
+            meow-android/core/build/outputs/aar/*.aar
+            meow-android/core/build/rustJniLibs/android/**
+          if-no-files-found: warn
+          retention-days: 14
+          compression-level: 0

@@ -11,8 +11,11 @@ android {
         applicationId = "com.gilrtano.vpn"
         minSdk = 29
         targetSdk = 35
-        versionCode = System.getenv("APP_VERSION_CODE")?.toIntOrNull() ?: 100
-        versionName = System.getenv("APP_VERSION") ?: "0.9.10"
+        versionCode = System.getenv("APP_VERSION_CODE")?.toIntOrNull() ?: 101
+        versionName = System.getenv("APP_VERSION") ?: "0.10.0"
+        ndk {
+            abiFilters += "arm64-v8a"
+        }
     }
 
     signingConfigs {
@@ -46,5 +49,4 @@ android {
 
 dependencies {
     implementation("org.yaml:snakeyaml:2.4")
-    implementation(files("libs/teapod-core-1.7.7.aar"))
 }

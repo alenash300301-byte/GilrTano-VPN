@@ -1,0 +1,28 @@
+Third-party notices for GilrTano VPN
+
+Meow Android integration
+- Project: https://github.com/meow-rs/meow-android
+- Pinned source revision: ad3b6e32292215a62feed27ab74157251b1575fb
+- License: MIT
+- The corresponding MIT license text is in MEOW-ANDROID-LICENSE.txt.
+
+Meow proxy engine
+- Project: https://github.com/meow-rs/meow-rs
+- Version: 0.29.0
+- License: MIT
+- The corresponding MIT license text is in MEOW-RS-LICENSE.txt.
+
+GeoIP databases
+- The build downloads country.mmdb and GeoLite2-ASN.mmdb from MetaCubeX/meta-rules-dat.
+- These databases contain GeoLite2 data created by MaxMind.
+- Attribution: This product includes GeoLite2 data created by MaxMind, available from https://www.maxmind.com.
+- Database distribution and use remain subject to the applicable upstream data terms.
+
+GeoSite database
+- The build extracts geosite.mrs from MetaCubeX/meta-rules-dat BundleMRS.7z.
+- Database distribution and use remain subject to the applicable upstream data terms.
+
+The Meow native build also includes Rust and Android dependencies. A complete
+dependency/license inventory must be generated and reviewed before public
+redistribution of release builds; the two MIT notices above do not replace
+those dependency notices.

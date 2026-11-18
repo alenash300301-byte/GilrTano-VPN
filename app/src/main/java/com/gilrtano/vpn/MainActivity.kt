@@ -43,7 +43,9 @@ import java.net.InetSocketAddress
 import java.net.Socket
 import java.util.concurrent.Callable
 import java.util.concurrent.Executors
+import java.util.concurrent.ExecutorCompletionService
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 class MainActivity : Activity() {
     private lateinit var status: TextView
@@ -59,10 +61,12 @@ class MainActivity : Activity() {
     private lateinit var servers: Spinner
     private lateinit var quattroTab: Button
     private lateinit var freeTab: Button
-    private lateinit var autoTab: Button
-    private var autoMode = true
+    private lateinit var portalTab: Button
+    private var autoMode = false
     private var buttonShellAnimator: ValueAnimator? = null
-    private var activeMode: String = "auto"
+    private var activeMode: String = "quattro"
+    private var activePortal = false
+    private var portalNodes: List<ImportedNode> = emptyList()
     private lateinit var bestFreeButton: Button
     private lateinit var checkPing: Button
     private lateinit var updateButton: Button
@@ -83,33 +87,34 @@ class MainActivity : Activity() {
     private var pendingAutomatic = false
     private val requestCode = 4101
     private val docxRequestCode = 4102
+    private val portalRequestCode = 4103
 
     private val prefs by lazy { getPreferences(MODE_PRIVATE) }
     private val activeNodes: List<ImportedNode>
-        get() = if (activeFree) freeNodes else quattroNodes
+        get() = when (activeMode) { "portal" -> portalNodes; "free" -> freeNodes; else -> quattroNodes }
 
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             val message = intent?.getStringExtra(GilrTanoVpnService.EXTRA_STATUS) ?: "—"
             status.text = when {
-                message.startsWith("Подключено") || message.startsWith("Возобновлено") -> "●  Подключено"
+                message.startsWith("Подключено") || message.startsWith("Возобновлено") || message.startsWith("Сервер переключён") -> "●  Подключено"
                 message == "Отключено" -> "●  Отключено"
                 else -> message
             }
-            if (message.startsWith("Подключено") || message.startsWith("Возобновлено")) {
+            if (message.startsWith("Подключено") || message.startsWith("Возобновлено") || message.startsWith("Сервер переключён")) {
                 val resumed = message.startsWith("Возобновлено")
-                if (message.contains("бесплатный резерв")) activeFree = true
-                else if (message.contains("Quattro")) activeFree = false
+                val switched = message.startsWith("Сервер переключён")
                 refreshMode()
                 status.setTextColor(Color.rgb(36, 255, 72))
                 updatePowerOrb(true)
                 if (::connectionTimer.isInitialized) {
-                    if (!resumed) connectionTimer.base = SystemClock.elapsedRealtime()
+                    if (!resumed && !switched) connectionTimer.base = SystemClock.elapsedRealtime()
                     connectionTimer.visibility = View.VISIBLE
                     connectionTimer.start()
                 }
                 updateServerCard(true)
-                igniteConnectButton()
+                if (switched) serverCardSubtitle.text = message.removePrefix("Сервер переключён:").trim()
+                if (!switched) igniteConnectButton()
             } else if (message == "Приостановлено") {
                 status.text = "Ⅱ  Приостановлено"
                 status.setTextColor(Color.LTGRAY)
@@ -126,17 +131,17 @@ class MainActivity : Activity() {
                 }
                 updateServerCard(false)
                 resetConnectButtonGlow()
-            } else if (message.startsWith("Подключаю") || message.startsWith("Запускаю") || message.startsWith("Запуск Xray") || message.startsWith("Переключаю")) {
+            } else if (message.startsWith("Подключаю") || message.startsWith("Запускаю") || message.startsWith("Запуск Meow") || message.startsWith("Переключаю")) {
                 status.setTextColor(Color.rgb(255, 166, 55))
                 connectButton.setState(PowerOrbButtonView.State.CONNECTING)
                 // Keep the ignition animation visible while the tunnel is starting.
             }
-            val busy = message.startsWith("Подключаю") || message.startsWith("Запускаю") || message.startsWith("Запуск Xray") || message.startsWith("Переключаю") || message.startsWith("Приостанавливаю") || message.startsWith("Возобновляю")
+            val busy = message.startsWith("Подключаю") || message.startsWith("Запускаю") || message.startsWith("Запуск Meow") || message.startsWith("Переключаю") || message.startsWith("Приостанавливаю") || message.startsWith("Возобновляю")
             // The single power button remains usable while connecting so it can cancel,
             // and while connected so it can disconnect.
             connectButton.isEnabled = true
             setPowerButtonLabel(
-                if (message.startsWith("Подключено") || message.startsWith("Возобновлено")) "Ⅱ  ПАУЗА"
+                if (message.startsWith("Подключено") || message.startsWith("Возобновлено") || message.startsWith("Сервер переключён")) "Ⅱ  ПАУЗА"
                 else if (message == "Приостановлено") "Ⅱ  ВОЗОБНОВИТЬ"
                 else if (message.startsWith("Отключаю")) "ОТКЛЮЧЕНИЕ…"
                 else if (message.startsWith("Переключаю")) "ПЕРЕКЛЮЧЕНИЕ…"
@@ -146,7 +151,7 @@ class MainActivity : Activity() {
                 else "▶ ПОДКЛЮЧИТЬ"
             )
             connectButton.contentDescription = when {
-                message.startsWith("Подключено") || message.startsWith("Возобновлено") -> "Приостановить VPN"
+                message.startsWith("Подключено") || message.startsWith("Возобновлено") || message.startsWith("Сервер переключён") -> "Приостановить VPN"
                 message == "Приостановлено" -> "Возобновить VPN"
                 busy -> "Отменить подключение"
                 else -> "Подключить VPN"
@@ -178,7 +183,7 @@ class MainActivity : Activity() {
         servers = Spinner(this).apply {
             onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
                 override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: android.view.View?, position: Int, id: Long) {
-                    val key = if (activeFree) "free_selected" else "quattro_selected"
+                    val key = activeSelectionKey()
                     prefs.edit().putInt(key, position).apply()
                     pingStatus.text = "Пинг: —"
                 }
@@ -188,15 +193,15 @@ class MainActivity : Activity() {
 
         quattroTab = Button(this).apply {
             text = "QUATTRO"
-            setOnClickListener { switchMode(false) }
+            setOnClickListener { switchMode("quattro") }
         }
         freeTab = Button(this).apply {
             text = "БЕСПЛАТНЫЙ"
-            setOnClickListener { switchMode(true) }
+            setOnClickListener { switchMode("free") }
         }
-        autoTab = Button(this).apply {
-            text = "АВТО"
-            setOnClickListener { switchToAuto() }
+        portalTab = Button(this).apply {
+            text = "PORTAL"
+            setOnClickListener { switchMode("portal") }
         }
 
         val importPrimary = Button(this).apply {
@@ -225,7 +230,7 @@ class MainActivity : Activity() {
                 val isConnected = currentStatus.contains("Подключено")
                 val isSuspended = currentStatus.contains("Приостановлено")
                 val isConnecting = currentStatus.startsWith("Подключаю") ||
-                    currentStatus.startsWith("Запускаю") || currentStatus.startsWith("Запуск Xray") ||
+                    currentStatus.startsWith("Запускаю") || currentStatus.startsWith("Запуск Meow") ||
                     currentStatus.startsWith("Переключаю") || currentStatus.startsWith("Приостанавливаю") ||
                     currentStatus.startsWith("Возобновляю")
                 if (isConnected) {
@@ -247,38 +252,29 @@ class MainActivity : Activity() {
                         .setAction(GilrTanoVpnService.ACTION_STOP))
                     return@setOnClickListener
                 }
-                if (autoMode) {
-                    activeFree = quattroNodes.isEmpty() && freeNodes.isNotEmpty()
-                    prefs.edit().putBoolean("active_free_mode", activeFree).apply()
-                    refreshMode()
-                    if (quattroNodes.isEmpty() && freeNodes.isEmpty()) {
-                        status.text = "Ищу бесплатный резерв…"
-                        refreshFreeServersAndFindBest(autoConnectWhenReady = true)
-                        return@setOnClickListener
-                    }
+                if (activeNodes.isEmpty()) {
+                    Toast.makeText(this@MainActivity, "В режиме " + activeMode.uppercase() + " нет профиля. Импортируй конфигурацию.", Toast.LENGTH_LONG).show()
+                    return@setOnClickListener
                 }
                 val node = activeNodes.getOrNull(servers.selectedItemPosition)
                 if (node == null) {
                     Toast.makeText(this@MainActivity, "В этом режиме пока нет серверов", Toast.LENGTH_LONG).show()
                 } else {
                     try {
-                        val config = GilrTanoVpnService.xrayConfigFromVless(node.uri)
-                        val fallbackConfig = if (autoMode) {
-                            (if (activeFree) quattroNodes.firstOrNull() else freeNodes.firstOrNull())
-                                ?.let { runCatching { GilrTanoVpnService.xrayConfigFromVless(it.uri) }.getOrNull() }
-                        } else null
-                        val preferredConfig = if (autoMode) {
-                            quattroNodes.firstOrNull()?.let { runCatching { GilrTanoVpnService.xrayConfigFromVless(it.uri) }.getOrNull() }
-                        } else null
+                        val config = GilrTanoVpnService.meowConfigForNode(node)
+                        val fallbackConfig: String? = null
+                        val preferredConfig: String? = null
                         pendingConfig = config
-                        pendingFallbackConfig = fallbackConfig
-                        pendingPreferredConfig = preferredConfig
-                        pendingAutomatic = autoMode
+                        pendingFallbackConfig = null
+                        pendingPreferredConfig = null
+                        // Quattro may optimize servers inside its own profile.
+                        // Cross-mode fallback to Portal/FREE is deliberately disabled.
+                        pendingAutomatic = activeMode == "quattro"
                         connectButton.isEnabled = true
                         status.text = "Подключаю: ${node.name}…"
                         val permission = VpnService.prepare(this@MainActivity)
                         if (permission != null) startActivityForResult(permission, requestCode)
-                        else startVpn(config, fallbackConfig, preferredConfig, autoMode)
+                        else startVpn(config, null, null, pendingAutomatic)
                     } catch (e: Exception) {
                         pendingConfig = null
                         connectButton.isEnabled = true
@@ -415,6 +411,10 @@ class MainActivity : Activity() {
                         serverCardTitle = TextView(this@MainActivity).apply {
                             text = "Автоматический сервер"; textSize = 16f
                             setTextColor(Color.WHITE)
+                            setOnLongClickListener {
+                                showMeowGroupsDialog()
+                                true
+                            }
                         }
                         serverCardSubtitle = TextView(this@MainActivity).apply {
                             text = "Автовыбор"; textSize = 12f
@@ -504,10 +504,10 @@ class MainActivity : Activity() {
                 modeSelectorRow = LinearLayout(this@MainActivity).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = android.view.Gravity.CENTER
-                    addView(quattroTab, LinearLayout.LayoutParams(0, dp(44), 1f).apply { rightMargin = dp(6) })
-                    addView(freeTab, LinearLayout.LayoutParams(0, dp(44), 1f).apply { leftMargin = dp(4); rightMargin = dp(4) })
-                    addView(autoTab, LinearLayout.LayoutParams(0, dp(44), 1f).apply { leftMargin = dp(4) })
-                    visibility = View.GONE
+                    addView(quattroTab, LinearLayout.LayoutParams(0, dp(44), 1f).apply { rightMargin = dp(4) })
+                    addView(portalTab, LinearLayout.LayoutParams(0, dp(44), 1f).apply { leftMargin = dp(4); rightMargin = dp(4) })
+                    addView(freeTab, LinearLayout.LayoutParams(0, dp(44), 1f).apply { leftMargin = dp(4) })
+                    visibility = View.VISIBLE
                 }
                 settingsHeader = TextView(this@MainActivity).apply {
                     text = "Настройки и импорт  ›"; textSize = 20f
@@ -604,7 +604,7 @@ class MainActivity : Activity() {
         val serverRows = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         serverPage.addView(serverRows)
         fun updateServerPage() {
-            serverState.text = "Режим: " + if (autoMode) "AUTO · Quattro с бесплатным резервом" else if (activeFree) "Бесплатный" else "Quattro"
+            serverState.text = "Режим: " + if (autoMode) "AUTO · Quattro с бесплатным резервом" else modeDisplayName()
             serverRows.removeAllViews()
             val query = proxySearch.text.toString().trim().lowercase()
             val nodes = activeNodes.mapIndexed { index, node -> index to node }.filter { it.second.name.lowercase().contains(query) }
@@ -628,12 +628,11 @@ class MainActivity : Activity() {
                         }
                         setOnClickListener {
                             servers.setSelection(index)
-                            prefs.edit().putInt(if (activeFree) "free_selected" else "quattro_selected", index).apply()
+                            prefs.edit().putInt(activeSelectionKey(), index).apply()
                             serverCardTitle.text = node.name
-                            serverCardSubtitle.text = if (activeFree) "Бесплатный" else "Quattro"
+                            serverCardSubtitle.text = modeDisplayName()
                             serverCardPing.text = ""
                             pingStatus.text = "Пинг: —"
-                            updateServerPage()
                         }
                         addView(TextView(this@MainActivity).apply {
                             text = (if (selected) "✓  " else "") + node.name
@@ -641,7 +640,7 @@ class MainActivity : Activity() {
                             typeface = android.graphics.Typeface.DEFAULT_BOLD
                         })
                         addView(TextView(this@MainActivity).apply {
-                            text = node.uri.substringBefore("://").uppercase()
+                            text = if (node.yamlConfig != null) "CLASH / MIHOMO" else node.uri.substringBefore("://").uppercase()
                             textSize = 11f; setTextColor(Color.rgb(169, 184, 255)); setPadding(0, dp(8), 0, 0)
                         })
                         addView(TextView(this@MainActivity).apply {
@@ -665,13 +664,14 @@ class MainActivity : Activity() {
         })
 
         val serverModes = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        serverModes.addView(actionButton("АВТО") { switchToAuto(); updateServerPage() },
+        serverModes.addView(actionButton("QUATTRO") { switchMode("quattro"); updateServerPage() },
             LinearLayout.LayoutParams(0, dp(48), 1f))
-        serverModes.addView(actionButton("QUATTRO") { switchMode(false); updateServerPage() },
+        serverModes.addView(actionButton("PORTAL") { switchMode("portal"); updateServerPage() },
             LinearLayout.LayoutParams(0, dp(48), 1f))
-        serverModes.addView(actionButton("FREE") { switchMode(true); updateServerPage() },
+        serverModes.addView(actionButton("FREE") { switchMode("free"); updateServerPage() },
             LinearLayout.LayoutParams(0, dp(48), 1f))
         serverPage.addView(serverModes)
+        serverPage.addView(actionButton("Серверы Quattro") { showMeowGroupsDialog() })
         serverPage.addView(actionButton("Проверить пинг") { measureSelectedPing() })
         serverPage.addView(actionButton("Найти лучший бесплатный сервер") { refreshFreeServersAndFindBest() })
         // First-class profiles tab backed by the existing Quattro/YAML/DOCX import logic.
@@ -713,8 +713,15 @@ class MainActivity : Activity() {
             topMargin = dp(18); bottomMargin = dp(14)
         })
         fun refreshProfileCard() {
-            profileUsage.text = "Серверов загружено: ${quattroNodes.size}"
-            profileState.text = if (quattroNodes.isNotEmpty()) "✓ Профиль доступен · ${if (activeFree) "сейчас выбран FREE" else "Quattro"}" else "Профиль ещё не импортирован"
+            val serverCount = quattroNodes.sumOf { node ->
+                val yaml = node.yamlConfig
+                if (yaml.isNullOrBlank()) 1 else {
+                    val proxySection = yaml.substringAfter("proxies:", "").substringBefore("proxy-groups:")
+                    proxySection.lineSequence().count { it.trimStart().startsWith("- name:") }
+                }
+            }
+            profileUsage.text = "Серверов в профиле: $serverCount"
+            profileState.text = if (quattroNodes.isNotEmpty()) "✓ Полный профиль доступен · ${if (activeFree) "сейчас выбран FREE" else "Quattro"}" else "Профиль ещё не импортирован"
         }
         refreshProfileCard()
         profilesPage.addView(actionButton("Импортировать Quattro") {
@@ -734,6 +741,8 @@ class MainActivity : Activity() {
             }
             startActivityForResult(pick, docxRequestCode)
         })
+        profilesPage.addView(actionButton("Импортировать PORTAL YAML по ссылке") { showPortalImportDialog() })
+        profilesPage.addView(actionButton("Выбрать файл PORTAL YAML") { pickPortalYaml() })
         profilesPage.addView(actionButton("Импортировать бесплатный резерв") {
             val value = prefs.getString("free_subscription_url", "").orEmpty()
             if (value.isNotBlank()) importFrom(value, true)
@@ -838,9 +847,12 @@ class MainActivity : Activity() {
             minWidth = dp(174)
             minHeight = dp(174)
         }
-        activeMode = prefs.getString("connection_mode", "auto") ?: "auto"
-        autoMode = activeMode == "auto"
-        activeFree = prefs.getBoolean("active_free_mode", false)
+        activeMode = prefs.getString("connection_mode", "quattro") ?: "quattro"
+        if (activeMode !in setOf("quattro", "portal", "free")) activeMode = "quattro"
+        autoMode = false
+        activeFree = activeMode == "free"
+        activePortal = activeMode == "portal"
+        portalNodes = restoreNodes("portal_nodes")
         refreshMode()
         updatePowerOrb(false)
         updateServerCard(false)
@@ -848,6 +860,11 @@ class MainActivity : Activity() {
     }
 
     private fun showServerPicker() {
+        val selectedNode = activeNodes.getOrNull(servers.selectedItemPosition)
+        if (selectedNode?.yamlConfig != null) {
+            showMeowGroupsDialog()
+            return
+        }
         val nodes = activeNodes
         if (nodes.isEmpty()) {
             settingsExpanded = true
@@ -864,10 +881,10 @@ class MainActivity : Activity() {
             .setTitle("Выбор сервера")
             .setSingleChoiceItems(names, servers.selectedItemPosition) { dialog, which ->
                 servers.setSelection(which)
-                val key = if (activeFree) "free_selected" else "quattro_selected"
+                val key = activeSelectionKey()
                 prefs.edit().putInt(key, which).apply()
                 serverCardTitle.text = nodes[which].name
-                serverCardSubtitle.text = if (activeFree) "Бесплатный" else "Quattro"
+                serverCardSubtitle.text = modeDisplayName()
                 serverCardPing.text = ""
                 pingStatus.text = "Пинг: —"
                 dialog.dismiss()
@@ -876,12 +893,211 @@ class MainActivity : Activity() {
             .show()
     }
 
+    /**
+     * Long-press the selected profile title to switch a proxy inside a
+     * Clash/Mihomo profile without adding another visible control.
+     */
+    private fun showMeowGroupsDialog() {
+        val node = activeNodes.getOrNull(servers.selectedItemPosition)
+        if (node?.yamlConfig == null) {
+            Toast.makeText(this, "Сначала выберите Clash/Mihomo профиль", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (!status.text.toString().contains("Подключено")) {
+            Toast.makeText(this, "Сначала подключите VPN", Toast.LENGTH_SHORT).show()
+            return
+        }
+        Toast.makeText(this, "Загружаю прокси-группы…", Toast.LENGTH_SHORT).show()
+        Thread({
+            val result = runCatching { MeowController.listGroups(this) }
+            runOnUiThread {
+                val groups = result.getOrElse {
+                    Toast.makeText(this, "Meow API: ${it.message}", Toast.LENGTH_LONG).show()
+                    return@runOnUiThread
+                }
+                if (groups.isEmpty()) {
+                    Toast.makeText(this, "В профиле нет переключаемых прокси-групп", Toast.LENGTH_LONG).show()
+                    return@runOnUiThread
+                }
+                if (groups.size == 1) {
+                    showMeowGroupMembers(groups.first())
+                } else {
+                    val preferred = groups.sortedBy { if (it.name.equals("Quattro VPN", true)) 0 else 1 }
+                    val labels = preferred.map { "${it.name} · ${it.type}" }.toTypedArray()
+                    AlertDialog.Builder(this)
+                        .setTitle("Прокси-группы")
+                        .setItems(labels) { _, index -> showMeowGroupMembers(preferred[index]) }
+                        .setNegativeButton("Закрыть", null)
+                        .show()
+                }
+            }
+        }, "GilrTano-Meow-groups").start()
+    }
+
+    private fun showMeowGroupMembers(group: MeowProxyGroup) {
+        if (group.members.isEmpty()) {
+            Toast.makeText(this, "В группе нет доступных серверов", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val selected = group.members.indexOf(group.selected).coerceAtLeast(0)
+        AlertDialog.Builder(this)
+            .setTitle(group.name)
+            .setSingleChoiceItems(group.members.toTypedArray(), selected) { dialog, which ->
+                val member = group.members[which]
+                dialog.dismiss()
+                Thread({
+                    val result = runCatching { MeowController.selectMember(this, group.name, member) }
+                    runOnUiThread {
+                        if (result.isSuccess) {
+                            Toast.makeText(this, "Выбран: $member", Toast.LENGTH_SHORT).show()
+                            serverCardSubtitle.text = "${group.name}: $member"
+                        } else {
+                            Toast.makeText(this, "Не удалось переключить: ${result.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }, "GilrTano-Meow-select").start()
+            }
+            .setNeutralButton("⚡ Авто | Самый быстрый") { dialog, _ ->
+                dialog.dismiss()
+                startFastestServerScan(group)
+            }
+            .setNegativeButton("Назад", null)
+            .show()
+    }
+
+    /**
+     * Tests every member of the selected Quattro group through Meow itself,
+     * then selects the member with the lowest successful HTTP delay.
+     * Probes run in bounded parallel batches so 563 nodes do not overload the phone.
+     */
+    private fun startFastestServerScan(group: MeowProxyGroup) {
+        val members = group.members.distinct()
+        if (members.isEmpty()) {
+            Toast.makeText(this, "В группе нет серверов для проверки", Toast.LENGTH_LONG).show()
+            return
+        }
+
+        val executor = Executors.newFixedThreadPool(16)
+        val completion = ExecutorCompletionService<Pair<String, Int?>>(executor)
+        val cancelled = AtomicBoolean(false)
+        var scanThread: Thread? = null
+        val progress = ProgressDialog(this).apply {
+            setTitle("Авто | Самый быстрый")
+            setMessage("Подготовка проверки серверов…")
+            setProgressStyle(ProgressDialog.STYLE_HORIZONTAL)
+            max = members.size
+            progress = 0
+            setCancelable(true)
+            setOnCancelListener {
+                cancelled.set(true)
+                scanThread?.interrupt()
+                executor.shutdownNow()
+            }
+        }
+        progress.show()
+
+        scanThread = Thread({
+            var completed = 0
+            val successful = ArrayList<Pair<String, Int>>()
+            try {
+                members.forEach { member ->
+                    if (cancelled.get()) return@forEach
+                    completion.submit(Callable {
+                        val delay = runCatching {
+                            MeowController.probeMember(this, member)
+                        }.getOrNull()
+                        member to delay
+                    })
+                }
+
+                while (completed < members.size && !cancelled.get()) {
+                    val (member, delay) = completion.take().get()
+                    completed++
+                    if (delay != null) successful.add(member to delay)
+                    val checked = completed
+                    val reachable = successful.size
+                    runOnUiThread {
+                        if (progress.isShowing && !cancelled.get()) {
+                            progress.progress = checked
+                            progress.setMessage(
+                                "Проверено: $checked из ${members.size}\nДоступно: $reachable"
+                            )
+                        }
+                    }
+                }
+                if (cancelled.get()) return@Thread
+
+                executor.shutdown()
+                val fastest = successful.minByOrNull { it.second }
+                if (fastest == null) {
+                    runOnUiThread {
+                        if (progress.isShowing) progress.dismiss()
+                        AlertDialog.Builder(this)
+                            .setTitle("Проверка завершена")
+                            .setMessage(
+                                "Проверено серверов: $completed из ${members.size}\n" +
+                                    "Доступных серверов: 0\n\n" +
+                                    "Ни один сервер не прошёл проверку соединения с интернетом."
+                            )
+                            .setPositiveButton("ОК", null)
+                            .show()
+                    }
+                    return@Thread
+                }
+
+                val selection = runCatching {
+                    MeowController.selectMember(this, group.name, fastest.first)
+                }
+                runOnUiThread {
+                    if (progress.isShowing) progress.dismiss()
+                    if (selection.isSuccess) {
+                        if (::serverCardTitle.isInitialized) serverCardTitle.text = fastest.first
+                        if (::serverCardSubtitle.isInitialized) {
+                            serverCardSubtitle.text = "${group.name} · выбран автоматически"
+                        }
+                        if (::serverCardPing.isInitialized) serverCardPing.text = "${fastest.second} мс"
+                        if (::pingStatus.isInitialized) pingStatus.text = "Пинг: ${fastest.second} мс"
+                        AlertDialog.Builder(this)
+                            .setTitle("Авто | Самый быстрый")
+                            .setMessage(
+                                "Проверено серверов: $completed из ${members.size}\n" +
+                                    "Доступно: ${successful.size}\n" +
+                                    "Недоступно: ${members.size - successful.size}\n\n" +
+                                    "Выбран: ${fastest.first}\n" +
+                                    "Задержка: ${fastest.second} мс"
+                            )
+                            .setPositiveButton("ОК", null)
+                            .show()
+                    } else {
+                        Toast.makeText(
+                            this,
+                            "Сервер найден (${fastest.second} мс), но выбрать его не удалось: ${selection.exceptionOrNull()?.message}",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                }
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+            } catch (e: Exception) {
+                runOnUiThread {
+                    if (progress.isShowing) progress.dismiss()
+                    if (!cancelled.get()) {
+                        Toast.makeText(this, "Ошибка проверки серверов: ${e.message}", Toast.LENGTH_LONG).show()
+                    }
+                }
+            } finally {
+                executor.shutdownNow()
+            }
+        }, "GilrTano-fastest-quattro")
+        scanThread?.start()
+    }
+
     private fun updateServerCard(connected: Boolean) {
         if (!::serverCardTitle.isInitialized) return
         val node = activeNodes.getOrNull(servers.selectedItemPosition)
         if (connected && node != null) {
             serverCardTitle.text = node.name
-            serverCardSubtitle.text = if (activeFree) "Бесплатный резерв" else "Подключено"
+            serverCardSubtitle.text = modeDisplayName()
             val ping = Regex("(\\d+)\\s*мс").find(pingStatus.text.toString())?.groupValues?.get(1)
             serverCardPing.text = ping?.let { "$it мс" } ?: ""
         } else {
@@ -1161,95 +1377,94 @@ class MainActivity : Activity() {
     }
 
     private fun switchToAuto() {
-        autoMode = true
-        activeMode = "auto"
-        prefs.edit().putString("connection_mode", "auto").apply()
-        activeFree = quattroNodes.isEmpty() && freeNodes.isNotEmpty()
-        refreshMode()
-        Toast.makeText(this, "Автовыбор включён: Quattro в приоритете, бесплатный резерв", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Автоматическое переключение отключено", Toast.LENGTH_SHORT).show()
     }
 
-    private fun switchMode(free: Boolean) {
-        autoMode = false
-        activeMode = if (free) "free" else "quattro"
-        prefs.edit().putString("connection_mode", activeMode).apply()
-        if (activeFree == free) { refreshMode(); return }
-        val targetNodes = if (free) freeNodes else quattroNodes
-        if (targetNodes.isEmpty()) {
-            Toast.makeText(
-                this,
-                if (free) "Сначала найди бесплатные серверы" else "Сначала импортируй Quattro",
-                Toast.LENGTH_LONG
-            ).show()
-            return
+    private fun switchMode(mode: String) {
+        if (mode !in setOf("quattro", "portal", "free")) return
+        val nodes = when (mode) { "portal" -> portalNodes; "free" -> freeNodes; else -> quattroNodes }
+        if (nodes.isEmpty()) {
+            val message = when (mode) { "portal" -> "Импортируй PORTAL YAML"; "free" -> "Импортируй FREE серверы"; else -> "Импортируй QUATTRO профиль" }
+            Toast.makeText(this, message, Toast.LENGTH_LONG).show(); return
         }
-
-        val wasConnected = status.text.toString().contains("Подключено")
-        activeFree = free
-        prefs.edit().putBoolean("active_free_mode", free).apply()
-        refreshMode()
-        updateServerCard(wasConnected)
-
-        if (wasConnected) {
-            val selectedKey = if (free) "free_selected" else "quattro_selected"
-            val index = prefs.getInt(selectedKey, 0).coerceIn(0, targetNodes.lastIndex)
-            servers.setSelection(index)
-            val node = targetNodes[index]
-            val config = runCatching { GilrTanoVpnService.xrayConfigFromVless(node.uri) }.getOrElse {
-                Toast.makeText(this, "Не удалось подготовить сервер: ${it.message}", Toast.LENGTH_LONG).show()
-                return
-            }
-            status.text = "Переключаю на ${if (free) "бесплатный сервер" else "Quattro"}…"
-            startService(Intent(this, GilrTanoVpnService::class.java)
-                .setAction(GilrTanoVpnService.ACTION_SWITCH)
-                .putExtra(GilrTanoVpnService.EXTRA_CONFIG, config))
-        } else {
-            Toast.makeText(this, if (free) "Выбран бесплатный резерв" else "Выбран Quattro", Toast.LENGTH_SHORT).show()
+        if (activeMode == mode) return
+        val current = status.text.toString()
+        val active = current.contains("Подключено") || current.contains("Приостановлено") || current.startsWith("Подключаю") || current.startsWith("Запускаю") || current.startsWith("Запуск Meow") || current.startsWith("Переключаю") || current.startsWith("Приостанавливаю") || current.startsWith("Возобновляю")
+        if (active) {
+            pendingConfig = null; pendingFallbackConfig = null; pendingPreferredConfig = null; pendingAutomatic = false
+            status.text = "Отключаю VPN для смены режима…"
+            startService(Intent(this, GilrTanoVpnService::class.java).setAction(GilrTanoVpnService.ACTION_STOP))
         }
+        activeMode = mode; activeFree = mode == "free"; activePortal = mode == "portal"; autoMode = false
+        prefs.edit().putString("connection_mode", mode).putBoolean("active_free_mode", activeFree).apply()
+        refreshMode(); updateServerCard(false)
+        if (active) status.text = "Отключаю VPN… выбран режим " + mode.uppercase()
+        else Toast.makeText(this, "Выбран режим " + mode.uppercase(), Toast.LENGTH_SHORT).show()
+    }
+
+    private fun activeSelectionKey(): String = when (activeMode) { "portal" -> "portal_selected"; "free" -> "free_selected"; else -> "quattro_selected" }
+    private fun modeDisplayName(): String = activeMode.uppercase()
+
+    private fun pickPortalYaml() {
+        val pick = Intent(Intent.ACTION_OPEN_DOCUMENT).apply { addCategory(Intent.CATEGORY_OPENABLE); type = "*/*" }
+        startActivityForResult(pick, portalRequestCode)
+    }
+
+    private fun importPortalYamlText(yaml: String) {
+        val imported = runCatching { SubscriptionImporter.parse(yaml) }.getOrElse {
+            Toast.makeText(this, "Ошибка чтения PORTAL YAML: " + it.message, Toast.LENGTH_LONG).show(); return
+        }
+        if (imported.isEmpty()) { Toast.makeText(this, "В YAML не найдены поддерживаемые прокси", Toast.LENGTH_LONG).show(); return }
+        portalNodes = imported
+        saveNodes("portal_nodes", portalNodes)
+        switchMode("portal")
+        Toast.makeText(this, "PORTAL: импортировано профилей " + imported.size, Toast.LENGTH_LONG).show()
+    }
+
+    private fun showPortalImportDialog() {
+        val field = EditText(this).apply { hint = "HTTPS-ссылка на Portal Clash/Mihomo YAML"; isSingleLine = true; setText(prefs.getString("portal_subscription_url", "")) }
+        AlertDialog.Builder(this).setTitle("Импорт PORTAL")
+            .setMessage("Укажи HTTPS-ссылку на отдельную конфигурацию PORTAL/WARP. Она будет сохранена локально.")
+            .setView(field).setNegativeButton("Отмена", null)
+            .setPositiveButton("Импортировать") { _, _ ->
+                val source = field.text.toString().trim()
+                if (source.isBlank()) Toast.makeText(this, "Укажи ссылку на Portal YAML", Toast.LENGTH_LONG).show()
+                else Thread {
+                    val result = runCatching { SubscriptionImporter.load(source) }
+                    runOnUiThread {
+                        val imported = result.getOrNull().orEmpty()
+                        if (imported.isEmpty()) Toast.makeText(this, "В Portal YAML не найдены поддерживаемые прокси", Toast.LENGTH_LONG).show()
+                        else { portalNodes = imported; prefs.edit().putString("portal_subscription_url", source).apply(); saveNodes("portal_nodes", portalNodes); switchMode("portal"); Toast.makeText(this, "PORTAL: импортировано профилей " + imported.size, Toast.LENGTH_LONG).show() }
+                    }
+                }.start()
+            }.show()
     }
 
     private fun refreshMode() {
-        autoTab.isEnabled = !autoMode
-        quattroTab.isEnabled = autoMode || activeFree
-        freeTab.isEnabled = autoMode || !activeFree
-        autoTab.alpha = if (autoMode) 1f else 0.72f
-        quattroTab.alpha = if (!autoMode && !activeFree) 1f else 0.72f
-        freeTab.alpha = if (!autoMode && activeFree) 1f else 0.72f
-        fun modeBackground(selected: Boolean) = GradientDrawable().apply {
-            setColor(if (selected) Color.rgb(54, 24, 12) else Color.rgb(13, 13, 15))
-            cornerRadius = dp(14).toFloat()
-            setStroke(dp(if (selected) 2 else 1),
-                if (selected) Color.rgb(220, 32, 32) else Color.rgb(58, 58, 62))
-        }
-        quattroTab.background = modeBackground(!autoMode && !activeFree)
-        freeTab.background = modeBackground(!autoMode && activeFree)
-        autoTab.background = modeBackground(autoMode)
-        quattroTab.setTextColor(if (!autoMode && !activeFree) Color.WHITE else Color.LTGRAY)
-        freeTab.setTextColor(if (!autoMode && activeFree) Color.WHITE else Color.LTGRAY)
-        autoTab.setTextColor(if (autoMode) Color.WHITE else Color.LTGRAY)
-        if (::protocolMetric.isInitialized) protocolMetric.text = if (activeFree) "FREE" else "QUATTRO"
-        primarySource.visibility = if (activeFree) ViewGroup.GONE else ViewGroup.VISIBLE
-        freeSource.visibility = if (activeFree) ViewGroup.VISIBLE else ViewGroup.GONE
+        autoMode = false; activeFree = activeMode == "free"; activePortal = activeMode == "portal"
+        val q = activeMode == "quattro"; val p = activeMode == "portal"; val f = activeMode == "free"
+        fun bg(selected: Boolean) = GradientDrawable().apply { setColor(if (selected) Color.rgb(24, 45, 28) else Color.rgb(13, 13, 15)); cornerRadius = dp(14).toFloat(); setStroke(dp(if (selected) 2 else 1), if (selected) Color.rgb(36, 220, 78) else Color.rgb(58, 58, 62)) }
+        quattroTab.isEnabled = !q; portalTab.isEnabled = !p; freeTab.isEnabled = !f
+        quattroTab.alpha = if (q) 1f else 0.72f; portalTab.alpha = if (p) 1f else 0.72f; freeTab.alpha = if (f) 1f else 0.72f
+        quattroTab.background = bg(q); portalTab.background = bg(p); freeTab.background = bg(f)
+        quattroTab.setTextColor(if (q) Color.WHITE else Color.LTGRAY); portalTab.setTextColor(if (p) Color.WHITE else Color.LTGRAY); freeTab.setTextColor(if (f) Color.WHITE else Color.LTGRAY)
+        if (::protocolMetric.isInitialized) protocolMetric.text = modeDisplayName()
+        primarySource.visibility = if (q) View.VISIBLE else View.GONE; freeSource.visibility = if (f) View.VISIBLE else View.GONE
         findImportButtonsVisibility()
         val list = activeNodes
         servers.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, list.map { it.name })
-        val selectedKey = if (activeFree) "free_selected" else "quattro_selected"
-        val selected = prefs.getInt(selectedKey, 0).coerceIn(0, (list.size - 1).coerceAtLeast(0))
+        val selected = prefs.getInt(activeSelectionKey(), 0).coerceIn(0, (list.size - 1).coerceAtLeast(0))
         if (list.isNotEmpty()) servers.setSelection(selected)
         pingStatus.text = "Пинг: —"
-        if (!status.text.toString().contains("Подключено")) {
-            status.text = "●  Отключено"
-            status.setTextColor(Color.LTGRAY)
-        }
+        if (!status.text.toString().contains("Подключено") && !status.text.toString().contains("Приостановлено") && !status.text.toString().startsWith("Отключаю")) { status.text = "●  Отключено"; status.setTextColor(Color.LTGRAY) }
     }
-
     private fun findImportButtonsVisibility() {
         val content = findViewById<ViewGroup>(android.R.id.content)
         val root = content.getChildAt(0) as? LinearLayout ?: return
         val scroll = root.getChildAt(0) as? android.widget.ScrollView ?: return
         val page = scroll.getChildAt(0) as? ViewGroup ?: return
         settingsHeader.visibility = if (settingsExpanded) View.VISIBLE else View.GONE
-        modeSelectorRow.visibility = if (settingsExpanded) View.VISIBLE else View.GONE
+        modeSelectorRow.visibility = View.VISIBLE
         primarySource.visibility = if (settingsExpanded && !activeFree) View.VISIBLE else View.GONE
         freeSource.visibility = if (settingsExpanded && activeFree) View.VISIBLE else View.GONE
         bestFreeButton.visibility = if (settingsExpanded && activeFree) View.VISIBLE else View.GONE
@@ -1282,7 +1497,7 @@ class MainActivity : Activity() {
                 val imported = SubscriptionImporter.load(source)
                 runOnUiThread {
                     if (imported.isEmpty()) {
-                        status.text = "Не найдено поддерживаемых VLESS-серверов"
+                        status.text = "Не найдено поддерживаемых серверов или Clash/Mihomo-профилей"
                         return@runOnUiThread
                     }
                     if (isFree) {
@@ -1311,7 +1526,17 @@ class MainActivity : Activity() {
 
     private fun saveNodes(key: String, nodes: List<ImportedNode>) {
         val array = JSONArray()
-        nodes.forEach { array.put(JSONObject().put("name", it.name).put("uri", it.uri)) }
+        nodes.forEachIndexed { index, node ->
+            val yamlPath = node.yamlConfig?.takeIf { it.isNotBlank() }?.let { yaml ->
+                val fileName = "${key}_profile_${index}.yaml"
+                java.io.File(filesDir, fileName).writeText(yaml)
+                fileName
+            }
+            array.put(JSONObject()
+                .put("name", node.name)
+                .put("uri", node.uri)
+                .put("yamlPath", yamlPath))
+        }
         prefs.edit().putString(key, array.toString()).apply()
     }
 
@@ -1321,7 +1546,11 @@ class MainActivity : Activity() {
             val array = JSONArray(raw)
             (0 until array.length()).map { i ->
                 val item = array.getJSONObject(i)
-                ImportedNode(item.getString("name"), item.getString("uri"))
+                val yamlPath = item.optString("yamlPath").takeIf { it.isNotBlank() && it != "null" }
+                val yamlConfig = yamlPath?.let { path ->
+                    java.io.File(filesDir, path).takeIf { it.isFile }?.readText()
+                } ?: if (!item.isNull("yamlConfig")) item.optString("yamlConfig") else null
+                ImportedNode(item.getString("name"), item.optString("uri", ""), yamlConfig)
             }
         }.getOrDefault(emptyList())
     }
@@ -1420,24 +1649,35 @@ class MainActivity : Activity() {
         scanningFree = true
         bestFreeButton.isEnabled = false
         status.text = "Быстрый поиск: проверяю лучшие серверы…"
+        // A Clash/Mihomo profile may contain several proxy groups and does
+        // not expose one host to TCP-ping here. Let Meow evaluate it on connect.
+        if (freeNodes.all { it.uri.isBlank() }) {
+            scanningFree = false
+            bestFreeButton.isEnabled = true
+            status.text = "Clash/Mihomo профиль готов. Проверка при подключении."
+            if (autoConnectWhenReady) {
+                activeFree = true
+                autoMode = false
+                activeMode = "free"
+                prefs.edit().putString("connection_mode", "auto").putBoolean("active_free_mode", true).apply()
+                refreshMode()
+                servers.setSelection(0)
+                connectAutomaticallySelected()
+            }
+            return
+        }
         // Public free nodes expire frequently. Check a much larger portion of the
         // imported catalogue and allow slow handshakes, rather than rejecting all
         // candidates after one short 25-second window.
-        val candidates = freeNodes.take(80)
+        val candidates = freeNodes.take(80).filter { it.uri.isNotBlank() }
         Thread {
             val pool = Executors.newFixedThreadPool(8)
             val completion = java.util.concurrent.ExecutorCompletionService<Pair<ImportedNode, Long>?>(pool)
             try {
                 candidates.forEach { node ->
                     completion.submit(Callable<Pair<ImportedNode, Long>?> {
-                        val config = runCatching { GilrTanoVpnService.xrayConfigFromVless(node.uri) }
-                            .getOrNull() ?: return@Callable null
-                        runCatching {
-                            val delayMs = teapodcore.Teapodcore.measureOutboundDelay(
-                                config, "https://www.gstatic.com/generate_204"
-                            )
-                            if (delayMs <= 0L) null else node to delayMs
-                        }.getOrNull()
+                        val delayMs = measureNodeTcpLatency(node.uri) ?: return@Callable null
+                        node to delayMs
                     })
                 }
                 val checked = mutableListOf<Pair<ImportedNode, Long>>()
@@ -1486,12 +1726,12 @@ class MainActivity : Activity() {
                         val labels = fastest.map { pair -> "${pair.first.name} · ${pair.second} мс" }
                         servers.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, labels)
                         servers.setSelection(0)
-                        pingStatus.text = "Проверка через Xray: ${fastest.first().second} мс"
+                        pingStatus.text = "Проверка через Meow: ${fastest.first().second} мс"
                         status.text = "Найдено рабочих серверов: ${fastest.size}. Лучший выбран."
                         if (autoConnectWhenReady) {
                             activeFree = true
-                            autoMode = true
-                            activeMode = "auto"
+                            autoMode = false
+                            activeMode = "free"
                             prefs.edit().putString("connection_mode", "auto").putBoolean("active_free_mode", true).apply()
                             refreshMode()
                             connectAutomaticallySelected()
@@ -1514,10 +1754,10 @@ class MainActivity : Activity() {
     private fun connectAutomaticallySelected() {
         val node = activeNodes.getOrNull(servers.selectedItemPosition) ?: return
         try {
-            val config = GilrTanoVpnService.xrayConfigFromVless(node.uri)
+            val config = GilrTanoVpnService.meowConfigForNode(node)
             val fallbackNode = if (activeFree) freeNodes.getOrNull(1) else freeNodes.firstOrNull()
             val fallback = fallbackNode
-                ?.let { runCatching { GilrTanoVpnService.xrayConfigFromVless(it.uri) }.getOrNull() }
+                ?.let { runCatching { GilrTanoVpnService.meowConfigForNode(it) }.getOrNull() }
             pendingConfig = config
             pendingFallbackConfig = fallback
             pendingPreferredConfig = config
@@ -1531,10 +1771,27 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun measureNodeTcpLatency(uri: String): Long? {
+        if (uri.isBlank()) return null
+        val parsed = Uri.parse(uri)
+        val host = parsed.host?.takeIf { it.isNotBlank() } ?: return null
+        val port = parsed.port.takeIf { it > 0 } ?: 443
+        val started = System.nanoTime()
+        return runCatching {
+            Socket().use { socket -> socket.connect(InetSocketAddress(host, port), 3500) }
+            (System.nanoTime() - started) / 1_000_000L
+        }.getOrNull()
+    }
+
     private fun measureSelectedPing() {
         val node = activeNodes.getOrNull(servers.selectedItemPosition)
         if (node == null) {
             pingStatus.text = "Пинг: нет сервера"
+            return
+        }
+        if (node.uri.isBlank()) {
+            pingStatus.text = "Пинг: для профиля определяется при подключении"
+            if (::pingMetric.isInitialized) pingMetric.text = "— мс"
             return
         }
         val parsed = Uri.parse(node.uri)
@@ -1567,6 +1824,13 @@ class MainActivity : Activity() {
         }.start()
     }
 
+    private fun storeEngineConfig(config: String, slot: String): String {
+        val directory = java.io.File(filesDir, "engine-configs").apply { mkdirs() }
+        val file = java.io.File(directory, "$slot.yaml")
+        file.writeText(config)
+        return file.absolutePath
+    }
+
     private fun startVpn(
         config: String,
         fallbackConfig: String? = null,
@@ -1576,10 +1840,14 @@ class MainActivity : Activity() {
         connectButton.isEnabled = true
         val intent = Intent(this, GilrTanoVpnService::class.java)
             .setAction(GilrTanoVpnService.ACTION_START)
-            .putExtra(GilrTanoVpnService.EXTRA_CONFIG, config)
+            .putExtra(GilrTanoVpnService.EXTRA_CONFIG, storeEngineConfig(config, "active"))
             .putExtra(GilrTanoVpnService.EXTRA_AUTO, automatic)
-        fallbackConfig?.let { intent.putExtra(GilrTanoVpnService.EXTRA_FALLBACK_CONFIG, it) }
-        preferredConfig?.let { intent.putExtra(GilrTanoVpnService.EXTRA_PREFERRED_CONFIG, it) }
+        fallbackConfig?.let {
+            intent.putExtra(GilrTanoVpnService.EXTRA_FALLBACK_CONFIG, storeEngineConfig(it, "fallback"))
+        }
+        preferredConfig?.let {
+            intent.putExtra(GilrTanoVpnService.EXTRA_PREFERRED_CONFIG, storeEngineConfig(it, "preferred"))
+        }
         startForegroundService(intent)
         status.text = "Запускаю VPN…"
         connectButton.setState(PowerOrbButtonView.State.CONNECTING)
@@ -1600,6 +1868,16 @@ class MainActivity : Activity() {
             pendingConfig = null
             connectButton.isEnabled = true
             status.text = "Разрешение VPN не предоставлено"
+        } else if (requestCode == portalRequestCode && resultCode == RESULT_OK) {
+            val uri = data?.data ?: return
+            status.text = "Читаю PORTAL YAML…"
+            Thread {
+                val result = runCatching { contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: error("Не удалось открыть файл") }
+                runOnUiThread {
+                    result.onSuccess { importPortalYamlText(it) }
+                        .onFailure { Toast.makeText(this, "Ошибка чтения файла: " + it.message, Toast.LENGTH_LONG).show() }
+                }
+            }.start()
         } else if (requestCode == docxRequestCode && resultCode == RESULT_OK) {
             val uri = data?.data ?: return
             status.text = "Читаю DOCX локально…"
@@ -1616,7 +1894,14 @@ class MainActivity : Activity() {
                             activeFree = false
                             prefs.edit().putBoolean("active_free_mode", false).apply()
                             refreshMode()
-                            status.text = "Quattro сохранён: ${imported.size} серверов. Импортировать снова не нужно."
+                            val serverCount = imported.sumOf { node ->
+                                val yaml = node.yamlConfig
+                                if (yaml.isNullOrBlank()) 1 else {
+                                    val proxySection = yaml.substringAfter("proxies:", "").substringBefore("proxy-groups:")
+                                    proxySection.lineSequence().count { it.trimStart().startsWith("- name:") }
+                                }
+                            }
+                            status.text = "Quattro сохранён: $serverCount серверов. Импортировать снова не нужно."
                             measureSelectedPing()
                         }
                     }
