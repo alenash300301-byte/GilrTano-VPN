@@ -1,0 +1,29 @@
+name: Meow dependency license gate
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [portal-quattro-manual-meow]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  cargo-license-audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install cargo-deny
+        run: cargo install cargo-deny --locked
+      - name: Audit pinned Meow Android dependency graph
+        working-directory: meow-android/core/src/main/rust/meow-android-ffi
+        run: cargo deny check licenses sources
+      - name: Audit upstream Meow workspace dependency graph
+        run: |
+          git clone --depth 1 --branch v0.29.0 https://github.com/meow-rs/meow-rs.git meow-upstream
+          cd meow-upstream
+          cargo deny check licenses sources
