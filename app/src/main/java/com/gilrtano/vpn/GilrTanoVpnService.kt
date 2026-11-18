@@ -34,12 +34,9 @@ class GilrTanoVpnService : VpnService() {
     @Volatile private var paused = false
     @Volatile private var monitorRunning = false
     @Volatile private var automaticMode = false
-    @Volatile private var usingFallback = false
     @Volatile private var consecutiveProbeFailures = 0
     @Volatile private var lastSwitchAt = 0L
     @Volatile private var activeConfig: String? = null
-    @Volatile private var fallbackConfig: String? = null
-    @Volatile private var preferredConfig: String? = null
     @Volatile private var autoGroupName: String? = null
     @Volatile private var autoSelectedMember: String? = null
     private var pendingBetterMember: String? = null
@@ -56,16 +53,13 @@ class GilrTanoVpnService : VpnService() {
             ACTION_RESUME -> {
                 val config = activeConfig
                 if (paused && !config.isNullOrBlank()) {
-                    startTunnel(config, null, null, automaticMode, true)
+                    startTunnel(config, automaticMode, true)
                 }
             }
             ACTION_SWITCH -> {
                 automaticMode = false
-                fallbackConfig = null
-                preferredConfig = null
-                usingFallback = false
                 readConfigExtra(intent, EXTRA_CONFIG)?.takeIf { it.isNotBlank() }?.let {
-                    startTunnel(it, null, null, false, false)
+                    startTunnel(it, false, false)
                 } ?: stopTunnel()
             }
             ACTION_START, null -> {
@@ -77,11 +71,8 @@ class GilrTanoVpnService : VpnService() {
                     // Keep optional Quattro-only server optimization, but never
                     // accept a fallback config that could change the selected product mode.
                     automaticMode = intent.getBooleanExtra(EXTRA_AUTO, false)
-                    fallbackConfig = null
-                    preferredConfig = null
-                    usingFallback = false
                     consecutiveProbeFailures = 0
-                    startTunnel(config, null, null, automaticMode, false)
+                    startTunnel(config, automaticMode, false)
                 }
             }
         }
@@ -90,8 +81,6 @@ class GilrTanoVpnService : VpnService() {
 
     private fun startTunnel(
         config: String,
-        fallback: String?,
-        preferred: String?,
         automatic: Boolean,
         resumed: Boolean,
     ) {
@@ -99,8 +88,6 @@ class GilrTanoVpnService : VpnService() {
         paused = false
         monitorRunning = false
         activeConfig = config
-        fallbackConfig = fallback
-        preferredConfig = preferred
         automaticMode = automatic
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, notification("Запуск Meow…"))
@@ -140,7 +127,7 @@ class GilrTanoVpnService : VpnService() {
                 autoSelectedMember = null
                 pendingBetterMember = null
                 pendingBetterCount = 0
-                if (automaticMode && !usingFallback) {
+                if (automaticMode) {
                     discoverAutoGroup()
                     if (autoGroupName.isNullOrBlank()) {
                         throw IllegalStateException("Не найдена группа серверов Quattro для проверки")
@@ -179,7 +166,7 @@ class GilrTanoVpnService : VpnService() {
                 }
                 if (stopping) return@Thread
 
-                val label = when { automaticMode && usingFallback -> "бесплатный резерв"; automaticMode -> "Quattro · Meow"; else -> "Meow" }
+                val label = when { automaticMode -> "Quattro · Meow"; else -> "Meow" }
                 broadcastStatus(if (resumed) "Возобновлено · $label" else "Подключено · $label")
                 updateNotification("Подключено · защищённый трафик")
                 if (automaticMode) startConnectionMonitor()
@@ -394,7 +381,7 @@ class GilrTanoVpnService : VpnService() {
         Thread({
             // The mandatory 17-service scan already ran before TUN creation.
             // Start the rescan clock now instead of repeating the whole sweep immediately.
-            var lastGroupScanAt = if (!autoGroupName.isNullOrBlank() && !usingFallback) System.currentTimeMillis() else 0L
+            var lastGroupScanAt = if (!autoGroupName.isNullOrBlank()) System.currentTimeMillis() else 0L
             var firstMonitorIteration = true
             while (monitorRunning && automaticMode && !stopping && !paused) {
                 try {
@@ -405,12 +392,12 @@ class GilrTanoVpnService : VpnService() {
                     val now = System.currentTimeMillis()
                     if (probeTunnel() < 0L) consecutiveProbeFailures++ else consecutiveProbeFailures = 0
 
-                    if (autoGroupName.isNullOrBlank() && !usingFallback) {
+                    if (autoGroupName.isNullOrBlank()) {
                         runCatching { discoverAutoGroup() }
                             .onFailure { Log.w(TAG, "Automatic group discovery failed", it) }
                     }
                     val nextScanInterval = if (pendingBetterMember != null) CONFIRM_SCAN_INTERVAL_MS else AUTO_RESCAN_INTERVAL_MS
-                    val shouldScanGroup = !autoGroupName.isNullOrBlank() && !usingFallback &&
+                    val shouldScanGroup = !autoGroupName.isNullOrBlank() &&
                         (lastGroupScanAt == 0L || now - lastGroupScanAt >= nextScanInterval ||
                             consecutiveProbeFailures >= FAILURE_LIMIT)
                     var groupHasWorkingMember: Boolean? = null
@@ -429,23 +416,9 @@ class GilrTanoVpnService : VpnService() {
                         now - lastSwitchAt >= SWITCH_COOLDOWN_MS) {
                         if (groupHasWorkingMember == true) {
                             consecutiveProbeFailures = 0
-                        } else if (!usingFallback && !fallbackConfig.isNullOrBlank()) {
-                            usingFallback = true
-                            lastSwitchAt = now
-                            consecutiveProbeFailures = 0
-                            broadcastStatus("Quattro недоступен. Переключаю на резерв…")
-                            startTunnel(fallbackConfig!!, fallbackConfig, preferredConfig, true, false)
-                            break
+                        } else {
+                            broadcastStatus("Сервер Quattro не отвечает. Продолжаю проверку выбранного профиля…")
                         }
-                    }
-                    if (usingFallback && !preferredConfig.isNullOrBlank() &&
-                        now - lastSwitchAt >= RECOVERY_INTERVAL_MS) {
-                        usingFallback = false
-                        lastSwitchAt = now
-                        consecutiveProbeFailures = 0
-                        broadcastStatus("Проверяю восстановление Quattro…")
-                        startTunnel(preferredConfig!!, fallbackConfig, preferredConfig, true, false)
-                        break
                     }
                 } catch (_: InterruptedException) {
                     break
@@ -614,8 +587,6 @@ class GilrTanoVpnService : VpnService() {
         const val EXTRA_CONFIG = "xray_config"
         const val EXTRA_STATUS = "status"
         const val EXTRA_AUTO = "automatic_mode"
-        const val EXTRA_FALLBACK_CONFIG = "fallback_config"
-        const val EXTRA_PREFERRED_CONFIG = "preferred_config"
 
         private const val TAG = "GilrTanoVPN"
         private const val CHANNEL_ID = "gilrtano_vpn"
@@ -625,7 +596,6 @@ class GilrTanoVpnService : VpnService() {
         private const val MONITOR_INTERVAL_MS = 15_000L
         private const val FAILURE_LIMIT = 2
         private const val SWITCH_COOLDOWN_MS = 60_000L
-        private const val RECOVERY_INTERVAL_MS = 5 * 60_000L
         private const val AUTO_RESCAN_INTERVAL_MS = 3 * 60_000L
         private const val CONFIRM_SCAN_INTERVAL_MS = 30_000L
         private const val AUTO_SCAN_WORKERS = 32
