@@ -89,14 +89,13 @@ jobs:
               1,
           )
           fetch_start = http_text.index("async fn fetch(")
-          fetch_end = http_text.index("// ---------------------------------------------------------------------------\\n// Bandwidth", fetch_start)
+          fetch_end = http_text.index("// ---------------------------------------------------------------------------\n// Bandwidth", fetch_start)
           fetch_part = http_text[fetch_start:fetch_end]
           if "if raw.len() > GET_BODY_CAP {" not in fetch_part:
               raise SystemExit("Pinned Meow HTTP body cap check changed")
           fetch_part = fetch_part.replace("if raw.len() > GET_BODY_CAP {", "if raw.len() > max_body {", 1)
           http_text = http_text[:fetch_start] + fetch_part + http_text[fetch_end:]
-          http_text = http.read_text()
-          post_marker = "async fn fetch(proxy: &dyn ProxyAdapter, url: &Url) -> ProbeResult {"
+          post_marker = "async fn fetch(proxy: &dyn ProxyAdapter, url: &Url, max_body: usize) -> ProbeResult {"
           post_impl = r'''
           pub(super) async fn post(
               proxy: &dyn ProxyAdapter,
