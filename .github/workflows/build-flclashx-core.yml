@@ -121,13 +121,13 @@ jobs:
       - name: Stage FlClashX core for GilrTano Android app
         run: |
           mkdir -p app/libs app/src/main/assets/licenses
-          cp FlClashX/android/core/build/gomobile/core.aar app/libs/flclashx-core.aar
+          cp FlClashX/android/core/build/outputs/aar/core-debug.aar app/libs/flclashx-core.aar
           cp FlClashX/LICENSE app/src/main/assets/licenses/FLCLASHX-GPL-3.0.txt
 
       - name: Verify native core and Kotlin bridge
         working-directory: .
         run: |
-          AAR="FlClashX/android/core/build/gomobile/core.aar"
+          AAR="FlClashX/android/core/build/outputs/aar/core-debug.aar"
           test -s "$AAR"
           unzip -l "$AAR" | grep -E 'jni/arm64-v8a/libclash.so'
           unzip -p "$AAR" classes.jar > /tmp/flclashx-classes.jar
@@ -150,7 +150,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: FlClashX-v0.5.7-Android-ARM64-Core
-          path: FlClashX/android/core/build/gomobile/core.aar
+          path: FlClashX/android/core/build/outputs/aar/core-debug.aar
           if-no-files-found: error
           retention-days: 14
 
