@@ -49,4 +49,5 @@ android {
 
 dependencies {
     implementation("org.yaml:snakeyaml:2.4")
+    implementation(files("libs/flclashx-core.aar"))
 }
