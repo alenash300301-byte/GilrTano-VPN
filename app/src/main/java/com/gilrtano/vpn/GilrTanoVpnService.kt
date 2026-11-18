@@ -632,7 +632,7 @@ class GilrTanoVpnService : VpnService() {
         private const val AUTO_RESCAN_INTERVAL_MS = 3 * 60_000L
         private const val CONFIRM_SCAN_INTERVAL_MS = 30_000L
         private const val AUTO_SCAN_WORKERS = 32
-        private const val MAX_SCAN_DURATION_MS = 480_000L
+        private const val MAX_SCAN_DURATION_MS = 600_000L
         private const val MIN_IMPROVEMENT_MS = 25
         private const val REQUIRED_BETTER_SCANS = 2
 
