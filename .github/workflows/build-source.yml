@@ -42,6 +42,100 @@ jobs:
           if old not in text:
               raise SystemExit("Pinned Meow HTTP probe source changed; refusing an unsafe patch")
           source.write_text(text.replace(old, new, 1))
+
+          http = source
+          http_text = http.read_text()
+          post_marker = "async fn fetch(proxy: &dyn ProxyAdapter, url: &Url) -> ProbeResult {"
+          post_impl = r'''
+          pub(super) async fn post(
+              proxy: &dyn ProxyAdapter,
+              url: &str,
+              headers: &[(String, String)],
+              body: &str,
+          ) -> ProbeResult {
+              let Some(url) = Url::parse(url) else {
+                  return Err(ProbeError::new(
+                      "bad-request",
+                      format!("not an http(s) URL: {url}"),
+                  ));
+              };
+              timeout(GET_TIMEOUT, fetch_post(proxy, &url, headers, body.as_bytes()))
+                  .await
+                  .unwrap_or_else(|_| Err(ProbeError::timeout("no answer in time")))
+          }
+
+          async fn fetch_post(
+              proxy: &dyn ProxyAdapter,
+              url: &Url,
+              headers: &[(String, String)],
+              body: &[u8],
+          ) -> ProbeResult {
+              let mut conn = open(proxy, url).await?;
+              let mut request = format!(
+                  "POST {} HTTP/1.1\\r\\nHost: {}\\r\\nUser-Agent: {USER_AGENT}\\r\\nAccept: */*\\r\\nConnection: close\\r\\n",
+                  url.target,
+                  url.host_header(),
+              );
+              for (name, value) in headers {
+                  request.push_str(&format!("{name}: {value}\\r\\n"));
+              }
+              request.push_str(&format!("Content-Length: {}\\r\\n\\r\\n", body.len()));
+              write_all(&mut conn, request.as_bytes()).await?;
+              write_all(&mut conn, body).await?;
+
+              let mut raw = Vec::new();
+              let head = read_head(&mut conn, &mut raw).await?;
+              let mut chunk = [0u8; 4096];
+              let body = loop {
+                  if let Some(body) = complete_body(&raw, head.framing)? {
+                      break body;
+                  }
+                  if raw.len() > GET_BODY_CAP {
+                      return Err(ProbeError::failed("response body too large"));
+                  }
+                  let n = conn.read(&mut chunk).await
+                      .map_err(|e| ProbeError::failed(format!("read: {e}")))?;
+                  if n == 0 {
+                      if head.framing == Framing::UntilClose {
+                          break raw;
+                      }
+                      return Err(ProbeError::failed("connection closed mid-body"));
+                  }
+                  raw.extend_from_slice(&chunk[..n]);
+              };
+              Ok(json!({
+                  "status": head.status,
+                  "body": String::from_utf8_lossy(&body),
+              }))
+          }
+
+          '''
+          if post_marker not in http_text:
+              raise SystemExit("Pinned Meow HTTP probe fetch marker changed")
+          if "pub(super) async fn post(" not in http_text:
+              http_text = http_text.replace(post_marker, post_impl + post_marker, 1)
+              http.write_text(http_text)
+
+          probe_mod = Path("core/src/main/rust/meow-android-ffi/src/probe/mod.rs")
+          mod_text = probe_mod.read_text()
+          get_line = '        "http-get" => http::get(proxy, arg).await,'
+          post_line = '''        "http-post" => {
+              let value: Value = serde_json::from_str(arg)
+                  .map_err(|e| ProbeError::failed(format!("bad POST probe arguments: {e}")))?;
+              let url = value.get("url").and_then(Value::as_str)
+                  .ok_or_else(|| ProbeError::failed("POST probe URL is missing"))?;
+              let body = value.get("body").and_then(Value::as_str).unwrap_or("");
+              let headers = value.get("headers").and_then(Value::as_object)
+                  .map(|map| map.iter().filter_map(|(k, v)| {
+                      v.as_str().map(|value| (k.clone(), value.to_string()))
+                  }).collect::<Vec<_>>())
+                  .unwrap_or_default();
+              http::post(proxy, url, &headers, body).await
+          },'''
+          if get_line not in mod_text:
+              raise SystemExit("Pinned Meow HTTP GET probe dispatch changed")
+          if '"http-post" =>' not in mod_text:
+              probe_mod.write_text(mod_text.replace(get_line, get_line + "\\n" + post_line, 1))
           PY
 
       - name: Setup Java
