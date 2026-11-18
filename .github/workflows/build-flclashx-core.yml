@@ -121,10 +121,10 @@ jobs:
       - name: Stage FlClashX core for GilrTano Android app
         run: |
           mkdir -p app/libs app/src/main/assets/licenses
-          AAR="$(find FlClashX/android/core/build -type f -name '*.aar' -print -quit)"
+          AAR="$(find FlClashX/android/build -type f -name '*.aar' -print -quit)"
           if [ -z "$AAR" ]; then
             echo "FlClashX Gradle build produced no AAR. Build tree:"
-            find FlClashX/android/core/build -maxdepth 6 -type f | sort | tail -100
+            find FlClashX/android/build -maxdepth 6 -type f | sort | tail -100
             exit 1
           fi
           echo "Using FlClashX AAR: $AAR"
@@ -136,7 +136,7 @@ jobs:
         run: |
           AAR="app/libs/flclashx-core.aar"
           test -s "$AAR"
-          unzip -l "$AAR" | grep -E 'jni/arm64-v8a/libclash.so'
+          unzip -l "$AAR" | grep -E 'jni/arm64-v8a/libgojni.so'
           unzip -p "$AAR" classes.jar > /tmp/flclashx-classes.jar
           jar tf /tmp/flclashx-classes.jar | grep -E 'com/follow/clashx/core/mobile/Mobile.class'
 
