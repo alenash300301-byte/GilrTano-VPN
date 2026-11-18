@@ -93,34 +93,17 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          for name in ("settings.gradle.kts", "build.gradle.kts"):
-              path = Path(name)
-              source = path.read_text()
-              mirror = 'maven { url = uri("https://maven-central.storage-download.googleapis.com/maven2/") }\n        mavenCentral()'
-              path.write_text(source.replace("mavenCentral()", mirror))
+          settings = Path("settings.gradle.kts")
+          source = settings.read_text()
+          mirror = 'maven { url = uri("https://maven-central.storage-download.googleapis.com/maven2/") }'
+          source = source.replace("pluginManagement {", "pluginManagement {\\n    repositories {\\n        " + mirror + "\\n    }")
+          settings.write_text(source)
+          build = Path("build.gradle.kts")
+          if build.exists():
+              source = build.read_text()
+              source = source.replace("mavenCentral()", mirror + "\\n        mavenCentral()")
+              build.write_text(source)
           PY
-
-      - name: Configure Gradle plugin dependency mirror
-        working-directory: FlClashX/android
-        run: |
-          cat > /tmp/flclashx-repositories.init.gradle <<'EOF'
-          settingsEvaluated { settings ->
-              settings.pluginManagement.repositories {
-                  maven {
-                      name = "MavenCentralGoogleMirror"
-                      url = uri("https://maven-central.storage-download.googleapis.com/maven2/")
-                  }
-              }
-          }
-          allprojects {
-              repositories {
-                  maven {
-                      name = "MavenCentralGoogleMirror"
-                      url = uri("https://maven-central.storage-download.googleapis.com/maven2/")
-                  }
-              }
-          }
-          EOF
 
       - name: Build FlClashX gomobile core (ARM64 only)
         working-directory: FlClashX/android
