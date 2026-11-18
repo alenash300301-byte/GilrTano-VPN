@@ -1,10 +1,10 @@
 name: Build GilrTano VPN with Meow
-# Builds include the Quattro automatic fastest-node monitor.
+# Builds the Meow ARM64 candidate; product mode selection remains manual.
 
 on:
   workflow_dispatch:
   push:
-    branches: [meow-engine-integration]
+    branches: [meow-engine-integration, portal-quattro-manual-meow]
   pull_request:
     branches: [main]
 
