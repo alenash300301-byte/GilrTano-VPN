@@ -96,12 +96,12 @@ jobs:
           settings = Path("settings.gradle.kts")
           source = settings.read_text()
           mirror = 'maven { url = uri("https://maven-central.storage-download.googleapis.com/maven2/") }'
-          source = source.replace("pluginManagement {", "pluginManagement {\\n    repositories {\\n        " + mirror + "\\n    }")
+          source = source.replace("mavenCentral()", mirror + chr(10) + "        mavenCentral()", 1)
           settings.write_text(source)
           build = Path("build.gradle.kts")
           if build.exists():
               source = build.read_text()
-              source = source.replace("mavenCentral()", mirror + "\\n        mavenCentral()")
+              source = source.replace("mavenCentral()", mirror + chr(10) + "        mavenCentral()")
               build.write_text(source)
           PY
 
@@ -111,7 +111,7 @@ jobs:
           ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
         run: |
           for attempt in 1 2 3 4; do
-            if ./gradlew --init-script /tmp/flclashx-repositories.init.gradle :core:bindCore :core:assembleDebug \
+            if ./gradlew :core:bindCore :core:assembleDebug \
               -Ptarget-platform=android-arm64 \
               -x :app:compileFlutterBuildDebug \
               -x :app:copyFlutterAssetsDebug \
