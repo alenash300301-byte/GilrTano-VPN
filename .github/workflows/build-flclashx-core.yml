@@ -95,18 +95,17 @@ jobs:
       - name: Verify native core and Kotlin bridge
         working-directory: .
         run: |
-          AAR="build/core/outputs/aar/core-debug.aar"
-          test -s "$AAR" || AAR="build/core/outputs/aar/core-release.aar"
+          AAR="android/core/build/gomobile/core.aar"
           test -s "$AAR"
           unzip -l "$AAR" | grep -E 'jni/arm64-v8a/libclash.so'
           unzip -p "$AAR" classes.jar > /tmp/flclashx-classes.jar
-          jar tf /tmp/flclashx-classes.jar | grep -E 'com/follow/clashx/core/Core.class'
+          jar tf /tmp/flclashx-classes.jar | grep -E 'com/follow/clashx/core/mobile/Mobile.class'
 
       - name: Upload FlClashX ARM64 core
         uses: actions/upload-artifact@v4
         with:
           name: FlClashX-v0.5.7-Android-ARM64-Core
-          path: build/core/outputs/aar/*.aar
+          path: FlClashX/android/core/build/gomobile/core.aar
           if-no-files-found: error
           retention-days: 14
 
