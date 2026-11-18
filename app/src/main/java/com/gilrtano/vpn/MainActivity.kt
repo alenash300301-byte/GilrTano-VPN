@@ -91,7 +91,7 @@ class MainActivity : Activity() {
 
     private val prefs by lazy { getPreferences(MODE_PRIVATE) }
     private val activeNodes: List<ImportedNode>
-        get() = when (activeMode) { "portal" -> portalNodes; "free" -> freeNodes; else -> quattroNodes }
+        get() = if (activeMode == "portal") portalNodes else quattroNodes
 
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -506,7 +506,6 @@ class MainActivity : Activity() {
                     gravity = android.view.Gravity.CENTER
                     addView(quattroTab, LinearLayout.LayoutParams(0, dp(44), 1f).apply { rightMargin = dp(4) })
                     addView(portalTab, LinearLayout.LayoutParams(0, dp(44), 1f).apply { leftMargin = dp(4); rightMargin = dp(4) })
-                    addView(freeTab, LinearLayout.LayoutParams(0, dp(44), 1f).apply { leftMargin = dp(4) })
                     visibility = View.VISIBLE
                 }
                 settingsHeader = TextView(this@MainActivity).apply {
@@ -743,11 +742,6 @@ class MainActivity : Activity() {
         })
         profilesPage.addView(actionButton("Импортировать PORTAL YAML по ссылке") { showPortalImportDialog() })
         profilesPage.addView(actionButton("Выбрать файл PORTAL YAML") { pickPortalYaml() })
-        profilesPage.addView(actionButton("Импортировать бесплатный резерв") {
-            val value = prefs.getString("free_subscription_url", "").orEmpty()
-            if (value.isNotBlank()) importFrom(value, true)
-            else Toast.makeText(this@MainActivity, "Ссылка бесплатного резерва не задана", Toast.LENGTH_LONG).show()
-        })
         profilesPage.addView(actionButton("Обновить список профилей") { refreshProfileCard(); updateServerPage() })
         val settingsPage = page("Настройки")
         settingsPage.addView(actionButton("Проверить обновления") { checkForAppUpdate() })
@@ -848,7 +842,8 @@ class MainActivity : Activity() {
             minHeight = dp(174)
         }
         activeMode = prefs.getString("connection_mode", "quattro") ?: "quattro"
-        if (activeMode !in setOf("quattro", "portal", "free")) activeMode = "quattro"
+        if (activeMode !in setOf("quattro", "portal")) activeMode = "quattro"
+        prefs.edit().putString("connection_mode", activeMode).putBoolean("active_free_mode", false).apply()
         autoMode = false
         activeFree = activeMode == "free"
         activePortal = activeMode == "portal"
@@ -1381,10 +1376,10 @@ class MainActivity : Activity() {
     }
 
     private fun switchMode(mode: String) {
-        if (mode !in setOf("quattro", "portal", "free")) return
-        val nodes = when (mode) { "portal" -> portalNodes; "free" -> freeNodes; else -> quattroNodes }
+        if (mode !in setOf("quattro", "portal")) return
+        val nodes = if (mode == "portal") portalNodes else quattroNodes
         if (nodes.isEmpty()) {
-            val message = when (mode) { "portal" -> "Импортируй PORTAL YAML"; "free" -> "Импортируй FREE серверы"; else -> "Импортируй QUATTRO профиль" }
+            val message = if (mode == "portal") "Импортируй PORTAL YAML" else "Импортируй QUATTRO профиль"
             Toast.makeText(this, message, Toast.LENGTH_LONG).show(); return
         }
         if (activeMode == mode) return
@@ -1395,14 +1390,14 @@ class MainActivity : Activity() {
             status.text = "Отключаю VPN для смены режима…"
             startService(Intent(this, GilrTanoVpnService::class.java).setAction(GilrTanoVpnService.ACTION_STOP))
         }
-        activeMode = mode; activeFree = mode == "free"; activePortal = mode == "portal"; autoMode = false
-        prefs.edit().putString("connection_mode", mode).putBoolean("active_free_mode", activeFree).apply()
+        activeMode = mode; activeFree = false; activePortal = mode == "portal"; autoMode = false
+        prefs.edit().putString("connection_mode", mode).putBoolean("active_free_mode", false).apply()
         refreshMode(); updateServerCard(false)
         if (active) status.text = "Отключаю VPN… выбран режим " + mode.uppercase()
         else Toast.makeText(this, "Выбран режим " + mode.uppercase(), Toast.LENGTH_SHORT).show()
     }
 
-    private fun activeSelectionKey(): String = when (activeMode) { "portal" -> "portal_selected"; "free" -> "free_selected"; else -> "quattro_selected" }
+    private fun activeSelectionKey(): String = if (activeMode == "portal") "portal_selected" else "quattro_selected"
     private fun modeDisplayName(): String = activeMode.uppercase()
 
     private fun pickPortalYaml() {
@@ -1441,15 +1436,15 @@ class MainActivity : Activity() {
     }
 
     private fun refreshMode() {
-        autoMode = false; activeFree = activeMode == "free"; activePortal = activeMode == "portal"
-        val q = activeMode == "quattro"; val p = activeMode == "portal"; val f = activeMode == "free"
+        autoMode = false; activeFree = false; activePortal = activeMode == "portal"
+        val q = activeMode == "quattro"; val p = activeMode == "portal"
         fun bg(selected: Boolean) = GradientDrawable().apply { setColor(if (selected) Color.rgb(24, 45, 28) else Color.rgb(13, 13, 15)); cornerRadius = dp(14).toFloat(); setStroke(dp(if (selected) 2 else 1), if (selected) Color.rgb(36, 220, 78) else Color.rgb(58, 58, 62)) }
-        quattroTab.isEnabled = !q; portalTab.isEnabled = !p; freeTab.isEnabled = !f
-        quattroTab.alpha = if (q) 1f else 0.72f; portalTab.alpha = if (p) 1f else 0.72f; freeTab.alpha = if (f) 1f else 0.72f
-        quattroTab.background = bg(q); portalTab.background = bg(p); freeTab.background = bg(f)
-        quattroTab.setTextColor(if (q) Color.WHITE else Color.LTGRAY); portalTab.setTextColor(if (p) Color.WHITE else Color.LTGRAY); freeTab.setTextColor(if (f) Color.WHITE else Color.LTGRAY)
+        quattroTab.isEnabled = !q; portalTab.isEnabled = !p
+        quattroTab.alpha = if (q) 1f else 0.72f; portalTab.alpha = if (p) 1f else 0.72f
+        quattroTab.background = bg(q); portalTab.background = bg(p)
+        quattroTab.setTextColor(if (q) Color.WHITE else Color.LTGRAY); portalTab.setTextColor(if (p) Color.WHITE else Color.LTGRAY)
         if (::protocolMetric.isInitialized) protocolMetric.text = modeDisplayName()
-        primarySource.visibility = if (q) View.VISIBLE else View.GONE; freeSource.visibility = if (f) View.VISIBLE else View.GONE
+        primarySource.visibility = if (q) View.VISIBLE else View.GONE; freeSource.visibility = View.GONE
         findImportButtonsVisibility()
         val list = activeNodes
         servers.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, list.map { it.name })
@@ -1465,18 +1460,15 @@ class MainActivity : Activity() {
         val page = scroll.getChildAt(0) as? ViewGroup ?: return
         settingsHeader.visibility = if (settingsExpanded) View.VISIBLE else View.GONE
         modeSelectorRow.visibility = View.VISIBLE
-        primarySource.visibility = if (settingsExpanded && !activeFree) View.VISIBLE else View.GONE
-        freeSource.visibility = if (settingsExpanded && activeFree) View.VISIBLE else View.GONE
-        bestFreeButton.visibility = if (settingsExpanded && activeFree) View.VISIBLE else View.GONE
+        primarySource.visibility = if (settingsExpanded && !activePortal) View.VISIBLE else View.GONE
+        freeSource.visibility = View.GONE
+        bestFreeButton.visibility = View.GONE
         checkPing.visibility = if (settingsExpanded) View.VISIBLE else View.GONE
         for (i in 0 until page.childCount) {
             val child = page.getChildAt(i)
             if (child is Button) {
                 val label = child.text.toString()
-                val show = settingsExpanded && (
-                    (!activeFree && (label == "Импортировать Quattro" || label == "Выбрать DOCX Quattro")) ||
-                    (activeFree && label == "Импортировать бесплатные серверы")
-                )
+                val show = settingsExpanded && !activePortal && (label == "Импортировать Quattro" || label == "Выбрать DOCX Quattro")
                 if (label.startsWith("Импортировать") || label == "Выбрать DOCX Quattro") {
                     child.visibility = if (show) View.VISIBLE else View.GONE
                 }
@@ -1509,8 +1501,8 @@ class MainActivity : Activity() {
                         prefs.edit().putString("subscription_url", source).apply()
                         saveNodes("quattro_nodes", quattroNodes)
                     }
-                    activeFree = isFree
-                    prefs.edit().putBoolean("active_free_mode", activeFree).apply()
+                    activeFree = false
+                    prefs.edit().putBoolean("active_free_mode", false).apply()
                     refreshMode()
                     settingsExpanded = false
                     settingsHeader.text = "Настройки"
