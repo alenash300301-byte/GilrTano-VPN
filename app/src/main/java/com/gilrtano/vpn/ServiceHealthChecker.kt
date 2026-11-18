@@ -1,6 +1,5 @@
 package com.gilrtano.vpn
 
-import android.content.Context
 import android.util.Log
 import io.github.madeye.meow.core.MeowCore
 import org.json.JSONObject
@@ -91,7 +90,7 @@ object ServiceHealthChecker {
         Target("kinopoisk", "Кинопоиск", "https://www.kinopoisk.ru/"),
     )
 
-    fun checkProxy(context: Context, proxyName: String): ProxyResult {
+    fun checkProxy(proxyName: String): ProxyResult {
         val pool = Executors.newFixedThreadPool(MAX_PARALLEL_SERVICES)
         val futures = ArrayList<Future<Result>>(targets.size)
         try {
