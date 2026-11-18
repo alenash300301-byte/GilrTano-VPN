@@ -132,11 +132,15 @@ object ServiceHealthChecker {
         if (target.rule == Rule.CHATGPT) return checkChatGpt(proxyName, target)
         if (target.rule == Rule.NETFLIX) return checkNetflix(proxyName, target)
         val started = System.nanoTime()
+        val probeKind = if (target.rule == Rule.GEMINI ||
+            target.rule == Rule.PRIME_VIDEO || target.rule == Rule.TIKTOK) {
+            "http-get-large"
+        } else NATIVE_KIND
         val raw = try {
             MeowCore.nativeProbeProxy(
                 ids.incrementAndGet(),
                 proxyName,
-                NATIVE_KIND,
+                probeKind,
                 target.url,
             )
         } catch (e: Throwable) {
