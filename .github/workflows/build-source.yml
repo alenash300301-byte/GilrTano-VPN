@@ -45,6 +45,57 @@ jobs:
 
           http = source
           http_text = http.read_text()
+          get_block = '''pub(super) async fn get(proxy: &dyn ProxyAdapter, url: &str) -> ProbeResult {
+              let Some(url) = Url::parse(url) else {
+                  return Err(ProbeError::new(
+                      "bad-request",
+                      format!("not an http(s) URL: {url}"),
+                  ));
+              };
+              timeout(GET_TIMEOUT, fetch(proxy, &url))
+                  .await
+                  .unwrap_or_else(|_| Err(ProbeError::timeout("no answer in time")))
+          }
+          '''
+          get_replacement = '''pub(super) async fn get(proxy: &dyn ProxyAdapter, url: &str) -> ProbeResult {
+              get_with_cap(proxy, url, GET_BODY_CAP).await
+          }
+
+          pub(super) async fn get_large(proxy: &dyn ProxyAdapter, url: &str) -> ProbeResult {
+              get_with_cap(proxy, url, 8 * 1024 * 1024).await
+          }
+
+          async fn get_with_cap(proxy: &dyn ProxyAdapter, url: &str, max_body: usize) -> ProbeResult {
+              let Some(url) = Url::parse(url) else {
+                  return Err(ProbeError::new(
+                      "bad-request",
+                      format!("not an http(s) URL: {url}"),
+                  ));
+              };
+              timeout(GET_TIMEOUT, fetch(proxy, &url, max_body))
+                  .await
+                  .unwrap_or_else(|_| Err(ProbeError::timeout("no answer in time")))
+          }
+          '''
+          if get_block not in http_text:
+              raise SystemExit("Pinned Meow HTTP GET function changed")
+          http_text = http_text.replace(get_block, get_replacement, 1)
+          fetch_marker = "async fn fetch(proxy: &dyn ProxyAdapter, url: &Url) -> ProbeResult {"
+          if fetch_marker not in http_text:
+              raise SystemExit("Pinned Meow HTTP fetch function changed")
+          http_text = http_text.replace(
+              fetch_marker,
+              "async fn fetch(proxy: &dyn ProxyAdapter, url: &Url, max_body: usize) -> ProbeResult {",
+              1,
+          )
+          fetch_start = http_text.index("async fn fetch(")
+          fetch_end = http_text.index("// ---------------------------------------------------------------------------\\n// Bandwidth", fetch_start)
+          fetch_part = http_text[fetch_start:fetch_end]
+          if "if raw.len() > GET_BODY_CAP {" not in fetch_part:
+              raise SystemExit("Pinned Meow HTTP body cap check changed")
+          fetch_part = fetch_part.replace("if raw.len() > GET_BODY_CAP {", "if raw.len() > max_body {", 1)
+          http_text = http_text[:fetch_start] + fetch_part + http_text[fetch_end:]
+          http_text = http.read_text()
           post_marker = "async fn fetch(proxy: &dyn ProxyAdapter, url: &Url) -> ProbeResult {"
           post_impl = r'''
           pub(super) async fn post(
@@ -119,6 +170,7 @@ jobs:
           probe_mod = Path("core/src/main/rust/meow-android-ffi/src/probe/mod.rs")
           mod_text = probe_mod.read_text()
           get_line = '        "http-get" => http::get(proxy, arg).await,'
+          large_line = '        "http-get-large" => http::get_large(proxy, arg).await,'
           post_line = '''        "http-post" => {
               let value: Value = serde_json::from_str(arg)
                   .map_err(|e| ProbeError::failed(format!("bad POST probe arguments: {e}")))?;
@@ -134,8 +186,11 @@ jobs:
           },'''
           if get_line not in mod_text:
               raise SystemExit("Pinned Meow HTTP GET probe dispatch changed")
+          if '"http-get-large" =>' not in mod_text:
+              mod_text = mod_text.replace(get_line, get_line + "\n" + large_line, 1)
           if '"http-post" =>' not in mod_text:
-              probe_mod.write_text(mod_text.replace(get_line, get_line + "\n" + post_line, 1))
+              mod_text = mod_text.replace(get_line, get_line + "\n" + post_line, 1)
+          probe_mod.write_text(mod_text)
           PY
 
       - name: Setup Java
