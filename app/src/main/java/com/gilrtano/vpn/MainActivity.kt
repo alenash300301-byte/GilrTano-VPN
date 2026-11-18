@@ -932,7 +932,6 @@ class MainActivity : Activity() {
                         if (result.isSuccess) {
                             Toast.makeText(this, "Выбран: $member", Toast.LENGTH_SHORT).show()
                             serverCardSubtitle.text = "${group.name}: $member"
-                            updateServerPage()
                         } else {
                             Toast.makeText(this, "Не удалось переключить: ${result.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
                         }
