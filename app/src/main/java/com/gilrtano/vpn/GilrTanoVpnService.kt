@@ -56,7 +56,7 @@ class GilrTanoVpnService : VpnService() {
             ACTION_RESUME -> {
                 val config = activeConfig
                 if (paused && !config.isNullOrBlank()) {
-                    startTunnel(config, fallbackConfig, preferredConfig, automaticMode, true)
+                    startTunnel(config, null, null, false, true)
                 }
             }
             ACTION_SWITCH -> {
@@ -74,12 +74,14 @@ class GilrTanoVpnService : VpnService() {
                     broadcastStatus("Добавьте VLESS-ссылку или Clash YAML")
                     stopSelf()
                 } else {
-                    automaticMode = intent.getBooleanExtra(EXTRA_AUTO, false)
-                    fallbackConfig = readConfigExtra(intent, EXTRA_FALLBACK_CONFIG)
-                    preferredConfig = readConfigExtra(intent, EXTRA_PREFERRED_CONFIG)
+                    // Product modes are always explicitly selected by the user.
+                    // Never activate automatic cross-mode fallback, even for stale intents.
+                    automaticMode = false
+                    fallbackConfig = null
+                    preferredConfig = null
                     usingFallback = false
                     consecutiveProbeFailures = 0
-                    startTunnel(config, fallbackConfig, preferredConfig, automaticMode, false)
+                    startTunnel(config, null, null, false, false)
                 }
             }
         }
@@ -184,12 +186,7 @@ class GilrTanoVpnService : VpnService() {
                 Log.i(TAG, "Meow connected, latency=${latency}ms, ipv6=${MeowCore.nativeTunIpv6()}")
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to start Meow VPN", e)
-                if (!stopping && automaticMode && !usingFallback && !fallbackConfig.isNullOrBlank()) {
-                    usingFallback = true
-                    lastSwitchAt = System.currentTimeMillis()
-                    broadcastStatus("Quattro недоступен. Запускаю резерв…")
-                    startTunnel(fallbackConfig!!, fallbackConfig, preferredConfig, true, false)
-                } else if (!stopping) {
+                if (!stopping) {
                     broadcastStatus("Ошибка запуска: ${e.message ?: "неизвестная ошибка"}")
                     stopTunnel()
                 }
