@@ -15,7 +15,7 @@ import java.util.concurrent.atomic.AtomicLong
  * through the named outbound, never through Android's default network.
  *
  * The catalogue mirrors FlClashX v0.5.8's 17 service targets. The Meow probe
- * currently exposes GET/status/body (64 KiB body cap, 5 s native timeout),
+ * currently exposes GET/status/body (1 MiB body cap, 5 s native timeout),
  * so checks use lightweight public endpoints and classify what those
  * responses can prove. They do not claim account-login or playback success.
  */
