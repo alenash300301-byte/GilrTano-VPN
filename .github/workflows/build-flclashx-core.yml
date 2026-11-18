@@ -49,7 +49,14 @@ jobs:
 
       - name: Download Mihomo core dependencies
         working-directory: FlClashX/core
-        run: go mod download
+        run: |
+          for attempt in 1 2 3 4 5; do
+            if go mod download; then exit 0; fi
+            echo "Go dependency download failed (attempt $attempt/5); retrying..."
+            sleep $((attempt * 10))
+          done
+          echo "Unable to download Go dependencies after five attempts" >&2
+          exit 1
 
       - name: Setup Android NDK
         uses: nttld/setup-ndk@v1
@@ -101,7 +108,7 @@ jobs:
       - name: Verify native core and Kotlin bridge
         working-directory: .
         run: |
-          AAR="android/core/build/gomobile/core.aar"
+          AAR="FlClashX/android/core/build/gomobile/core.aar"
           test -s "$AAR"
           unzip -l "$AAR" | grep -E 'jni/arm64-v8a/libclash.so'
           unzip -p "$AAR" classes.jar > /tmp/flclashx-classes.jar
