@@ -184,11 +184,11 @@ class MainActivity : Activity() {
         }
 
         val importPrimary = Button(this).apply {
-            text = "Импортировать Quattro"
+            text = "Импортировать подписку"
             setOnClickListener { importFrom(primarySource.text.toString().trim()) }
         }
         val importDocx = Button(this).apply {
-            text = "Выбрать DOCX Quattro"
+            text = "Выбрать DOCX подписки"
             setOnClickListener {
                 val pick = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                     addCategory(Intent.CATEGORY_OPENABLE)
@@ -1334,7 +1334,7 @@ class MainActivity : Activity() {
         if (mode !in setOf("quattro", "portal")) return
         val nodes = if (mode == "portal") portalNodes else quattroNodes
         if (nodes.isEmpty()) {
-            val message = if (mode == "portal") "Импортируй PORTAL YAML" else "Импортируй QUATTRO профиль"
+            val message = if (mode == "portal") "Импортируй FREE YAML" else "Импортируй профиль подписки"
             Toast.makeText(this, message, Toast.LENGTH_LONG).show(); return
         }
         if (activeMode == mode) return
@@ -1349,11 +1349,11 @@ class MainActivity : Activity() {
         prefs.edit().putString("connection_mode", mode).putBoolean("active_free_mode", false).apply()
         refreshMode(); updateServerCard(false)
         if (active) status.text = "Отключаю VPN… выбран режим " + mode.uppercase()
-        else Toast.makeText(this, "Выбран режим " + mode.uppercase(), Toast.LENGTH_SHORT).show()
+        else Toast.makeText(this, "Выбран режим " + if (mode == "quattro") "ПОДПИСКА" else "FREE", Toast.LENGTH_SHORT).show()
     }
 
     private fun activeSelectionKey(): String = if (activeMode == "portal") "portal_selected" else "quattro_selected"
-    private fun modeDisplayName(): String = activeMode.uppercase()
+    private fun modeDisplayName(): String = if (activeMode == "quattro") "ПОДПИСКА" else "FREE"
 
     private fun pickPortalYaml() {
         val pick = Intent(Intent.ACTION_OPEN_DOCUMENT).apply { addCategory(Intent.CATEGORY_OPENABLE); type = "*/*" }
@@ -1421,8 +1421,8 @@ class MainActivity : Activity() {
             val child = page.getChildAt(i)
             if (child is Button) {
                 val label = child.text.toString()
-                val show = settingsExpanded && !activePortal && (label == "Импортировать Quattro" || label == "Выбрать DOCX Quattro")
-                if (label.startsWith("Импортировать") || label == "Выбрать DOCX Quattro") {
+                val show = settingsExpanded && !activePortal && (label == "Импортировать подписку" || label == "Выбрать DOCX подписки")
+                if (label.startsWith("Импортировать") || label == "Выбрать DOCX подписки") {
                     child.visibility = if (show) View.VISIBLE else View.GONE
                 }
             }
@@ -1437,7 +1437,7 @@ class MainActivity : Activity() {
             Toast.makeText(this, "Укажи ссылку или конфигурацию", Toast.LENGTH_LONG).show()
             return
         }
-        status.text = "Загружаю Quattro…"
+        status.text = "Загружаю подписку…"
         Thread {
             try {
                 val imported = SubscriptionImporter.load(source)
@@ -1453,7 +1453,7 @@ class MainActivity : Activity() {
                     settingsExpanded = false
                     settingsHeader.text = "Настройки"
                     findImportButtonsVisibility()
-                    status.text = "Серверы QUATTRO добавлены"
+                    status.text = "Профиль подписки добавлен"
                     measureSelectedPing()
                 }
             } catch (e: Exception) {
@@ -1598,7 +1598,7 @@ class MainActivity : Activity() {
                                     proxySection.lineSequence().count { it.trimStart().startsWith("- name:") }
                                 }
                             }
-                            status.text = "Quattro сохранён: $serverCount серверов. Импортировать снова не нужно."
+                            status.text = "Подписка сохранена: $serverCount серверов. Импортировать снова не нужно."
                             measureSelectedPing()
                         }
                     }
