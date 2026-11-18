@@ -43,7 +43,9 @@ import java.net.InetSocketAddress
 import java.net.Socket
 import java.util.concurrent.Callable
 import java.util.concurrent.Executors
+import java.util.concurrent.ExecutorCompletionService
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 class MainActivity : Activity() {
     private lateinit var status: TextView
@@ -956,8 +958,139 @@ class MainActivity : Activity() {
                     }
                 }, "GilrTano-Meow-select").start()
             }
+            .setNeutralButton("⚡ Авто | Самый быстрый") { dialog, _ ->
+                dialog.dismiss()
+                startFastestServerScan(group)
+            }
             .setNegativeButton("Назад", null)
             .show()
+    }
+
+    /**
+     * Tests every member of the selected Quattro group through Meow itself,
+     * then selects the member with the lowest successful HTTP delay.
+     * Probes run in bounded parallel batches so 563 nodes do not overload the phone.
+     */
+    private fun startFastestServerScan(group: MeowProxyGroup) {
+        val members = group.members.distinct()
+        if (members.isEmpty()) {
+            Toast.makeText(this, "В группе нет серверов для проверки", Toast.LENGTH_LONG).show()
+            return
+        }
+
+        val executor = Executors.newFixedThreadPool(16)
+        val completion = ExecutorCompletionService<Pair<String, Int?>>(executor)
+        val cancelled = AtomicBoolean(false)
+        var scanThread: Thread? = null
+        val progress = ProgressDialog(this).apply {
+            setTitle("Авто | Самый быстрый")
+            setMessage("Подготовка проверки серверов…")
+            setProgressStyle(ProgressDialog.STYLE_HORIZONTAL)
+            max = members.size
+            progress = 0
+            setCancelable(true)
+            setOnCancelListener {
+                cancelled.set(true)
+                scanThread?.interrupt()
+                executor.shutdownNow()
+            }
+        }
+        progress.show()
+
+        scanThread = Thread({
+            var completed = 0
+            val successful = ArrayList<Pair<String, Int>>()
+            try {
+                members.forEach { member ->
+                    if (cancelled.get()) return@forEach
+                    completion.submit(Callable {
+                        val delay = runCatching {
+                            MeowController.probeMember(this, member)
+                        }.getOrNull()
+                        member to delay
+                    })
+                }
+
+                while (completed < members.size && !cancelled.get()) {
+                    val (member, delay) = completion.take().get()
+                    completed++
+                    if (delay != null) successful.add(member to delay)
+                    val checked = completed
+                    val reachable = successful.size
+                    runOnUiThread {
+                        if (progress.isShowing && !cancelled.get()) {
+                            progress.progress = checked
+                            progress.setMessage(
+                                "Проверено: $checked из ${members.size}\nДоступно: $reachable"
+                            )
+                        }
+                    }
+                }
+                if (cancelled.get()) return@Thread
+
+                executor.shutdown()
+                val fastest = successful.minByOrNull { it.second }
+                if (fastest == null) {
+                    runOnUiThread {
+                        if (progress.isShowing) progress.dismiss()
+                        AlertDialog.Builder(this)
+                            .setTitle("Проверка завершена")
+                            .setMessage(
+                                "Проверено серверов: $completed из ${members.size}\n" +
+                                    "Доступных серверов: 0\n\n" +
+                                    "Ни один сервер не прошёл проверку соединения с интернетом."
+                            )
+                            .setPositiveButton("ОК", null)
+                            .show()
+                    }
+                    return@Thread
+                }
+
+                val selection = runCatching {
+                    MeowController.selectMember(this, group.name, fastest.first)
+                }
+                runOnUiThread {
+                    if (progress.isShowing) progress.dismiss()
+                    if (selection.isSuccess) {
+                        if (::serverCardTitle.isInitialized) serverCardTitle.text = fastest.first
+                        if (::serverCardSubtitle.isInitialized) {
+                            serverCardSubtitle.text = "${group.name} · выбран автоматически"
+                        }
+                        if (::serverCardPing.isInitialized) serverCardPing.text = "${fastest.second} мс"
+                        if (::pingStatus.isInitialized) pingStatus.text = "Пинг: ${fastest.second} мс"
+                        AlertDialog.Builder(this)
+                            .setTitle("Авто | Самый быстрый")
+                            .setMessage(
+                                "Проверено серверов: $completed из ${members.size}\n" +
+                                    "Доступно: ${successful.size}\n" +
+                                    "Недоступно: ${members.size - successful.size}\n\n" +
+                                    "Выбран: ${fastest.first}\n" +
+                                    "Задержка: ${fastest.second} мс"
+                            )
+                            .setPositiveButton("ОК", null)
+                            .show()
+                    } else {
+                        Toast.makeText(
+                            this,
+                            "Сервер найден (${fastest.second} мс), но выбрать его не удалось: ${selection.exceptionOrNull()?.message}",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                }
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+            } catch (e: Exception) {
+                runOnUiThread {
+                    if (progress.isShowing) progress.dismiss()
+                    if (!cancelled.get()) {
+                        Toast.makeText(this, "Ошибка проверки серверов: ${e.message}", Toast.LENGTH_LONG).show()
+                    }
+                }
+            } finally {
+                executor.shutdownNow()
+            }
+        }, "GilrTano-fastest-quattro")
+        scanThread?.start()
     }
 
     private fun updateServerCard(connected: Boolean) {
