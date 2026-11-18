@@ -25,14 +25,6 @@ class GilrTanoVpnService : VpnService() {
     // Core environment and socket protection are process-wide setup; keep them
     // ready across reconnects instead of repeating native initialization.
     @Volatile private var coreInitialized = false
-    @Volatile private var activeConfig: String? = null
-    @Volatile private var fallbackConfig: String? = null
-    @Volatile private var preferredConfig: String? = null
-    @Volatile private var automaticMode = false
-    @Volatile private var monitorRunning = false
-    @Volatile private var consecutiveProbeFailures = 0
-    @Volatile private var lastAutomaticSwitchAt = 0L
-    @Volatile private var usingFallback = false
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
@@ -45,14 +37,9 @@ class GilrTanoVpnService : VpnService() {
                     broadcastStatus("Добавьте VLESS-ссылку")
                     stopSelf()
                 } else if (intent.action == ACTION_SWITCH) {
-                    automaticMode = false
                     switchTunnel(config)
                 } else {
-                    automaticMode = intent.getBooleanExtra(EXTRA_AUTO, false)
-                    fallbackConfig = intent.getStringExtra(EXTRA_FALLBACK_CONFIG)
-                    preferredConfig = intent.getStringExtra(EXTRA_PREFERRED_CONFIG)
-                    usingFallback = false
-                    consecutiveProbeFailures = 0
+                    // The selected mode is controlled only by the user's explicit choice.
                     startTunnel(config)
                 }
             }
@@ -105,30 +92,16 @@ class GilrTanoVpnService : VpnService() {
                         Log.i(TAG, "Xray status=$status $message")
                         if (status == 0L && !stopping) establishTun()
                         else if (status < 0L && !stopping) {
-                            if (automaticMode && !usingFallback && !fallbackConfig.isNullOrBlank()) {
-                                usingFallback = true
-                                lastAutomaticSwitchAt = System.currentTimeMillis()
-                                broadcastStatus("Quattro недоступен. Запускаю бесплатный резерв…")
-                                switchTunnel(fallbackConfig!!)
-                            } else {
-                                broadcastStatus("Ошибка Xray: $message")
-                                stopTunnel()
-                            }
+                            broadcastStatus("Ошибка Xray: $message")
+                            stopTunnel()
                         }
                     }
                 })
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to start Xray", e)
                 if (!stopping) {
-                    if (automaticMode && !usingFallback && !fallbackConfig.isNullOrBlank()) {
-                        usingFallback = true
-                        lastAutomaticSwitchAt = System.currentTimeMillis()
-                        broadcastStatus("Не удалось запустить Quattro. Пробую бесплатный резерв…")
-                        switchTunnel(fallbackConfig!!)
-                    } else {
-                        broadcastStatus("Ошибка запуска: ${e.message}")
-                        stopTunnel()
-                    }
+                    broadcastStatus("Ошибка запуска: ${e.message}")
+                    stopTunnel()
                 }
             }
         }, "GilrTano-Xray-start").start()
@@ -183,86 +156,17 @@ class GilrTanoVpnService : VpnService() {
                 throw IllegalStateException("Не все обязательные сервисы доступны через VPN")
             }
 
-            val connectedMessage = if (automaticMode) {
-                if (usingFallback) "Quattro · бесплатный резерв" else "Quattro"
-            } else "Xray и TUN работают"
+            val connectedMessage = "Xray и TUN работают"
             broadcastStatus(if (resuming) "Возобновлено · $connectedMessage" else "Подключено · $connectedMessage")
             resuming = false
             updateNotification("Подключено · защищённый трафик")
-            startConnectionMonitor()
         } catch (e: Exception) {
             Log.w(TAG, "VPN tunnel did not pass internet verification", e)
-            if (automaticMode && !usingFallback && !fallbackConfig.isNullOrBlank() && !stopping) {
-                usingFallback = true
-                lastAutomaticSwitchAt = System.currentTimeMillis()
-                broadcastStatus("У выбранного сервера нет интернета. Пробую бесплатный резерв…")
-                switchTunnel(fallbackConfig!!)
-            } else {
-                broadcastStatus("Не удалось подключиться: ${e.message}")
-                stopTunnel()
-            }
+            broadcastStatus("Не удалось подключиться: ${e.message}")
+            stopTunnel()
         }
     }
 
-
-    /**
-     * End-to-end health check through the running local SOCKS inbound. This does
-     * not start a second Xray core and therefore cannot contend with the active tunnel.
-     */
-    private fun startConnectionMonitor() {
-        if (!automaticMode || monitorRunning) return
-        monitorRunning = true
-        Thread({
-            while (monitorRunning && automaticMode && !stopping) {
-                try {
-                    Thread.sleep(MONITOR_INTERVAL_MS)
-                    if (!monitorRunning || !automaticMode || stopping) break
-                    if (paused) continue
-                    val latency = probeTunnel()
-                    if (latency < 0L || latency > POOR_LATENCY_MS) consecutiveProbeFailures++
-                    else consecutiveProbeFailures = 0
-
-                    if (consecutiveProbeFailures >= FAILURE_LIMIT &&
-                        System.currentTimeMillis() - lastAutomaticSwitchAt > SWITCH_COOLDOWN_MS) {
-                        if (!usingFallback && !fallbackConfig.isNullOrBlank()) {
-                            val target = fallbackConfig!!
-                            usingFallback = true
-                            lastAutomaticSwitchAt = System.currentTimeMillis()
-                            consecutiveProbeFailures = 0
-                            broadcastStatus("Связь ухудшилась. Переключаю на бесплатный резерв…")
-                            switchTunnel(target)
-                        } else if (usingFallback && !preferredConfig.isNullOrBlank() &&
-                            System.currentTimeMillis() - lastAutomaticSwitchAt >= RECOVERY_INTERVAL_MS) {
-                            val target = preferredConfig!!
-                            usingFallback = false
-                            lastAutomaticSwitchAt = System.currentTimeMillis()
-                            consecutiveProbeFailures = 0
-                            broadcastStatus("Проверяю восстановление Quattro…")
-                            switchTunnel(target)
-                        }
-                    }
-
-                    // When using the backup, periodically give the preferred Quattro
-                    // profile another chance. A failed trial is automatically rolled back.
-                    if (usingFallback && !preferredConfig.isNullOrBlank() &&
-                        System.currentTimeMillis() - lastAutomaticSwitchAt >= RECOVERY_INTERVAL_MS &&
-                        consecutiveProbeFailures == 0) {
-                        lastAutomaticSwitchAt = System.currentTimeMillis()
-                        usingFallback = false
-                        broadcastStatus("Проверяю, восстановился ли Quattro…")
-                        switchTunnel(preferredConfig!!)
-                    }
-                } catch (e: InterruptedException) {
-                    break
-                } catch (e: Exception) {
-                    Log.w(TAG, "Connection monitor error", e)
-                }
-            }
-            monitorRunning = false
-        }, "GilrTano-connection-monitor").apply { isDaemon = true }.start()
-    }
-
-    private fun probeTunnel(): Long = probeTunnelHost("www.gstatic.com", "/generate_204", 204)
 
     private fun verifyRequiredServices(): Boolean {
         val hosts = listOf(
@@ -384,8 +288,6 @@ class GilrTanoVpnService : VpnService() {
         stopping = true
         paused = false
         resuming = false
-        monitorRunning = false
-        automaticMode = false
         broadcastStatus("Отменяю подключение…")
         // Native shutdown may block; run it away from Android's main thread.
         Thread({
@@ -469,19 +371,11 @@ class GilrTanoVpnService : VpnService() {
         const val ACTION_STATUS = "com.gilrtano.vpn.STATUS"
         const val EXTRA_CONFIG = "xray_config"
         const val EXTRA_STATUS = "status"
-        const val EXTRA_AUTO = "automatic_mode"
-        const val EXTRA_FALLBACK_CONFIG = "fallback_config"
-        const val EXTRA_PREFERRED_CONFIG = "preferred_config"
         private const val TAG = "GilrTanoVPN"
         private const val CHANNEL_ID = "gilrtano_vpn"
         private const val NOTIFICATION_ID = 76
         private const val SOCKS_PORT = 10808
-        private const val MONITOR_INTERVAL_MS = 15_000L
         private const val PROBE_TIMEOUT_MS = 3_500
-        private const val POOR_LATENCY_MS = 500L
-        private const val FAILURE_LIMIT = 2
-        private const val SWITCH_COOLDOWN_MS = 60_000L
-        private const val RECOVERY_INTERVAL_MS = 5 * 60_000L
 
         fun xrayConfigFromVless(uri: String): String {
             val parsed = android.net.Uri.parse(uri.trim())
