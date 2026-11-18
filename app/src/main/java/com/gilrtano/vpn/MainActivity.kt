@@ -692,7 +692,7 @@ class MainActivity : Activity() {
         })
         profilesPage.addView(actionButton("Импортировать Clash YAML") {
             val value = prefs.getString("subscription_url", "").orEmpty()
-            if (value.isNotBlank()) importFrom(value, false)
+            if (value.isNotBlank()) importFrom(value)
             else Toast.makeText(this@MainActivity, "Добавьте ссылку YAML через кнопку «Добавить»", Toast.LENGTH_LONG).show()
         })
         profilesPage.addView(actionButton("Выбрать DOCX Quattro") {
