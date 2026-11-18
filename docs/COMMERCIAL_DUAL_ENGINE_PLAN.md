@@ -41,8 +41,8 @@ Do not merge the current Rust AAR until its full source, native objects, and dep
 ## Delivery stages
 
 1. Inventory current APK/AAR contents and establish a reproducible license audit.
-2. Create a clean Xray + TUN bridge build in isolation; no changes to the current release dependency until it builds and passes tests.
-3. Refactor the app to manual FREE / ПОДПИСКА selection and remove cross-mode fallback.
+2. Compare the clean Xray + TUN route against the Meow ARM64 candidate; keep each engine isolated until dependency licensing and runtime tests pass.
+3. Refactor the app to manual PORTAL / QUATTRO selection, remove legacy FREE/AUTO UI and code, and preserve strict mode isolation.
 4. Implement subscription import, profile grouping, and service health checks.
 5. Implement WARP/MASQUE and DNS capabilities only after protocol and license validation.
 6. Run Android tests on arm64, verify VPN permission, connect/disconnect/pause/resume, DNS, IPv4/IPv6 behavior, service checks, and mode isolation.
@@ -50,7 +50,7 @@ Do not merge the current Rust AAR until its full source, native objects, and dep
 
 ## Release blockers
 
-- No successful Xray-only AAR build yet.
+- No final engine selected: the Meow branch has a successful ARM64 native build and APK CI run, but its complete dependency/license audit is outstanding; no clean Xray-only AAR build has been verified.
 - No final APK license scan yet.
 - MASQUE/WARP interoperability has not yet been tested against a live account/profile.
 - The service-side automatic cross-mode fallback was removed on the integration branch. MainActivity still contains legacy AUTO/FREE UI and connection code and must be refactored before this contract is met.
