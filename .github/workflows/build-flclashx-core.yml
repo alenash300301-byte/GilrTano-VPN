@@ -88,16 +88,35 @@ jobs:
           cp -R "$wrapper/." .
           chmod +x gradlew
 
+      - name: Configure Maven Central mirror
+        working-directory: FlClashX/android
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          for name in ("settings.gradle.kts", "build.gradle.kts"):
+              path = Path(name)
+              source = path.read_text()
+              mirror = 'maven { url = uri("https://maven-central.storage-download.googleapis.com/maven2/") }\\n        mavenCentral()'
+              path.write_text(source.replace("mavenCentral()", mirror))
+          PY
+
       - name: Build FlClashX gomobile core (ARM64 only)
         working-directory: FlClashX/android
         env:
           ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
         run: |
-          ./gradlew :core:assembleDebug \
-            -Ptarget-platform=android-arm64 \
-            -x :app:compileFlutterBuildDebug \
-            -x :app:copyFlutterAssetsDebug \
-            --no-daemon --stacktrace
+          for attempt in 1 2 3 4; do
+            if ./gradlew :core:assembleDebug \\
+              -Ptarget-platform=android-arm64 \\
+              -x :app:compileFlutterBuildDebug \\
+              -x :app:copyFlutterAssetsDebug \\
+              --no-daemon --stacktrace; then
+              exit 0
+            fi
+            echo "Gradle core build failed (attempt $attempt/4); retrying after Maven throttling."
+            sleep $((attempt * 20))
+          done
+          exit 1
 
       - name: Stage FlClashX core for GilrTano Android app
         run: |
