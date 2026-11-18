@@ -25,6 +25,8 @@ import java.util.UUID
 import java.util.concurrent.Callable
 import java.util.concurrent.ExecutorCompletionService
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 
 class GilrTanoVpnService : VpnService() {
     private var tun: ParcelFileDescriptor? = null
@@ -130,6 +132,24 @@ class GilrTanoVpnService : VpnService() {
                 registerNetworkCallback()
                 if (stopping) return@Thread
 
+                // Rank every Quattro member before creating the VPN tunnel.
+                // Meow's controller can probe proxy members directly.
+                autoGroupName = null
+                autoSelectedMember = null
+                pendingBetterMember = null
+                pendingBetterCount = 0
+                if (automaticMode && !usingFallback) {
+                    discoverAutoGroup()
+                    if (autoGroupName.isNullOrBlank()) {
+                        throw IllegalStateException("Не найдена группа серверов Quattro для проверки")
+                    }
+                    updateNotification("Проверяю серверы по 6 сервисам…")
+                    val hasEligibleServer = scanAndMaybeSwitchFastest(forceSelection = true)
+                    if (!hasEligibleServer) {
+                        throw IllegalStateException("Нет серверов, прошедших проверки Instagram, YouTube, ВКонтакте, Telegram, ChatGPT и TikTok")
+                    }
+                }
+
                 val builder = Builder()
                     .setSession("GilrTano VPN")
                     .setMtu(1500)
@@ -151,15 +171,6 @@ class GilrTanoVpnService : VpnService() {
                 if (!MeowCore.nativeIsRunning()) {
                     throw IllegalStateException("Движок Meow остановился во время запуска")
                 }
-                autoGroupName = null
-                autoSelectedMember = null
-                pendingBetterMember = null
-                pendingBetterCount = 0
-                if (automaticMode && !usingFallback) {
-                    runCatching { discoverAutoGroup() }
-                        .onFailure { Log.w(TAG, "Could not discover automatic proxy group", it) }
-                }
-
                 val latency = probeTunnel()
                 if (latency < 0L) {
                     throw IllegalStateException("Туннель запущен, но интернет через него не отвечает")
@@ -288,12 +299,12 @@ class GilrTanoVpnService : VpnService() {
     }
 
     /**
-     * Tests every member against Instagram, YouTube, VK and Telegram through Meow.
+     * Tests every member against Instagram, YouTube, VK, Telegram, ChatGPT and TikTok.
      * Nodes failing any required platform are excluded. Remaining nodes are ranked
-     * by mean response time. A failed current node is replaced immediately; otherwise
-     * a faster node must win two consecutive scans to avoid flapping.
+     * by mean response time. The initial scan selects the best member before TUN setup;
+     * later scans use hysteresis to avoid flapping.
      */
-    private fun scanAndMaybeSwitchFastest(): Boolean {
+    private fun scanAndMaybeSwitchFastest(forceSelection: Boolean = false): Boolean {
         val groupName = autoGroupName ?: return false
         val group = MeowController.listGroups(this).firstOrNull { it.name == groupName }
             ?: return false
@@ -307,6 +318,7 @@ class GilrTanoVpnService : VpnService() {
         val executor = Executors.newFixedThreadPool(workerCount)
         val completion = ExecutorCompletionService<Pair<Pair<String, String>, Int?>>(executor)
         val checksByMember = HashMap<String, MutableMap<String, Int>>()
+        val scanDeadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(MAX_SCAN_DURATION_MS)
         try {
             members.forEach { member ->
                 SOCIAL_ENDPOINTS.forEach { (serviceName, url, expectedStatus) ->
@@ -324,7 +336,12 @@ class GilrTanoVpnService : VpnService() {
                 }
             }
             repeat(totalChecks) {
-                val result = completion.take().get()
+                val remainingNanos = scanDeadline - System.nanoTime()
+                if (remainingNanos <= 0L) {
+                    throw TimeoutException("Полное сканирование превысило ${MAX_SCAN_DURATION_MS / 1000} секунд")
+                }
+                val result = completion.poll(remainingNanos, TimeUnit.NANOSECONDS)?.get()
+                    ?: throw TimeoutException("Полное сканирование превысило ${MAX_SCAN_DURATION_MS / 1000} секунд")
                 result.second?.let { delay ->
                     val (member, serviceName) = result.first
                     checksByMember.getOrPut(member) { HashMap() }[serviceName] = delay
@@ -349,7 +366,7 @@ class GilrTanoVpnService : VpnService() {
         val current = group.selected ?: autoSelectedMember
         val currentDelay = current?.let { delays[it] }
         val best = delays.minByOrNull { it.value } ?: return false
-        if (best.key == current) {
+        if (!forceSelection && best.key == current) {
             autoSelectedMember = current
             pendingBetterMember = null
             pendingBetterCount = 0
@@ -358,13 +375,14 @@ class GilrTanoVpnService : VpnService() {
 
         val currentUnavailable = currentDelay == null
         val improvementNeeded = currentDelay?.let { maxOf(MIN_IMPROVEMENT_MS, it / 5) } ?: 0
-        val meaningfullyFaster = currentUnavailable || best.value + improvementNeeded < (currentDelay ?: Int.MAX_VALUE)
+        val meaningfullyFaster = forceSelection || currentUnavailable ||
+            best.value + improvementNeeded < (currentDelay ?: Int.MAX_VALUE)
         if (!meaningfullyFaster) {
             pendingBetterMember = null
             pendingBetterCount = 0
             return true
         }
-        if (!currentUnavailable) {
+        if (!forceSelection && !currentUnavailable) {
             if (pendingBetterMember == best.key) pendingBetterCount++ else {
                 pendingBetterMember = best.key
                 pendingBetterCount = 1
@@ -372,7 +390,7 @@ class GilrTanoVpnService : VpnService() {
             if (pendingBetterCount < REQUIRED_BETTER_SCANS) return true
         }
         val now = System.currentTimeMillis()
-        if (!currentUnavailable && now - lastSwitchAt < SWITCH_COOLDOWN_MS) return true
+        if (!forceSelection && !currentUnavailable && now - lastSwitchAt < SWITCH_COOLDOWN_MS) return true
 
         MeowController.selectMember(this, groupName, best.key)
         autoSelectedMember = best.key
@@ -623,11 +641,14 @@ class GilrTanoVpnService : VpnService() {
         private const val CONFIRM_SCAN_INTERVAL_MS = 30_000L
         private const val AUTO_PROBE_TIMEOUT_MS = 3500
         private const val AUTO_SCAN_WORKERS = 64
+        private const val MAX_SCAN_DURATION_MS = 180_000L
         private val SOCIAL_ENDPOINTS = listOf(
             Triple("Instagram", "https://www.instagram.com/robots.txt", 200),
             Triple("YouTube", "https://www.youtube.com/generate_204", 204),
             Triple("ВКонтакте", "https://vk.com/robots.txt", 200),
             Triple("Telegram", "https://telegram.org/robots.txt", 200),
+            Triple("ChatGPT", "https://chatgpt.com/robots.txt", 200),
+            Triple("TikTok", "https://www.tiktok.com/robots.txt", 200),
         )
         private const val MIN_IMPROVEMENT_MS = 25
         private const val REQUIRED_BETTER_SCANS = 2
