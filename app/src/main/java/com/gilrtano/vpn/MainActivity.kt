@@ -504,7 +504,7 @@ class MainActivity : Activity() {
                     addView(quattroTab, LinearLayout.LayoutParams(0, dp(44), 1f).apply { rightMargin = dp(4) })
                     addView(portalTab, LinearLayout.LayoutParams(0, dp(44), 1f).apply { leftMargin = dp(4); rightMargin = dp(4) })
                     addView(freeTab, LinearLayout.LayoutParams(0, dp(44), 1f).apply { leftMargin = dp(4) })
-                    visibility = View.GONE
+                    visibility = View.VISIBLE
                 }
                 settingsHeader = TextView(this@MainActivity).apply {
                     text = "Настройки и импорт  ›"; textSize = 20f
