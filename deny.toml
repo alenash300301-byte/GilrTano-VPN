@@ -20,20 +20,7 @@ allow = [
   "CDLA-Permissive-2.0",
   "0BSD",
 ]
-deny = [
-  "GPL-2.0",
-  "GPL-2.0-only",
-  "GPL-2.0-or-later",
-  "GPL-3.0",
-  "GPL-3.0-only",
-  "GPL-3.0-or-later",
-  "AGPL-1.0",
-  "AGPL-3.0",
-  "AGPL-3.0-only",
-  "AGPL-3.0-or-later",
-]
-# No blanket exceptions: every unrecognized or unlicensed crate must be reviewed.
-allow-osi-fsf-free = "neither"
+# Allowlist-only policy: every license not listed above is denied by default.
 exceptions = []
 
 [bans]
