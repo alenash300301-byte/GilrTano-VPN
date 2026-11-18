@@ -1,5 +1,6 @@
 package com.gilrtano.vpn
 
+import android.content.Context
 import android.net.Uri
 import android.util.Base64
 import android.os.Build
@@ -21,12 +22,12 @@ object SubscriptionImporter {
     private const val MAX_NODES = 600
     private const val MAX_BYTES = 25 * 1024 * 1024
 
-    fun load(source: String): List<ImportedNode> {
+    fun load(context: Context, source: String): List<ImportedNode> {
         val trimmed = source.trim()
         val content = when {
             trimmed.startsWith("vless://", ignoreCase = true) -> trimmed
             looksLikeClashYaml(trimmed) -> trimmed
-            trimmed.startsWith("http://") || trimmed.startsWith("https://") -> download(trimmed)
+            trimmed.startsWith("http://") || trimmed.startsWith("https://") -> download(context, trimmed)
             else -> error("Ожидается VLESS-ссылка, HTTPS-подписка или Clash/Mihomo YAML")
         }
         return parse(content)
@@ -35,7 +36,7 @@ object SubscriptionImporter {
     private fun looksLikeClashYaml(value: String): Boolean =
         Regex("(?m)^(proxies|proxy-groups|proxy-providers|rules)\\s*:").containsMatchIn(value)
 
-    private fun download(source: String): String {
+    private fun download(context: Context, source: String): String {
         var lastError: Exception? = null
         repeat(3) { attempt ->
             var connection: HttpURLConnection? = null
@@ -49,7 +50,7 @@ object SubscriptionImporter {
                     setRequestProperty("Cache-Control", "no-cache")
                     setRequestProperty("Connection", "close")
                     // FlClashX-compatible provider identity headers used by subscription panels.
-                    setRequestProperty("x-hwid", Settings.Secure.getString(GilrTanoApplication.contextResolver, Settings.Secure.ANDROID_ID).orEmpty())
+                    setRequestProperty("x-hwid", Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID).orEmpty())
                     setRequestProperty("x-device-os", "android")
                     setRequestProperty("x-ver-os", Build.VERSION.RELEASE.orEmpty())
                     setRequestProperty("x-device-model", listOf(Build.MANUFACTURER, Build.MODEL).filter { it.isNotBlank() }.joinToString(" "))
