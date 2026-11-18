@@ -22,6 +22,7 @@
                 <data android:scheme="clash" android:host="install-config" />
                 <data android:scheme="clashmeta" android:host="install-config" />
                 <data android:scheme="flclash" android:host="install-config" />
+                <data android:scheme="flclashx" android:host="install-config" />
             </intent-filter>
         </activity>
         <service android:name=".GilrTanoVpnService" android:permission="android.permission.BIND_VPN_SERVICE" android:exported="false" android:foregroundServiceType="systemExempted">
