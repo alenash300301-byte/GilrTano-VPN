@@ -136,15 +136,55 @@ object SubscriptionImporter {
         require(!proxies.isNullOrEmpty() || !providers.isNullOrEmpty()) {
             "В YAML не найдены proxies или proxy-providers"
         }
-        val firstProxyName = proxies?.firstNotNullOfOrNull { item ->
-            (item as? Map<*, *>)?.get("name")?.toString()?.takeIf { it.isNotBlank() }
+
+        // A regular Clash subscription contains one profile with many entries in
+        // "proxies". Expose each outbound as a selectable GilrTano server instead
+        // of storing the whole subscription as one item.
+        val validProxies = proxies.orEmpty().mapNotNull { item ->
+            val map = item as? Map<*, *> ?: return@mapNotNull null
+            val name = map["name"]?.toString()?.trim().orEmpty()
+            if (name.isBlank() || map["type"]?.toString().isNullOrBlank()) return@mapNotNull null
+            map.entries.filter { it.key is String }.associate { it.key as String to it.value }
+        }.take(MAX_NODES)
+
+        if (validProxies.isNotEmpty()) {
+            val usedNames = HashSet<String>()
+            return validProxies.mapIndexed { index, proxy ->
+                val originalName = proxy["name"]?.toString()?.trim().orEmpty()
+                var displayName = originalName
+                var suffix = 2
+                while (!usedNames.add(displayName)) {
+                    displayName = "$originalName ($suffix)"
+                    suffix++
+                }
+
+                val selectedProxy = LinkedHashMap(proxy)
+                selectedProxy["name"] = displayName
+
+                // Build a standalone profile for this one outbound. Keep global
+                // DNS/TLS/routing options, but remove groups/providers that could
+                // otherwise override the explicitly selected server.
+                val single = LinkedHashMap(root)
+                single["proxies"] = listOf(selectedProxy)
+                single.remove("proxy-groups")
+                single.remove("proxy-providers")
+                single.remove("rule-providers")
+                single["rules"] = listOf("MATCH,$displayName")
+
+                ImportedNode(
+                    name = displayName,
+                    uri = "",
+                    yamlConfig = yaml.dump(single),
+                )
+            }
         }
+
+        // Provider-only profiles cannot be expanded safely until Meow downloads
+        // their remote provider files. Keep them as a single full profile.
         val name = root["profile-name"]?.toString()?.takeIf { it.isNotBlank() }
             ?: root["name"]?.toString()?.takeIf { it.isNotBlank() }
-            ?: firstProxyName?.let { "Clash · $it" }
             ?: "Clash/Mihomo профиль"
-        // Keep the complete profile: proxy groups, all protocols, rules,
-        // providers and DNS are interpreted by Meow, not flattened to VLESS.
         return listOf(ImportedNode(name, "", text))
     }
+}
 }
