@@ -22,6 +22,9 @@ import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.URL
 import java.util.UUID
+import java.util.concurrent.Callable
+import java.util.concurrent.ExecutorCompletionService
+import java.util.concurrent.Executors
 
 class GilrTanoVpnService : VpnService() {
     private var tun: ParcelFileDescriptor? = null
@@ -35,6 +38,10 @@ class GilrTanoVpnService : VpnService() {
     @Volatile private var activeConfig: String? = null
     @Volatile private var fallbackConfig: String? = null
     @Volatile private var preferredConfig: String? = null
+    @Volatile private var autoGroupName: String? = null
+    @Volatile private var autoSelectedMember: String? = null
+    private var pendingBetterMember: String? = null
+    private var pendingBetterCount = 0
 
     private val connectivity by lazy { getSystemService(ConnectivityManager::class.java) }
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
@@ -143,6 +150,14 @@ class GilrTanoVpnService : VpnService() {
                 }
                 if (!MeowCore.nativeIsRunning()) {
                     throw IllegalStateException("Движок Meow остановился во время запуска")
+                }
+                autoGroupName = null
+                autoSelectedMember = null
+                pendingBetterMember = null
+                pendingBetterCount = 0
+                if (automaticMode && !usingFallback) {
+                    runCatching { discoverAutoGroup() }
+                        .onFailure { Log.w(TAG, "Could not discover automatic proxy group", it) }
                 }
 
                 val latency = probeTunnel()
@@ -256,30 +271,143 @@ class GilrTanoVpnService : VpnService() {
         return -1L
     }
 
+    private fun discoverAutoGroup() {
+        if (!automaticMode || usingFallback || !autoGroupName.isNullOrBlank()) return
+        val groups = MeowController.listGroups(this)
+        val group = groups.firstOrNull {
+            it.name.equals("Quattro VPN", ignoreCase = true) &&
+                (it.type.equals("select", true) || it.type.equals("selector", true))
+        } ?: groups.filter {
+            (it.type.equals("select", true) || it.type.equals("selector", true)) && it.members.size > 1
+        }.maxByOrNull { it.members.size }
+        if (group != null) {
+            autoGroupName = group.name
+            autoSelectedMember = group.selected
+            Log.i(TAG, "Automatic server selection enabled for ${group.name} (${group.members.size} members)")
+        }
+    }
+
+    /**
+     * Re-measures every member of the active Quattro selector through Meow.
+     * A failed current node is replaced immediately; otherwise a new node must
+     * be at least 20% and 25 ms faster in two consecutive scans to avoid flapping.
+     */
+    private fun scanAndMaybeSwitchFastest(): Boolean {
+        val groupName = autoGroupName ?: return false
+        val group = MeowController.listGroups(this).firstOrNull { it.name == groupName }
+            ?: return false
+        val members = group.members.distinct()
+        if (members.isEmpty()) return false
+
+        val workerCount = minOf(AUTO_SCAN_WORKERS, members.size)
+        val executor = Executors.newFixedThreadPool(workerCount)
+        val completion = ExecutorCompletionService<Pair<String, Int?>>(executor)
+        val delays = HashMap<String, Int>()
+        try {
+            members.forEach { member ->
+                completion.submit(Callable {
+                    member to runCatching {
+                        MeowController.probeMember(this, member, timeoutMs = AUTO_PROBE_TIMEOUT_MS)
+                    }.getOrNull()
+                })
+            }
+            repeat(members.size) {
+                val result = runCatching { completion.take().get() }.getOrNull() ?: return@repeat
+                result.second?.let { delays[result.first] = it }
+            }
+        } finally {
+            executor.shutdownNow()
+        }
+
+        if (delays.isEmpty()) {
+            Log.w(TAG, "Automatic scan: no reachable members in $groupName")
+            return false
+        }
+        val current = group.selected ?: autoSelectedMember
+        val currentDelay = current?.let { delays[it] }
+        val best = delays.minByOrNull { it.value } ?: return false
+        if (best.key == current) {
+            autoSelectedMember = current
+            pendingBetterMember = null
+            pendingBetterCount = 0
+            return true
+        }
+
+        val currentUnavailable = currentDelay == null
+        val improvementNeeded = currentDelay?.let { maxOf(MIN_IMPROVEMENT_MS, it / 5) } ?: 0
+        val meaningfullyFaster = currentUnavailable || best.value + improvementNeeded < (currentDelay ?: Int.MAX_VALUE)
+        if (!meaningfullyFaster) {
+            pendingBetterMember = null
+            pendingBetterCount = 0
+            return true
+        }
+        if (!currentUnavailable) {
+            if (pendingBetterMember == best.key) pendingBetterCount++ else {
+                pendingBetterMember = best.key
+                pendingBetterCount = 1
+            }
+            if (pendingBetterCount < REQUIRED_BETTER_SCANS) return true
+        }
+        val now = System.currentTimeMillis()
+        if (!currentUnavailable && now - lastSwitchAt < SWITCH_COOLDOWN_MS) return true
+
+        MeowController.selectMember(this, groupName, best.key)
+        autoSelectedMember = best.key
+        lastSwitchAt = now
+        pendingBetterMember = null
+        pendingBetterCount = 0
+        Log.i(TAG, "Automatic server switch: $current (${currentDelay ?: -1} ms) -> ${best.key} (${best.value} ms)")
+        broadcastStatus("Сервер переключён: ${best.key} · ${best.value} мс")
+        updateNotification("Подключено · ${best.key} · ${best.value} мс")
+        return true
+    }
+
     private fun startConnectionMonitor() {
         if (monitorRunning || !automaticMode) return
         monitorRunning = true
         Thread({
+            var lastGroupScanAt = 0L
             while (monitorRunning && automaticMode && !stopping && !paused) {
                 try {
                     Thread.sleep(MONITOR_INTERVAL_MS)
                     if (!monitorRunning || stopping || paused) break
+                    val now = System.currentTimeMillis()
                     if (probeTunnel() < 0L) consecutiveProbeFailures++ else consecutiveProbeFailures = 0
+
+                    if (autoGroupName.isNullOrBlank() && !usingFallback) {
+                        runCatching { discoverAutoGroup() }
+                            .onFailure { Log.w(TAG, "Automatic group discovery failed", it) }
+                    }
+                    val shouldScanGroup = !autoGroupName.isNullOrBlank() && !usingFallback &&
+                        (lastGroupScanAt == 0L || now - lastGroupScanAt >= AUTO_RESCAN_INTERVAL_MS ||
+                            consecutiveProbeFailures >= FAILURE_LIMIT)
+                    var groupHasWorkingMember: Boolean? = null
+                    if (shouldScanGroup) {
+                        lastGroupScanAt = now
+                        updateNotification("Проверяю скорость серверов Quattro…")
+                        groupHasWorkingMember = runCatching { scanAndMaybeSwitchFastest() }
+                            .onFailure { Log.w(TAG, "Automatic server scan failed", it) }
+                            .getOrDefault(false)
+                        updateNotification("Подключено · автоматический выбор сервера")
+                    }
+
                     if (consecutiveProbeFailures >= FAILURE_LIMIT &&
-                        System.currentTimeMillis() - lastSwitchAt >= SWITCH_COOLDOWN_MS) {
-                        if (!usingFallback && !fallbackConfig.isNullOrBlank()) {
-                            usingFallback = true
-                            lastSwitchAt = System.currentTimeMillis()
+                        now - lastSwitchAt >= SWITCH_COOLDOWN_MS) {
+                        if (groupHasWorkingMember == true) {
                             consecutiveProbeFailures = 0
-                            broadcastStatus("Связь ухудшилась. Переключаю на резерв…")
+                        } else if (!usingFallback && !fallbackConfig.isNullOrBlank()) {
+                            usingFallback = true
+                            lastSwitchAt = now
+                            consecutiveProbeFailures = 0
+                            broadcastStatus("Quattro недоступен. Переключаю на резерв…")
                             startTunnel(fallbackConfig!!, fallbackConfig, preferredConfig, true, false)
                             break
                         }
                     }
                     if (usingFallback && !preferredConfig.isNullOrBlank() &&
-                        System.currentTimeMillis() - lastSwitchAt >= RECOVERY_INTERVAL_MS) {
+                        now - lastSwitchAt >= RECOVERY_INTERVAL_MS) {
                         usingFallback = false
-                        lastSwitchAt = System.currentTimeMillis()
+                        lastSwitchAt = now
                         consecutiveProbeFailures = 0
                         broadcastStatus("Проверяю восстановление Quattro…")
                         startTunnel(preferredConfig!!, fallbackConfig, preferredConfig, true, false)
@@ -464,6 +592,11 @@ class GilrTanoVpnService : VpnService() {
         private const val FAILURE_LIMIT = 2
         private const val SWITCH_COOLDOWN_MS = 60_000L
         private const val RECOVERY_INTERVAL_MS = 5 * 60_000L
+        private const val AUTO_RESCAN_INTERVAL_MS = 3 * 60_000L
+        private const val AUTO_PROBE_TIMEOUT_MS = 3500
+        private const val AUTO_SCAN_WORKERS = 16
+        private const val MIN_IMPROVEMENT_MS = 25
+        private const val REQUIRED_BETTER_SCANS = 2
 
         fun meowConfigForNode(node: ImportedNode): String {
             node.yamlConfig?.takeIf { it.isNotBlank() }?.let { return it }
