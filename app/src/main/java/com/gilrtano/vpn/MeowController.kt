@@ -48,11 +48,13 @@ object MeowController {
         memberName: String,
         url: String = "https://cp.cloudflare.com/generate_204",
         timeoutMs: Int = 5000,
+        expectedStatus: Int = 204,
     ): Int {
         require(memberName.isNotBlank())
         require(timeoutMs in 1..65535)
+        require(expectedStatus in 100..599)
         val path = "/proxies/${encode(memberName)}/delay" +
-            "?url=${encode(url)}&timeout=$timeoutMs&expected=204"
+            "?url=${encode(url)}&timeout=$timeoutMs&expected=$expectedStatus"
         val response = request(context, "GET", path)
         val delay = JSONObject(response).optInt("delay", -1)
         if (delay < 0) throw IllegalStateException("Meow вернул некорректную задержку для $memberName")
