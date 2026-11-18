@@ -93,7 +93,7 @@ jobs:
             --no-daemon --stacktrace
 
       - name: Verify native core and Kotlin bridge
-        working-directory: FlClashX
+        working-directory: .
         run: |
           AAR="build/core/outputs/aar/core-debug.aar"
           test -s "$AAR" || AAR="build/core/outputs/aar/core-release.aar"
@@ -106,7 +106,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: FlClashX-v0.5.7-Android-ARM64-Core
-          path: FlClashX/build/core/outputs/aar/*.aar
+          path: build/core/outputs/aar/*.aar
           if-no-files-found: error
           retention-days: 14
 
