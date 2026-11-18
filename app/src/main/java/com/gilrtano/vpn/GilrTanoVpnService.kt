@@ -319,7 +319,7 @@ class GilrTanoVpnService : VpnService() {
         try {
             members.forEach { member ->
                 completion.submit(Callable {
-                    ServiceHealthChecker.checkProxy(this, member)
+                    ServiceHealthChecker.checkProxy(member)
                 })
             }
             repeat(members.size) {
