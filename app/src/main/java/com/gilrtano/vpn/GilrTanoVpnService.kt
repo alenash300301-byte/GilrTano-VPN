@@ -413,11 +413,13 @@ class GilrTanoVpnService : VpnService() {
                             consecutiveProbeFailures >= FAILURE_LIMIT)
                     var groupHasWorkingMember: Boolean? = null
                     if (shouldScanGroup) {
-                        lastGroupScanAt = now
-                        updateNotification("Проверяю скорость серверов Quattro…")
+                        updateNotification("Проверяю 17 сервисов на серверах Quattro…")
                         groupHasWorkingMember = runCatching { scanAndMaybeSwitchFastest() }
                             .onFailure { Log.w(TAG, "Automatic server scan failed", it) }
                             .getOrDefault(false)
+                        // Count the rescan interval from completion, not from its start:
+                        // a large 563-node sweep can itself take several minutes.
+                        lastGroupScanAt = System.currentTimeMillis()
                         updateNotification("Подключено · автоматический выбор сервера")
                     }
 
