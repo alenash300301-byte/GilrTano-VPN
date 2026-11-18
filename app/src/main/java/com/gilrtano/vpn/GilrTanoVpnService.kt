@@ -37,6 +37,7 @@ class GilrTanoVpnService : VpnService() {
     @Volatile private var consecutiveProbeFailures = 0
     @Volatile private var lastSwitchAt = 0L
     @Volatile private var activeConfig: String? = null
+    @Volatile private var activeEngine: String = ENGINE_FREE
     @Volatile private var autoGroupName: String? = null
     @Volatile private var autoSelectedMember: String? = null
     private var pendingBetterMember: String? = null
@@ -53,13 +54,13 @@ class GilrTanoVpnService : VpnService() {
             ACTION_RESUME -> {
                 val config = activeConfig
                 if (paused && !config.isNullOrBlank()) {
-                    startTunnel(config, automaticMode, true)
+                    startTunnel(config, automaticMode, true, activeEngine)
                 }
             }
             ACTION_SWITCH -> {
                 automaticMode = false
                 readConfigExtra(intent, EXTRA_CONFIG)?.takeIf { it.isNotBlank() }?.let {
-                    startTunnel(it, false, false)
+                    startTunnel(it, false, false, intent.getStringExtra(EXTRA_ENGINE) ?: ENGINE_FREE)
                 } ?: stopTunnel()
             }
             ACTION_START, null -> {
@@ -70,9 +71,10 @@ class GilrTanoVpnService : VpnService() {
                 } else {
                     // Keep optional Quattro-only server optimization, but never
                     // No cross-mode fallback is accepted by this service.
-                    automaticMode = intent.getBooleanExtra(EXTRA_AUTO, false)
+                    activeEngine = intent.getStringExtra(EXTRA_ENGINE) ?: ENGINE_FREE
+                    automaticMode = activeEngine == ENGINE_FREE && intent.getBooleanExtra(EXTRA_AUTO, false)
                     consecutiveProbeFailures = 0
-                    startTunnel(config, automaticMode, false)
+                    startTunnel(config, automaticMode, false, activeEngine)
                 }
             }
         }
@@ -83,16 +85,18 @@ class GilrTanoVpnService : VpnService() {
         config: String,
         automatic: Boolean,
         resumed: Boolean,
+        engine: String = ENGINE_FREE,
     ) {
         stopping = false
         paused = false
         monitorRunning = false
         activeConfig = config
-        automaticMode = automatic
+        activeEngine = engine
+        automaticMode = automatic && engine == ENGINE_FREE
         createNotificationChannel()
         try {
             Log.i(TAG, "FGS: calling startForeground; sdk=${Build.VERSION.SDK_INT}")
-            startForeground(NOTIFICATION_ID, notification("Запуск Meow…"))
+            startForeground(NOTIFICATION_ID, notification(if (engine == ENGINE_FLCLASHX) "Запуск FlClashX…" else "Запуск FREE…"))
             Log.i(TAG, "FGS: startForeground accepted")
         } catch (e: Exception) {
             Log.e(TAG, "FGS_START_FAILED: ${e.javaClass.name}: ${e.message}", e)
@@ -104,6 +108,16 @@ class GilrTanoVpnService : VpnService() {
             try {
                 synchronized(this) { stopEngineAndTun() }
                 if (stopping) return@Thread
+
+                if (engine == ENGINE_FLCLASHX) {
+                    updateNotification("Запуск ядра FlClashX v0.5.7…")
+                    FlClashXEngine.start(this, config)
+                    if (stopping) { FlClashXEngine.stop(); return@Thread }
+                    broadcastStatus(if (resumed) "Возобновлено · FlClashX" else "Подключено · FlClashX")
+                    updateNotification("Подключено · подписка · FlClashX")
+                    Log.i(TAG, "FlClashX subscription engine connected")
+                    return@Thread
+                }
 
                 val home = File(noBackupFilesDir, "meow").apply { mkdirs() }
                 seedGeoAssets(home)
@@ -515,6 +529,7 @@ class GilrTanoVpnService : VpnService() {
 
     private fun stopEngineAndTun() {
         unregisterNetworkCallback()
+        runCatching { FlClashXEngine.stop() }
         runCatching { MeowCore.nativeStopEngine() }
         runCatching { tun?.close() }
         tun = null
@@ -601,6 +616,9 @@ class GilrTanoVpnService : VpnService() {
         const val EXTRA_CONFIG = "xray_config"
         const val EXTRA_STATUS = "status"
         const val EXTRA_AUTO = "automatic_mode"
+        const val EXTRA_ENGINE = "engine"
+        const val ENGINE_FLCLASHX = "flclashx"
+        const val ENGINE_FREE = "free"
 
         private const val TAG = "GilrTanoVPN"
         private const val CHANNEL_ID = "gilrtano_vpn"
