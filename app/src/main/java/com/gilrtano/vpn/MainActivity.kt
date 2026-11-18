@@ -57,17 +57,14 @@ class MainActivity : Activity() {
     private lateinit var settingsHeader: TextView
     private lateinit var pingStatus: TextView
     private lateinit var primarySource: EditText
-    private lateinit var freeSource: EditText
     private lateinit var servers: Spinner
     private lateinit var quattroTab: Button
-    private lateinit var freeTab: Button
     private lateinit var portalTab: Button
     private var autoMode = false
     private var buttonShellAnimator: ValueAnimator? = null
     private var activeMode: String = "quattro"
     private var activePortal = false
     private var portalNodes: List<ImportedNode> = emptyList()
-    private lateinit var bestFreeButton: Button
     private lateinit var checkPing: Button
     private lateinit var updateButton: Button
     private val releaseUpdater by lazy { ReleaseUpdater(this) }
@@ -76,11 +73,8 @@ class MainActivity : Activity() {
     private lateinit var pingMetric: TextView
     private lateinit var protocolMetric: TextView
     private lateinit var connectButton: PowerOrbButtonView
-    @Volatile private var scanningFree = false
-    private var activeFree = false
     private var settingsExpanded = false
     private var quattroNodes: List<ImportedNode> = emptyList()
-    private var freeNodes: List<ImportedNode> = emptyList()
     private var pendingConfig: String? = null
     private var pendingFallbackConfig: String? = null
     private var pendingPreferredConfig: String? = null
@@ -162,7 +156,6 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         quattroNodes = restoreNodes("quattro_nodes")
-        freeNodes = restoreNodes("free_nodes")
 
         status = TextView(this).apply { text = "Отключено"; textSize = 14f; maxLines = 2; gravity = android.view.Gravity.CENTER; setPadding(dp(18), dp(4), dp(18), dp(4)) }
         pingStatus = TextView(this).apply { text = "Пинг: —"; textSize = 15f }
@@ -171,13 +164,6 @@ class MainActivity : Activity() {
             minLines = 2
             maxLines = 5
             setText(prefs.getString("subscription_url", ""))
-            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
-        }
-        freeSource = EditText(this).apply {
-            hint = "Ссылка бесплатного резерва"
-            minLines = 2
-            maxLines = 3
-            setText(prefs.getString("free_subscription_url", "https://raw.githubusercontent.com/morpheusadam/v2ray-config/main/subs/bundles/vless.txt"))
             inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
         }
         servers = Spinner(this).apply {
@@ -194,10 +180,6 @@ class MainActivity : Activity() {
         quattroTab = Button(this).apply {
             text = "QUATTRO"
             setOnClickListener { switchMode("quattro") }
-        }
-        freeTab = Button(this).apply {
-            text = "БЕСПЛАТНЫЙ"
-            setOnClickListener { switchMode("free") }
         }
         portalTab = Button(this).apply {
             text = "PORTAL"
@@ -217,10 +199,6 @@ class MainActivity : Activity() {
                 }
                 startActivityForResult(pick, docxRequestCode)
             }
-        }
-        val importFree = Button(this).apply {
-            text = "Импортировать бесплатные серверы"
-            setOnClickListener { importFrom(freeSource.text.toString().trim(), true) }
         }
         connectButton = PowerOrbButtonView(this).apply {
             // The power glyph is drawn by PowerOrbButtonView; the caption lives only in the foreground overlay.
@@ -292,10 +270,6 @@ class MainActivity : Activity() {
                     .setAction(GilrTanoVpnService.ACTION_STOP))
                 true
             } else false
-        }
-        bestFreeButton = Button(this).apply {
-            text = "Найти лучший бесплатный сервер (проверка интернета)"
-            setOnClickListener { refreshFreeServersAndFindBest() }
         }
         checkPing = Button(this).apply {
             text = "Проверить пинг"
@@ -497,8 +471,6 @@ class MainActivity : Activity() {
                 servers.visibility = View.GONE
                 addView(pingStatus.apply { gravity = android.view.Gravity.CENTER_VERTICAL }, LinearLayout.LayoutParams.MATCH_PARENT, dp(1))
                 pingStatus.visibility = View.GONE
-                addView(bestFreeButton, LinearLayout.LayoutParams.MATCH_PARENT, dp(1))
-                bestFreeButton.visibility = View.GONE
                 addView(checkPing, LinearLayout.LayoutParams.MATCH_PARENT, dp(1))
                 checkPing.visibility = View.GONE
                 modeSelectorRow = LinearLayout(this@MainActivity).apply {
@@ -667,12 +639,9 @@ class MainActivity : Activity() {
             LinearLayout.LayoutParams(0, dp(48), 1f))
         serverModes.addView(actionButton("PORTAL") { switchMode("portal"); updateServerPage() },
             LinearLayout.LayoutParams(0, dp(48), 1f))
-        serverModes.addView(actionButton("FREE") { switchMode("free"); updateServerPage() },
-            LinearLayout.LayoutParams(0, dp(48), 1f))
         serverPage.addView(serverModes)
         serverPage.addView(actionButton("Серверы Quattro") { showMeowGroupsDialog() })
         serverPage.addView(actionButton("Проверить пинг") { measureSelectedPing() })
-        serverPage.addView(actionButton("Найти лучший бесплатный сервер") { refreshFreeServersAndFindBest() })
         // First-class profiles tab backed by the existing Quattro/YAML/DOCX import logic.
         val profilesPage = page("Профили")
         val profileActions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
@@ -720,7 +689,7 @@ class MainActivity : Activity() {
                 }
             }
             profileUsage.text = "Серверов в профиле: $serverCount"
-            profileState.text = if (quattroNodes.isNotEmpty()) "✓ Полный профиль доступен · ${if (activeFree) "сейчас выбран FREE" else "Quattro"}" else "Профиль ещё не импортирован"
+            profileState.text = if (quattroNodes.isNotEmpty()) "✓ Профиль QUATTRO доступен" else "Профиль ещё не импортирован"
         }
         refreshProfileCard()
         profilesPage.addView(actionButton("Импортировать Quattro") {
@@ -844,7 +813,6 @@ class MainActivity : Activity() {
         activeMode = prefs.getString("connection_mode", "quattro") ?: "quattro"
         if (activeMode !in setOf("quattro", "portal")) activeMode = "quattro"
         prefs.edit().putString("connection_mode", activeMode).putBoolean("active_free_mode", false).apply()
-        autoMode = false
         activeFree = activeMode == "free"
         activePortal = activeMode == "portal"
         portalNodes = restoreNodes("portal_nodes")
@@ -1371,10 +1339,6 @@ class MainActivity : Activity() {
         style(root)
     }
 
-    private fun switchToAuto() {
-        Toast.makeText(this, "Автоматическое переключение отключено", Toast.LENGTH_SHORT).show()
-    }
-
     private fun switchMode(mode: String) {
         if (mode !in setOf("quattro", "portal")) return
         val nodes = if (mode == "portal") portalNodes else quattroNodes
@@ -1436,7 +1400,7 @@ class MainActivity : Activity() {
     }
 
     private fun refreshMode() {
-        autoMode = false; activeFree = false; activePortal = activeMode == "portal"
+        activePortal = activeMode == "portal"
         val q = activeMode == "quattro"; val p = activeMode == "portal"
         fun bg(selected: Boolean) = GradientDrawable().apply { setColor(if (selected) Color.rgb(24, 45, 28) else Color.rgb(13, 13, 15)); cornerRadius = dp(14).toFloat(); setStroke(dp(if (selected) 2 else 1), if (selected) Color.rgb(36, 220, 78) else Color.rgb(58, 58, 62)) }
         quattroTab.isEnabled = !q; portalTab.isEnabled = !p
@@ -1461,8 +1425,6 @@ class MainActivity : Activity() {
         settingsHeader.visibility = if (settingsExpanded) View.VISIBLE else View.GONE
         modeSelectorRow.visibility = View.VISIBLE
         primarySource.visibility = if (settingsExpanded && !activePortal) View.VISIBLE else View.GONE
-        freeSource.visibility = View.GONE
-        bestFreeButton.visibility = View.GONE
         checkPing.visibility = if (settingsExpanded) View.VISIBLE else View.GONE
         for (i in 0 until page.childCount) {
             val child = page.getChildAt(i)
@@ -1550,200 +1512,7 @@ class MainActivity : Activity() {
     /**
      * Always refresh public nodes before measuring them. Saved free nodes are only
      * a fallback cache; public endpoints expire and must not be trusted as current.
-     */
-    private fun refreshFreeServersAndFindBest(autoConnectWhenReady: Boolean = false, retryRound: Int = 0) {
-        if (scanningFree) return
-        scanningFree = true
-        bestFreeButton.isEnabled = false
-        status.text = "Обновляю бесплатные серверы…"
-        val configured = freeSource.text.toString().trim().ifBlank {
-            "https://raw.githubusercontent.com/morpheusadam/v2ray-config/main/subs/bundles/vless.txt"
-        }
-        val primaryVless = "https://raw.githubusercontent.com/morpheusadam/v2ray-config/main/subs/bundles/vless.txt"
-        val legacyDefault = "https://raw.githubusercontent.com/morpheusadam/v2ray-config/main/subs/bundles/best.txt"
-        val sources = if (configured.isBlank() || configured == legacyDefault) {
-            listOf(primaryVless, "https://radarhub.top/v2ray.txt",
-                "https://cdn.jsdelivr.net/gh/morpheusadam/v2ray-config@main/subs/bundles/vless.txt")
-        } else {
-            listOf(configured, primaryVless, "https://radarhub.top/v2ray.txt",
-                "https://cdn.jsdelivr.net/gh/morpheusadam/v2ray-config@main/subs/bundles/vless.txt")
-        }.distinct()
-        Thread {
-            var imported: List<ImportedNode> = emptyList()
-            var successfulSource: String? = null
-            // Fetch mirrors simultaneously: a slow/dead feed must not block the
-            // other public lists one after another.
-            val fetchPool = Executors.newFixedThreadPool(sources.size.coerceAtMost(4))
-            val completion = java.util.concurrent.ExecutorCompletionService<Pair<String, List<ImportedNode>>>(fetchPool)
-            try {
-                sources.forEach { source ->
-                    completion.submit(Callable {
-                        source to SubscriptionImporter.load(source)
-                    })
-                }
-                val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(16)
-                var finished = 0
-                while (finished < sources.size && System.nanoTime() < deadline && imported.isEmpty()) {
-                    val remaining = deadline - System.nanoTime()
-                    val future = completion.poll(remaining, TimeUnit.NANOSECONDS) ?: break
-                    finished++
-                    val result = runCatching { future.get() }.getOrNull() ?: continue
-                    if (result.second.isNotEmpty()) {
-                        successfulSource = result.first
-                        imported = result.second
-                    }
-                }
-            } finally {
-                fetchPool.shutdownNow()
-            }
-            runOnUiThread {
-                scanningFree = false
-                bestFreeButton.isEnabled = true
-                if (imported.isEmpty()) {
-                    val cached = freeNodes
-                    if (cached.isEmpty()) {
-                        if (autoConnectWhenReady && retryRound < 5) {
-                            status.text = "Источники временно недоступны. Повторяю поиск…"
-                            Handler(Looper.getMainLooper()).postDelayed({
-                                if (!isFinishing && !isDestroyed) refreshFreeServersAndFindBest(true, retryRound + 1)
-                            }, 2500L)
-                        } else {
-                            status.text = "Не удалось обновить серверы. Попробуй позже."
-                        }
-                    } else {
-                        status.text = "Источники недоступны. Проверяю сохранённые серверы…"
-                        findBestFreeServers(autoConnectWhenReady, retryRound)
-                    }
-                    return@runOnUiThread
-                }
-                freeNodes = imported
-                activeFree = true
-                prefs.edit()
-                    .putBoolean("active_free_mode", true)
-                    .putString("free_subscription_url", successfulSource)
-                    .putInt("free_selected", 0)
-                    .apply()
-                saveNodes("free_nodes", freeNodes)
-                freeSource.setText(successfulSource)
-                refreshMode()
-                status.text = "Обновлено ${imported.size} серверов. Быстро проверяю доступ…"
-                findBestFreeServers(autoConnectWhenReady, retryRound)
-            }
-        }.start()
-    }
-
-    private fun findBestFreeServers(autoConnectWhenReady: Boolean = false, retryRound: Int = 0) {
-        if (scanningFree) return
-        if (freeNodes.isEmpty()) {
-            status.text = "Сначала обнови бесплатный список серверов"
-            return
-        }
-        scanningFree = true
-        bestFreeButton.isEnabled = false
-        status.text = "Быстрый поиск: проверяю лучшие серверы…"
-        // A Clash/Mihomo profile may contain several proxy groups and does
-        // not expose one host to TCP-ping here. Let Meow evaluate it on connect.
-        if (freeNodes.all { it.uri.isBlank() }) {
-            scanningFree = false
-            bestFreeButton.isEnabled = true
-            status.text = "Clash/Mihomo профиль готов. Проверка при подключении."
-            if (autoConnectWhenReady) {
-                activeFree = true
-                autoMode = false
-                activeMode = "free"
-                prefs.edit().putString("connection_mode", "auto").putBoolean("active_free_mode", true).apply()
-                refreshMode()
-                servers.setSelection(0)
-                connectAutomaticallySelected()
-            }
-            return
-        }
-        // Public free nodes expire frequently. Check a much larger portion of the
-        // imported catalogue and allow slow handshakes, rather than rejecting all
-        // candidates after one short 25-second window.
-        val candidates = freeNodes.take(80).filter { it.uri.isNotBlank() }
-        Thread {
-            val pool = Executors.newFixedThreadPool(8)
-            val completion = java.util.concurrent.ExecutorCompletionService<Pair<ImportedNode, Long>?>(pool)
-            try {
-                candidates.forEach { node ->
-                    completion.submit(Callable<Pair<ImportedNode, Long>?> {
-                        val delayMs = measureNodeTcpLatency(node.uri) ?: return@Callable null
-                        node to delayMs
-                    })
-                }
-                val checked = mutableListOf<Pair<ImportedNode, Long>>()
-                val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(18)
-                var completed = 0
-                while (completed < candidates.size && System.nanoTime() < deadline && checked.size < 2) {
-                    val remaining = deadline - System.nanoTime()
-                    val future = completion.poll(remaining, TimeUnit.NANOSECONDS) ?: break
-                    completed++
-                    runCatching { future.get() }.getOrNull()?.let { checked.add(it) }
-                    if (completed % 20 == 0) {
-                        val done = completed
-                        runOnUiThread {
-                            if (scanningFree) status.text = "Автопоиск: проверено $done из ${candidates.size}…"
-                        }
-                    }
-                    if (checked.size >= 2) break
-                }
-                val fastest = checked.sortedBy { it.second }
-                runOnUiThread {
-                    if (fastest.isEmpty()) {
-                        // A failed scan is never a connected state: restore every
-                        // visual control so the screen cannot remain falsely green.
-                        if (autoConnectWhenReady && retryRound < 5) {
-                            status.text = "Рабочий сервер пока не найден. Повторяю поиск…"
-                            Handler(Looper.getMainLooper()).postDelayed({
-                                if (!isFinishing && !isDestroyed) refreshFreeServersAndFindBest(true, retryRound + 1)
-                            }, 2500L)
-                        } else {
-                            status.text = "Проверено серверов: $completed из ${candidates.size}. Рабочие пока не ответили."
-                        }
-                        status.setTextColor(Color.LTGRAY)
-                        updatePowerOrb(false)
-                        if (::connectionTimer.isInitialized) {
-                            connectionTimer.stop()
-                            connectionTimer.visibility = View.GONE
-                        }
-                        updateServerCard(false)
-                        resetConnectButtonGlow()
-                        setPowerButtonLabel("ПОДКЛЮЧИТЬ")
-                        connectButton.isEnabled = true
-                    } else {
-                        freeNodes = fastest.map { it.first }
-                        saveNodes("free_nodes", freeNodes)
-                        prefs.edit().putInt("free_selected", 0).apply()
-                        val labels = fastest.map { pair -> "${pair.first.name} · ${pair.second} мс" }
-                        servers.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, labels)
-                        servers.setSelection(0)
-                        pingStatus.text = "Проверка через Meow: ${fastest.first().second} мс"
-                        status.text = "Найдено рабочих серверов: ${fastest.size}. Лучший выбран."
-                        if (autoConnectWhenReady) {
-                            activeFree = true
-                            autoMode = false
-                            activeMode = "free"
-                            prefs.edit().putString("connection_mode", "auto").putBoolean("active_free_mode", true).apply()
-                            refreshMode()
-                            connectAutomaticallySelected()
-                        }
-                    }
-                    scanningFree = false
-                    bestFreeButton.isEnabled = true
-                }
-            } catch (e: Exception) {
-                runOnUiThread {
-                    scanningFree = false
-                    bestFreeButton.isEnabled = true
-                    status.text = "Не удалось проверить серверы: ${e.message ?: "ошибка проверки"}"
-                }
-            } finally {
-                pool.shutdownNow()
-            }
-        }.start()
-    }
-    private fun connectAutomaticallySelected() {
+     */    private fun connectAutomaticallySelected() {
         val node = activeNodes.getOrNull(servers.selectedItemPosition) ?: return
         try {
             val config = GilrTanoVpnService.meowConfigForNode(node)
@@ -1761,18 +1530,6 @@ class MainActivity : Activity() {
         } catch (e: Exception) {
             status.text = "Не удалось подготовить сервер: ${e.message}"
         }
-    }
-
-    private fun measureNodeTcpLatency(uri: String): Long? {
-        if (uri.isBlank()) return null
-        val parsed = Uri.parse(uri)
-        val host = parsed.host?.takeIf { it.isNotBlank() } ?: return null
-        val port = parsed.port.takeIf { it > 0 } ?: 443
-        val started = System.nanoTime()
-        return runCatching {
-            Socket().use { socket -> socket.connect(InetSocketAddress(host, port), 3500) }
-            (System.nanoTime() - started) / 1_000_000L
-        }.getOrNull()
     }
 
     private fun measureSelectedPing() {
