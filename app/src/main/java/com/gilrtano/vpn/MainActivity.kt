@@ -1225,7 +1225,7 @@ class MainActivity : Activity() {
     private fun handleSubscriptionIntent(sourceIntent: Intent?) {
         val data = sourceIntent?.data ?: return
         val scheme = data.scheme?.lowercase()
-        if (scheme == null || scheme !in setOf("clash", "clashmeta", "flclash")) return
+        if (scheme == null || scheme !in setOf("clash", "clashmeta", "flclash", "flclashx")) return
         if (data.host != "install-config") {
             Toast.makeText(this, "Неизвестный формат ссылки профиля", Toast.LENGTH_LONG).show()
             return
@@ -1380,7 +1380,7 @@ class MainActivity : Activity() {
                 val source = field.text.toString().trim()
                 if (source.isBlank()) Toast.makeText(this, "Укажи ссылку на Portal YAML", Toast.LENGTH_LONG).show()
                 else Thread {
-                    val result = runCatching { SubscriptionImporter.load(source) }
+                    val result = runCatching { SubscriptionImporter.load(this@MainActivity, source) }
                     runOnUiThread {
                         val imported = result.getOrNull().orEmpty()
                         if (imported.isEmpty()) Toast.makeText(this, "В Portal YAML не найдены поддерживаемые прокси", Toast.LENGTH_LONG).show()
