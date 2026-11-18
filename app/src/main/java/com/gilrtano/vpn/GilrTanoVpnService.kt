@@ -96,7 +96,7 @@ class GilrTanoVpnService : VpnService() {
         createNotificationChannel()
         try {
             Log.i(TAG, "FGS: calling startForeground; sdk=${Build.VERSION.SDK_INT}")
-            startForeground(NOTIFICATION_ID, notification(if (engine == ENGINE_FLCLASHX) "Запуск FlClashX…" else "Запуск FREE…"))
+            startForeground(NOTIFICATION_ID, notification(if (engine == ENGINE_FLCLASHX) "Запуск FlClashX…" else "Запуск PORTAL…"))
             Log.i(TAG, "FGS: startForeground accepted")
         } catch (e: Exception) {
             Log.e(TAG, "FGS_START_FAILED: ${e.javaClass.name}: ${e.message}", e)
