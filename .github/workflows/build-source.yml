@@ -97,7 +97,7 @@ jobs:
           http_text = http_text[:fetch_start] + fetch_part + http_text[fetch_end:]
           post_marker = "async fn fetch(proxy: &dyn ProxyAdapter, url: &Url, max_body: usize) -> ProbeResult {"
           post_impl = r'''
-          pub(super) async fn post(
+          pub(super) async fn probe_post(
               proxy: &dyn ProxyAdapter,
               url: &str,
               headers: &[(String, String)],
@@ -162,7 +162,7 @@ jobs:
           '''
           if post_marker not in http_text:
               raise SystemExit("Pinned Meow HTTP probe fetch marker changed")
-          if "pub(super) async fn post(" not in http_text:
+          if "pub(super) async fn probe_post(" not in http_text:
               http_text = http_text.replace(post_marker, post_impl + post_marker, 1)
               http.write_text(http_text)
 
@@ -181,7 +181,7 @@ jobs:
                       v.as_str().map(|value| (k.clone(), value.to_string()))
                   }).collect::<Vec<_>>())
                   .unwrap_or_default();
-              http::post(proxy, url, &headers, body).await
+              http::probe_post(proxy, url, &headers, body).await
           },'''
           if get_line not in mod_text:
               raise SystemExit("Pinned Meow HTTP GET probe dispatch changed")
