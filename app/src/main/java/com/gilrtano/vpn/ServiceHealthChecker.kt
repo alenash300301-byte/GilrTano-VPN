@@ -129,6 +129,8 @@ object ServiceHealthChecker {
 
     private fun checkOne(proxyName: String, target: Target): Result {
         if (target.rule == Rule.DISNEY) return checkDisney(proxyName, target)
+        if (target.rule == Rule.CHATGPT) return checkChatGpt(proxyName, target)
+        if (target.rule == Rule.NETFLIX) return checkNetflix(proxyName, target)
         val started = System.nanoTime()
         val raw = try {
             MeowCore.nativeProbeProxy(
@@ -162,6 +164,73 @@ object ServiceHealthChecker {
         }
         val (status, region, detail) = classify(target.rule, code, body, lower, base)
         return Result(target.id, target.label, status, elapsed, region, detail)
+    }
+
+    private fun nativeGet(proxyName: String, url: String): JSONObject? {
+        val raw = runCatching {
+            MeowCore.nativeProbeProxy(ids.incrementAndGet(), proxyName, NATIVE_KIND, url)
+        }.getOrNull() ?: return null
+        val response = runCatching { JSONObject(raw) }.getOrNull() ?: return null
+        if (response.has("error")) return null
+        return response
+    }
+
+    private fun checkChatGpt(proxyName: String, target: Target): Result {
+        val started = System.nanoTime()
+        val ios = nativeGet(proxyName, "https://ios.chat.openai.com/")
+            ?: return Result(target.id, target.label, Status.FAILED, null, detail = "ChatGPT iOS endpoint did not answer")
+        val body = ios.optString("body", "").lowercase(Locale.ROOT)
+        val status = when {
+            body.contains("you may be connected to a disallowed isp") -> Status.DISALLOWED_ISP
+            body.contains("sorry, you have been blocked") -> Status.BLOCKED
+            body.contains("request is not allowed. please try again later.") -> Status.AVAILABLE
+            else -> Status.FAILED
+        }
+        val trace = nativeGet(proxyName, "https://chat.openai.com/cdn-cgi/trace")
+        val region = trace?.optString("body", "")?.let {
+            Regex("(?m)^loc=([A-Za-z]{2,3})\\s*$").find(it)?.groupValues?.getOrNull(1)
+        }?.let(::normalizeRegion)
+        val web = nativeGet(proxyName, "https://api.openai.com/compliance/cookie_requirements")
+        val finalStatus = if (web?.optString("body", "")?.contains("unsupported_country", true) == true) {
+            Status.UNSUPPORTED_REGION
+        } else status
+        return Result(target.id, target.label, finalStatus, elapsed(started), region)
+    }
+
+    private fun checkNetflix(proxyName: String, target: Target): Result {
+        val started = System.nanoTime()
+        val cdn = nativeGet(
+            proxyName,
+            "https://api.fast.com/netflix/speedtest/v2?https=true&token=YXNkZmFzZGxmbnNkYWZoYXNkZmhrYWxm&urlCount=5",
+        )
+        if (cdn != null) {
+            val code = cdn.optInt("status", -1)
+            if (code == 403) return Result(target.id, target.label, Status.BLOCKED, elapsed(started))
+            val country = runCatching {
+                val body = JSONObject(cdn.optString("body", ""))
+                normalizeRegion(
+                    body.optJSONArray("targets")?.optJSONObject(0)
+                        ?.optJSONObject("location")?.optString("country"),
+                )
+            }.getOrNull()
+            if (country != null) {
+                return Result(target.id, target.label, Status.AVAILABLE, elapsed(started), country)
+            }
+        }
+
+        val first = nativeGet(proxyName, "https://www.netflix.com/title/81280792")
+            ?: return Result(target.id, target.label, Status.FAILED, null, detail = "Netflix title probe failed")
+        val second = nativeGet(proxyName, "https://www.netflix.com/title/70143836")
+            ?: return Result(target.id, target.label, Status.FAILED, null, detail = "Netflix fallback probe failed")
+        val firstCode = first.optInt("status", -1)
+        val secondCode = second.optInt("status", -1)
+        val status = when {
+            firstCode == 404 && secondCode == 404 -> Status.ORIGINALS_ONLY
+            firstCode == 403 || secondCode == 403 -> Status.UNSUPPORTED_REGION
+            firstCode in 200..399 || secondCode in 200..399 -> Status.AVAILABLE
+            else -> statusFromHttp(firstCode)
+        }
+        return Result(target.id, target.label, status, elapsed(started))
     }
 
     private fun checkDisney(proxyName: String, target: Target): Result {
