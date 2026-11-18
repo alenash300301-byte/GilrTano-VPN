@@ -73,6 +73,8 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: "8.13"
 
       - name: Prepare FlClashX Android build
         working-directory: FlClashX/android
@@ -149,8 +151,7 @@ jobs:
 
       - name: Compile GilrTano ARM64 debug APK against FlClashX
         run: |
-          chmod +x ./gradlew
-          ./gradlew :app:assembleDebug --no-daemon --stacktrace
+          gradle :app:assembleDebug --no-daemon --stacktrace
 
       - name: Upload GilrTano APK with FlClashX core
         uses: actions/upload-artifact@v4
