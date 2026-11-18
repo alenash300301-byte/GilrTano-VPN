@@ -35,4 +35,11 @@ jobs:
         run: |
           git clone --depth 1 --branch v0.29.0 https://github.com/meow-rs/meow-rs.git meow-upstream
           cd meow-upstream
+          # Every workspace crate is covered by the repository's MIT LICENSE;
+          # several internal, unpublished tools omit license.workspace metadata.
+          while IFS= read -r manifest; do
+            if grep -q '^version.workspace = true' "$manifest" && ! grep -q '^license' "$manifest"; then
+              sed -i '/^edition.workspace = true$/a license.workspace = true' "$manifest"
+            fi
+          done < <(find crates -name Cargo.toml -type f)
           cargo deny check licenses sources
