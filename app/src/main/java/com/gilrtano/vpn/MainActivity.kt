@@ -157,7 +157,7 @@ class MainActivity : Activity() {
         status = TextView(this).apply { text = "Отключено"; textSize = 14f; maxLines = 2; gravity = android.view.Gravity.CENTER; setPadding(dp(18), dp(4), dp(18), dp(4)) }
         pingStatus = TextView(this).apply { text = "Пинг: —"; textSize = 15f }
         primarySource = EditText(this).apply {
-            hint = "Ссылка Quattro или Clash YAML"
+            hint = "Ссылка подписки или Clash YAML"
             minLines = 2
             maxLines = 5
             setText(prefs.getString("subscription_url", ""))
@@ -179,7 +179,7 @@ class MainActivity : Activity() {
             setOnClickListener { switchMode("quattro") }
         }
         portalTab = Button(this).apply {
-            text = "PORTAL"
+            text = "FREE"
             setOnClickListener { switchMode("portal") }
         }
 
@@ -240,7 +240,7 @@ class MainActivity : Activity() {
                                                 pendingConfig = config
                         // Quattro may optimize servers inside its own profile.
                         // Cross-mode fallback is disabled; Quattro optimization stays within its own profile.
-                        pendingAutomatic = activeMode == "quattro"
+                        pendingAutomatic = false // Automatic server selection is deferred by request.
                         connectButton.isEnabled = true
                         status.text = "Подключаю: ${node.name}…"
                         val permission = VpnService.prepare(this@MainActivity)
@@ -391,7 +391,7 @@ class MainActivity : Activity() {
                         addView(serverCardSubtitle)
                     }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
                     addView(TextView(this@MainActivity).apply {
-                        text = "ПОДПИСКА / PORTAL"
+                        text = "ПОДПИСКА / FREE"
                         textSize = 10f
                         typeface = android.graphics.Typeface.DEFAULT_BOLD
                         gravity = android.view.Gravity.CENTER
@@ -445,7 +445,7 @@ class MainActivity : Activity() {
                         format = "%s"
                     }
                     val protocolValue = TextView(this@MainActivity).apply {
-                        text = "QUATTRO"; textSize = 15f
+                        text = "ПОДПИСКА"; textSize = 15f
                         typeface = android.graphics.Typeface.DEFAULT_BOLD
                         setTextColor(Color.rgb(55, 255, 95))
                         protocolMetric = this
@@ -630,10 +630,10 @@ class MainActivity : Activity() {
         val serverModes = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         serverModes.addView(actionButton("ПОДПИСКА") { switchMode("quattro"); updateServerPage() },
             LinearLayout.LayoutParams(0, dp(48), 1f))
-        serverModes.addView(actionButton("PORTAL") { switchMode("portal"); updateServerPage() },
+        serverModes.addView(actionButton("FREE") { switchMode("portal"); updateServerPage() },
             LinearLayout.LayoutParams(0, dp(48), 1f))
         serverPage.addView(serverModes)
-        serverPage.addView(actionButton("Серверы Quattro") { showMeowGroupsDialog() })
+        // Server-group selection for subscription profiles will be wired to FlClashX, not Meow.
         serverPage.addView(actionButton("Проверить пинг") { measureSelectedPing() })
         // First-class profiles tab backed by the existing Quattro/YAML/DOCX import logic.
         val profilesPage = page("Профили")
@@ -641,11 +641,11 @@ class MainActivity : Activity() {
         profileActions.addView(actionButton("↻ Обновить") {
             val url = prefs.getString("subscription_url", "").orEmpty()
             if (url.isNotBlank()) importFrom(url)
-            else Toast.makeText(this@MainActivity, "Сначала добавьте ссылку Quattro", Toast.LENGTH_LONG).show()
+            else Toast.makeText(this@MainActivity, "Сначала добавьте ссылку подписки", Toast.LENGTH_LONG).show()
         }, LinearLayout.LayoutParams(0, dp(46), 1f).apply { rightMargin = dp(5) })
         profileActions.addView(actionButton("＋ Добавить") {
             val field = EditText(this@MainActivity).apply {
-                hint = "Ссылка Quattro или Clash YAML"
+                hint = "Ссылка подписки или Clash YAML"
                 setText(prefs.getString("subscription_url", ""))
                 setSingleLine(true)
             }
@@ -664,7 +664,7 @@ class MainActivity : Activity() {
             setStroke(dp(1), Color.rgb(62, 65, 76))
         }
         val profileTitle = TextView(this).apply {
-            text = "🔥 Quattro VPN"; textSize = 18f
+            text = "🔥 Подписка VPN"; textSize = 18f
             typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE)
         }
         val profileUsage = TextView(this).apply { textSize = 13f; setTextColor(Color.LTGRAY); setPadding(0, dp(8), 0, 0) }
@@ -682,10 +682,10 @@ class MainActivity : Activity() {
                 }
             }
             profileUsage.text = "Серверов в профиле: $serverCount"
-            profileState.text = if (quattroNodes.isNotEmpty()) "✓ Профиль QUATTRO доступен" else "Профиль ещё не импортирован"
+            profileState.text = if (quattroNodes.isNotEmpty()) "✓ Подписка доступна" else "Профиль ещё не импортирован"
         }
         refreshProfileCard()
-        profilesPage.addView(actionButton("Импортировать Quattro") {
+        profilesPage.addView(actionButton("Импортировать подписку") {
             val value = prefs.getString("subscription_url", "").orEmpty()
             if (value.isNotBlank()) importFrom(value)
             else Toast.makeText(this@MainActivity, "Добавьте ссылку через кнопку «Добавить»", Toast.LENGTH_LONG).show()
@@ -695,15 +695,15 @@ class MainActivity : Activity() {
             if (value.isNotBlank()) importFrom(value)
             else Toast.makeText(this@MainActivity, "Добавьте ссылку YAML через кнопку «Добавить»", Toast.LENGTH_LONG).show()
         })
-        profilesPage.addView(actionButton("Выбрать DOCX Quattro") {
+        profilesPage.addView(actionButton("Выбрать DOCX подписки") {
             val pick = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                 addCategory(Intent.CATEGORY_OPENABLE)
                 type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             }
             startActivityForResult(pick, docxRequestCode)
         })
-        profilesPage.addView(actionButton("Импортировать PORTAL YAML по ссылке") { showPortalImportDialog() })
-        profilesPage.addView(actionButton("Выбрать файл PORTAL YAML") { pickPortalYaml() })
+        profilesPage.addView(actionButton("Импортировать FREE YAML по ссылке") { showPortalImportDialog() })
+        profilesPage.addView(actionButton("Выбрать файл FREE YAML") { pickPortalYaml() })
         profilesPage.addView(actionButton("Обновить список профилей") { refreshProfileCard(); updateServerPage() })
         val settingsPage = page("Настройки")
         settingsPage.addView(actionButton("Проверить обновления") { checkForAppUpdate() })
@@ -817,7 +817,7 @@ class MainActivity : Activity() {
     private fun showServerPicker() {
         val selectedNode = activeNodes.getOrNull(servers.selectedItemPosition)
         if (selectedNode?.yamlConfig != null) {
-            showMeowGroupsDialog()
+            Toast.makeText(this, "Выбор серверов подписки будет подключён через FlClashX отдельно", Toast.LENGTH_LONG).show()
             return
         }
         val nodes = activeNodes
@@ -1334,7 +1334,7 @@ class MainActivity : Activity() {
         if (mode !in setOf("quattro", "portal")) return
         val nodes = if (mode == "portal") portalNodes else quattroNodes
         if (nodes.isEmpty()) {
-            val message = if (mode == "portal") "Импортируй PORTAL YAML" else "Импортируй профиль подписки"
+            val message = if (mode == "portal") "Импортируй FREE YAML" else "Импортируй профиль подписки"
             Toast.makeText(this, message, Toast.LENGTH_LONG).show(); return
         }
         if (activeMode == mode) return
@@ -1349,11 +1349,11 @@ class MainActivity : Activity() {
         prefs.edit().putString("connection_mode", mode).putBoolean("active_free_mode", false).apply()
         refreshMode(); updateServerCard(false)
         if (active) status.text = "Отключаю VPN… выбран режим " + mode.uppercase()
-        else Toast.makeText(this, "Выбран режим " + if (mode == "quattro") "ПОДПИСКА" else "PORTAL", Toast.LENGTH_SHORT).show()
+        else Toast.makeText(this, "Выбран режим " + if (mode == "quattro") "ПОДПИСКА" else "FREE", Toast.LENGTH_SHORT).show()
     }
 
     private fun activeSelectionKey(): String = if (activeMode == "portal") "portal_selected" else "quattro_selected"
-    private fun modeDisplayName(): String = if (activeMode == "quattro") "ПОДПИСКА" else "PORTAL"
+    private fun modeDisplayName(): String = if (activeMode == "quattro") "ПОДПИСКА" else "FREE"
 
     private fun pickPortalYaml() {
         val pick = Intent(Intent.ACTION_OPEN_DOCUMENT).apply { addCategory(Intent.CATEGORY_OPENABLE); type = "*/*" }
@@ -1362,29 +1362,29 @@ class MainActivity : Activity() {
 
     private fun importPortalYamlText(yaml: String) {
         val imported = runCatching { SubscriptionImporter.parse(yaml) }.getOrElse {
-            Toast.makeText(this, "Ошибка чтения PORTAL YAML: " + it.message, Toast.LENGTH_LONG).show(); return
+            Toast.makeText(this, "Ошибка чтения FREE YAML: " + it.message, Toast.LENGTH_LONG).show(); return
         }
         if (imported.isEmpty()) { Toast.makeText(this, "В YAML не найдены поддерживаемые прокси", Toast.LENGTH_LONG).show(); return }
         portalNodes = imported
         saveNodes("portal_nodes", portalNodes)
         switchMode("portal")
-        Toast.makeText(this, "PORTAL: импортировано профилей " + imported.size, Toast.LENGTH_LONG).show()
+        Toast.makeText(this, "FREE: импортировано профилей " + imported.size, Toast.LENGTH_LONG).show()
     }
 
     private fun showPortalImportDialog() {
-        val field = EditText(this).apply { hint = "HTTPS-ссылка на Portal Clash/Mihomo YAML"; isSingleLine = true; setText(prefs.getString("portal_subscription_url", "")) }
-        AlertDialog.Builder(this).setTitle("Импорт PORTAL")
-            .setMessage("Укажи HTTPS-ссылку на отдельную конфигурацию PORTAL/WARP. Она будет сохранена локально.")
+        val field = EditText(this).apply { hint = "HTTPS-ссылка на FREE Clash/Mihomo YAML"; isSingleLine = true; setText(prefs.getString("portal_subscription_url", "")) }
+        AlertDialog.Builder(this).setTitle("Импорт FREE")
+            .setMessage("Укажи HTTPS-ссылку на отдельную конфигурацию FREE/WARP. Она будет сохранена локально.")
             .setView(field).setNegativeButton("Отмена", null)
             .setPositiveButton("Импортировать") { _, _ ->
                 val source = field.text.toString().trim()
-                if (source.isBlank()) Toast.makeText(this, "Укажи ссылку на Portal YAML", Toast.LENGTH_LONG).show()
+                if (source.isBlank()) Toast.makeText(this, "Укажи ссылку на FREE YAML", Toast.LENGTH_LONG).show()
                 else Thread {
                     val result = runCatching { SubscriptionImporter.load(this@MainActivity, source) }
                     runOnUiThread {
                         val imported = result.getOrNull().orEmpty()
-                        if (imported.isEmpty()) Toast.makeText(this, "В Portal YAML не найдены поддерживаемые прокси", Toast.LENGTH_LONG).show()
-                        else { portalNodes = imported; prefs.edit().putString("portal_subscription_url", source).apply(); saveNodes("portal_nodes", portalNodes); switchMode("portal"); Toast.makeText(this, "PORTAL: импортировано профилей " + imported.size, Toast.LENGTH_LONG).show() }
+                        if (imported.isEmpty()) Toast.makeText(this, "В FREE YAML не найдены поддерживаемые прокси", Toast.LENGTH_LONG).show()
+                        else { portalNodes = imported; prefs.edit().putString("portal_subscription_url", source).apply(); saveNodes("portal_nodes", portalNodes); switchMode("portal"); Toast.makeText(this, "FREE: импортировано профилей " + imported.size, Toast.LENGTH_LONG).show() }
                     }
                 }.start()
             }.show()
@@ -1440,7 +1440,7 @@ class MainActivity : Activity() {
         status.text = "Загружаю подписку…"
         Thread {
             try {
-                val imported = SubscriptionImporter.load(source)
+                val imported = SubscriptionImporter.load(this@MainActivity, source)
                 runOnUiThread {
                     if (imported.isEmpty()) {
                         status.text = "Не найдено поддерживаемых серверов или Clash/Mihomo-профилей"
@@ -1568,7 +1568,7 @@ class MainActivity : Activity() {
             status.text = "Разрешение VPN не предоставлено"
         } else if (requestCode == portalRequestCode && resultCode == RESULT_OK) {
             val uri = data?.data ?: return
-            status.text = "Читаю PORTAL YAML…"
+            status.text = "Читаю FREE YAML…"
             Thread {
                 val result = runCatching { contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: error("Не удалось открыть файл") }
                 runOnUiThread {
