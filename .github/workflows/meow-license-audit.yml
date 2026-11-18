@@ -25,6 +25,9 @@ jobs:
           path: meow-android
       - name: Install cargo-deny
         run: cargo install cargo-deny --version 0.18.3 --locked
+      - name: Apply upstream repository license to local FFI crate metadata
+        working-directory: meow-android/core/src/main/rust/meow-android-ffi
+        run: sed -i '/^version = "0.1.0"$/a license = "MIT"' Cargo.toml
       - name: Audit pinned Meow Android dependency graph
         working-directory: meow-android/core/src/main/rust/meow-android-ffi
         run: cargo deny check licenses sources
