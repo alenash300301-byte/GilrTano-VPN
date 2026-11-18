@@ -443,7 +443,6 @@ object ServiceHealthChecker {
                 val status = when {
                     lower.contains("isservicerestricted") -> Status.UNSUPPORTED_REGION
                     base != Status.AVAILABLE -> base
-                    country == null -> Status.FAILED
                     else -> Status.AVAILABLE
                 }
                 Classification(status, country, null)
