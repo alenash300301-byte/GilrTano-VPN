@@ -16,7 +16,7 @@ import java.util.concurrent.atomic.AtomicLong
  * through the named outbound, never through Android's default network.
  *
  * The catalogue mirrors FlClashX v0.5.8's 17 service targets. The Meow probe
- * exposes GET and the service-specific POST handshake (1 MiB body cap, 5 s native timeout),
+ * exposes GET and POST (1 MiB standard / 8 MiB region probe, 5 s native timeout),
  * so checks use lightweight public endpoints and classify what those
  * responses can prove. They do not claim account-login or playback success.
  */
@@ -409,7 +409,8 @@ object ServiceHealthChecker {
                 val blocked = setOf("CN", "RU", "BY", "CU", "IR", "KP", "SY", "HK", "MO")
                 val status = when {
                     base != Status.AVAILABLE -> base
-                    country != null && country in blocked -> Status.UNSUPPORTED_REGION
+                    country == null -> Status.FAILED
+                    country in blocked -> Status.UNSUPPORTED_REGION
                     else -> Status.AVAILABLE
                 }
                 Classification(status, country, null)
@@ -476,7 +477,11 @@ object ServiceHealthChecker {
     private fun normalizeRegion(value: String?): String? {
         if (value.isNullOrBlank()) return null
         val raw = value.trim().uppercase(Locale.ROOT)
-        val aliases = mapOf("CHN" to "CN", "HKG" to "HK", "MAC" to "MO", "USA" to "US")
+        val aliases = mapOf(
+            "CHN" to "CN", "HKG" to "HK", "MAC" to "MO", "USA" to "US",
+            "RUS" to "RU", "BLR" to "BY", "CUB" to "CU", "IRN" to "IR",
+            "PRK" to "KP", "SYR" to "SY",
+        )
         val code = aliases[raw] ?: raw
         return code.takeIf { it.matches(Regex("[A-Z]{2}")) }
     }
