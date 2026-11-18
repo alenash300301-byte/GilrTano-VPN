@@ -239,7 +239,7 @@ class MainActivity : Activity() {
                         val config = GilrTanoVpnService.meowConfigForNode(node)
                                                 pendingConfig = config
                         // Quattro may optimize servers inside its own profile.
-                        // Cross-mode fallback to Portal/FREE is deliberately disabled.
+                        // Cross-mode fallback is disabled; Quattro optimization stays within its own profile.
                         pendingAutomatic = activeMode == "quattro"
                         connectButton.isEnabled = true
                         status.text = "Подключаю: ${node.name}…"
@@ -640,7 +640,7 @@ class MainActivity : Activity() {
         val profileActions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         profileActions.addView(actionButton("↻ Обновить") {
             val url = prefs.getString("subscription_url", "").orEmpty()
-            if (url.isNotBlank()) importFrom(url, false)
+            if (url.isNotBlank()) importFrom(url)
             else Toast.makeText(this@MainActivity, "Сначала добавьте ссылку Quattro", Toast.LENGTH_LONG).show()
         }, LinearLayout.LayoutParams(0, dp(46), 1f).apply { rightMargin = dp(5) })
         profileActions.addView(actionButton("＋ Добавить") {
@@ -687,7 +687,7 @@ class MainActivity : Activity() {
         refreshProfileCard()
         profilesPage.addView(actionButton("Импортировать Quattro") {
             val value = prefs.getString("subscription_url", "").orEmpty()
-            if (value.isNotBlank()) importFrom(value, false)
+            if (value.isNotBlank()) importFrom(value)
             else Toast.makeText(this@MainActivity, "Добавьте ссылку через кнопку «Добавить»", Toast.LENGTH_LONG).show()
         })
         profilesPage.addView(actionButton("Импортировать Clash YAML") {
@@ -1244,7 +1244,7 @@ class MainActivity : Activity() {
         }
         primarySource.setText(incoming)
         Toast.makeText(this, "Получена ссылка подписки. Загружаю профиль…", Toast.LENGTH_LONG).show()
-        importFrom(incoming, false)
+        importFrom(incoming)
     }
 
     override fun onNewIntent(intent: Intent?) {
@@ -1493,10 +1493,6 @@ class MainActivity : Activity() {
         }.getOrDefault(emptyList())
     }
 
-    /**
-     * Always refresh public nodes before measuring them. Saved free nodes are only
-     * a fallback cache; public endpoints expire and must not be trusted as current.
-
     private fun measureSelectedPing() {
         val node = activeNodes.getOrNull(servers.selectedItemPosition)
         if (node == null) {
@@ -1592,7 +1588,6 @@ class MainActivity : Activity() {
                         } else {
                             quattroNodes = imported
                             saveNodes("quattro_nodes", quattroNodes)
-                            activeFree = false
                             prefs.edit().putBoolean("active_free_mode", false).apply()
                             refreshMode()
                             val serverCount = imported.sumOf { node ->
