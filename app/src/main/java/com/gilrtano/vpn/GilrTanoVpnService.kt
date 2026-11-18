@@ -143,10 +143,10 @@ class GilrTanoVpnService : VpnService() {
                     if (autoGroupName.isNullOrBlank()) {
                         throw IllegalStateException("Не найдена группа серверов Quattro для проверки")
                     }
-                    updateNotification("Проверяю серверы по 6 сервисам…")
+                    updateNotification("Проверяю серверы по 17 сервисам…")
                     val hasEligibleServer = scanAndMaybeSwitchFastest(forceSelection = true)
                     if (!hasEligibleServer) {
-                        throw IllegalStateException("Нет серверов, прошедших проверки Instagram, YouTube, ВКонтакте, Telegram, ChatGPT и TikTok")
+                        throw IllegalStateException("Нет серверов, прошедших все 17 проверок сервисов")
                     }
                 }
 
@@ -299,10 +299,9 @@ class GilrTanoVpnService : VpnService() {
     }
 
     /**
-     * Tests every member against Instagram, YouTube, VK, Telegram, ChatGPT and TikTok.
-     * Nodes failing any required platform are excluded. Remaining nodes are ranked
-     * by mean response time. The initial scan selects the best member before TUN setup;
-     * later scans use hysteresis to avoid flapping.
+     * Runs FlClashX-style service checks against every Quattro member.
+     * A node is eligible only when all 17 built-in service checks pass.
+     * Eligible nodes are ranked by the mean response time across all 17 services.
      */
     private fun scanAndMaybeSwitchFastest(forceSelection: Boolean = false): Boolean {
         val groupName = autoGroupName ?: return false
@@ -311,61 +310,47 @@ class GilrTanoVpnService : VpnService() {
         val members = group.members.distinct()
         if (members.isEmpty()) return false
 
-        // A node is eligible only when all four requested social platforms respond.
-        // Probe endpoints concurrently; rank eligible nodes by their mean response time.
-        val totalChecks = members.size * SOCIAL_ENDPOINTS.size
-        val workerCount = minOf(AUTO_SCAN_WORKERS, totalChecks)
+        val workerCount = minOf(AUTO_SCAN_WORKERS, members.size)
         val executor = Executors.newFixedThreadPool(workerCount)
-        val completion = ExecutorCompletionService<Pair<Pair<String, String>, Int?>>(executor)
-        val checksByMember = HashMap<String, MutableMap<String, Int>>()
+        val completion = ExecutorCompletionService<ServiceHealthChecker.ProxyResult>(executor)
         val scanDeadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(MAX_SCAN_DURATION_MS)
+        val eligible = LinkedHashMap<String, Int>()
+        var completed = 0
         try {
             members.forEach { member ->
-                SOCIAL_ENDPOINTS.forEach { (serviceName, url, expectedStatus) ->
-                    completion.submit(Callable {
-                        (member to serviceName) to runCatching {
-                            MeowController.probeMember(
-                                this,
-                                member,
-                                url = url,
-                                timeoutMs = AUTO_PROBE_TIMEOUT_MS,
-                                expectedStatus = expectedStatus,
-                            )
-                        }.getOrNull()
-                    })
-                }
+                completion.submit(Callable {
+                    ServiceHealthChecker.checkProxy(this, member)
+                })
             }
-            repeat(totalChecks) {
+            repeat(members.size) {
                 val remainingNanos = scanDeadline - System.nanoTime()
                 if (remainingNanos <= 0L) {
-                    throw TimeoutException("Полное сканирование превысило ${MAX_SCAN_DURATION_MS / 1000} секунд")
+                    throw TimeoutException("Полное сканирование 17 сервисов превысило ${MAX_SCAN_DURATION_MS / 1000} секунд")
                 }
                 val result = completion.poll(remainingNanos, TimeUnit.NANOSECONDS)?.get()
-                    ?: throw TimeoutException("Полное сканирование превысило ${MAX_SCAN_DURATION_MS / 1000} секунд")
-                result.second?.let { delay ->
-                    val (member, serviceName) = result.first
-                    checksByMember.getOrPut(member) { HashMap() }[serviceName] = delay
+                    ?: throw TimeoutException("Полное сканирование 17 сервисов превысило ${MAX_SCAN_DURATION_MS / 1000} секунд")
+                completed++
+                if (result.eligible && result.averageDelayMs != null) {
+                    eligible[result.proxyName] = result.averageDelayMs
+                }
+                if (completed % 10 == 0 || completed == members.size) {
+                    updateNotification("Проверяю серверы · $completed/${members.size} · прошли ${eligible.size}")
                 }
             }
         } finally {
             executor.shutdownNow()
         }
 
-        val delays = checksByMember.mapNotNull { (member, serviceResults) ->
-            if (serviceResults.size == SOCIAL_ENDPOINTS.size) {
-                member to serviceResults.values.average().toInt()
-            } else null
-        }.toMap()
-
-        val filteredCount = members.size - delays.size
-        Log.i(TAG, "Social filter: ${delays.size}/${members.size} nodes passed all checks; filtered=$filteredCount")
-        if (delays.isEmpty()) {
-            Log.w(TAG, "Automatic scan: no nodes can reach all required social platforms in $groupName")
+        val filteredCount = members.size - eligible.size
+        Log.i(TAG, "17-service filter: ${eligible.size}/${members.size} nodes passed; filtered=$filteredCount")
+        if (eligible.isEmpty()) {
+            Log.w(TAG, "Automatic scan: no node passed all 17 required service checks in $groupName")
             return false
         }
+
         val current = group.selected ?: autoSelectedMember
-        val currentDelay = current?.let { delays[it] }
-        val best = delays.minByOrNull { it.value } ?: return false
+        val currentDelay = current?.let { eligible[it] }
+        val best = eligible.minByOrNull { it.value } ?: return false
         if (!forceSelection && best.key == current) {
             autoSelectedMember = current
             pendingBetterMember = null
@@ -397,7 +382,7 @@ class GilrTanoVpnService : VpnService() {
         lastSwitchAt = now
         pendingBetterMember = null
         pendingBetterCount = 0
-        Log.i(TAG, "Automatic server switch: $current (${currentDelay ?: -1} ms) -> ${best.key} (${best.value} ms)")
+        Log.i(TAG, "Automatic server switch: $current (${currentDelay ?: -1} ms) -> ${best.key} (${best.value} ms; 17 services)")
         broadcastStatus("Сервер переключён: ${best.key} · ${best.value} мс")
         updateNotification("Подключено · ${best.key} · ${best.value} мс")
         return true
@@ -639,17 +624,8 @@ class GilrTanoVpnService : VpnService() {
         private const val RECOVERY_INTERVAL_MS = 5 * 60_000L
         private const val AUTO_RESCAN_INTERVAL_MS = 3 * 60_000L
         private const val CONFIRM_SCAN_INTERVAL_MS = 30_000L
-        private const val AUTO_PROBE_TIMEOUT_MS = 3500
-        private const val AUTO_SCAN_WORKERS = 64
-        private const val MAX_SCAN_DURATION_MS = 180_000L
-        private val SOCIAL_ENDPOINTS = listOf(
-            Triple("Instagram", "https://www.instagram.com/robots.txt", 200),
-            Triple("YouTube", "https://www.youtube.com/generate_204", 204),
-            Triple("ВКонтакте", "https://vk.com/robots.txt", 200),
-            Triple("Telegram", "https://telegram.org/robots.txt", 200),
-            Triple("ChatGPT", "https://chatgpt.com/robots.txt", 200),
-            Triple("TikTok", "https://www.tiktok.com/robots.txt", 200),
-        )
+        private const val AUTO_SCAN_WORKERS = 32
+        private const val MAX_SCAN_DURATION_MS = 480_000L
         private const val MIN_IMPROVEMENT_MS = 25
         private const val REQUIRED_BETTER_SCANS = 2
 
