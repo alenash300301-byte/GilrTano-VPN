@@ -2,6 +2,8 @@ name: Build GilrTano VPN with Meow
 
 on:
   workflow_dispatch:
+  push:
+    branches: [meow-engine-integration]
   pull_request:
     branches: [main]
 
