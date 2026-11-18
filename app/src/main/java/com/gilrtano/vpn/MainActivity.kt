@@ -637,7 +637,6 @@ class MainActivity : Activity() {
                             serverCardSubtitle.text = if (activeFree) "Бесплатный" else "Quattro"
                             serverCardPing.text = ""
                             pingStatus.text = "Пинг: —"
-                            updateServerPage()
                         }
                         addView(TextView(this@MainActivity).apply {
                             text = (if (selected) "✓  " else "") + node.name
