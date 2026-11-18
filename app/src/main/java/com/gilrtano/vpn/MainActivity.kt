@@ -717,8 +717,15 @@ class MainActivity : Activity() {
             topMargin = dp(18); bottomMargin = dp(14)
         })
         fun refreshProfileCard() {
-            profileUsage.text = "Серверов загружено: ${quattroNodes.size}"
-            profileState.text = if (quattroNodes.isNotEmpty()) "✓ Профиль доступен · ${if (activeFree) "сейчас выбран FREE" else "Quattro"}" else "Профиль ещё не импортирован"
+            val serverCount = quattroNodes.sumOf { node ->
+                val yaml = node.yamlConfig
+                if (yaml.isNullOrBlank()) 1 else {
+                    val proxySection = yaml.substringAfter("proxies:", "").substringBefore("proxy-groups:")
+                    proxySection.lineSequence().count { it.trimStart().startsWith("- name:") }
+                }
+            }
+            profileUsage.text = "Серверов в профиле: $serverCount"
+            profileState.text = if (quattroNodes.isNotEmpty()) "✓ Полный профиль доступен · ${if (activeFree) "сейчас выбран FREE" else "Quattro"}" else "Профиль ещё не импортирован"
         }
         refreshProfileCard()
         profilesPage.addView(actionButton("Импортировать Quattro") {
@@ -906,12 +913,17 @@ class MainActivity : Activity() {
                     Toast.makeText(this, "В профиле нет переключаемых прокси-групп", Toast.LENGTH_LONG).show()
                     return@runOnUiThread
                 }
-                val labels = groups.map { "${it.name} · ${it.type}" }.toTypedArray()
-                AlertDialog.Builder(this)
-                    .setTitle("Прокси-группы")
-                    .setItems(labels) { _, index -> showMeowGroupMembers(groups[index]) }
-                    .setNegativeButton("Закрыть", null)
-                    .show()
+                if (groups.size == 1) {
+                    showMeowGroupMembers(groups.first())
+                } else {
+                    val preferred = groups.sortedBy { if (it.name.equals("Quattro VPN", true)) 0 else 1 }
+                    val labels = preferred.map { "${it.name} · ${it.type}" }.toTypedArray()
+                    AlertDialog.Builder(this)
+                        .setTitle("Прокси-группы")
+                        .setItems(labels) { _, index -> showMeowGroupMembers(preferred[index]) }
+                        .setNegativeButton("Закрыть", null)
+                        .show()
+                }
             }
         }, "GilrTano-Meow-groups").start()
     }
