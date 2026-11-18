@@ -69,7 +69,7 @@ class GilrTanoVpnService : VpnService() {
                     stopSelf()
                 } else {
                     // Keep optional Quattro-only server optimization, but never
-                    // accept a fallback config that could change the selected product mode.
+                    // No cross-mode fallback is accepted by this service.
                     automaticMode = intent.getBooleanExtra(EXTRA_AUTO, false)
                     consecutiveProbeFailures = 0
                     startTunnel(config, automaticMode, false)
@@ -267,7 +267,7 @@ class GilrTanoVpnService : VpnService() {
     }
 
     private fun discoverAutoGroup() {
-        if (!automaticMode || usingFallback || !autoGroupName.isNullOrBlank()) return
+        if (!automaticMode || !autoGroupName.isNullOrBlank()) return
         val groups = MeowController.listGroups(this)
         val group = groups.firstOrNull {
             it.name.equals("Quattro VPN", ignoreCase = true) &&
