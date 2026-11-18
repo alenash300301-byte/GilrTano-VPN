@@ -175,11 +175,11 @@ class MainActivity : Activity() {
         }
 
         quattroTab = Button(this).apply {
-            text = "QUATTRO"
+            text = "ПОДПИСКА"
             setOnClickListener { switchMode("quattro") }
         }
         portalTab = Button(this).apply {
-            text = "PORTAL"
+            text = "FREE"
             setOnClickListener { switchMode("portal") }
         }
 
@@ -391,7 +391,7 @@ class MainActivity : Activity() {
                         addView(serverCardSubtitle)
                     }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
                     addView(TextView(this@MainActivity).apply {
-                        text = "PORTAL / QUATTRO"
+                        text = "ПОДПИСКА / FREE"
                         textSize = 10f
                         typeface = android.graphics.Typeface.DEFAULT_BOLD
                         gravity = android.view.Gravity.CENTER
@@ -628,9 +628,9 @@ class MainActivity : Activity() {
         })
 
         val serverModes = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        serverModes.addView(actionButton("QUATTRO") { switchMode("quattro"); updateServerPage() },
+        serverModes.addView(actionButton("ПОДПИСКА") { switchMode("quattro"); updateServerPage() },
             LinearLayout.LayoutParams(0, dp(48), 1f))
-        serverModes.addView(actionButton("PORTAL") { switchMode("portal"); updateServerPage() },
+        serverModes.addView(actionButton("FREE") { switchMode("portal"); updateServerPage() },
             LinearLayout.LayoutParams(0, dp(48), 1f))
         serverPage.addView(serverModes)
         serverPage.addView(actionButton("Серверы Quattro") { showMeowGroupsDialog() })
