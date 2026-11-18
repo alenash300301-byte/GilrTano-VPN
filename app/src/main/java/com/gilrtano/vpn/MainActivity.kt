@@ -675,6 +675,7 @@ class MainActivity : Activity() {
         serverModes.addView(actionButton("FREE") { switchMode(true); updateServerPage() },
             LinearLayout.LayoutParams(0, dp(48), 1f))
         serverPage.addView(serverModes)
+        serverPage.addView(actionButton("Серверы Quattro") { showMeowGroupsDialog() })
         serverPage.addView(actionButton("Проверить пинг") { measureSelectedPing() })
         serverPage.addView(actionButton("Найти лучший бесплатный сервер") { refreshFreeServersAndFindBest() })
         // First-class profiles tab backed by the existing Quattro/YAML/DOCX import logic.
