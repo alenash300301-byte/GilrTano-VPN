@@ -56,7 +56,7 @@ class GilrTanoVpnService : VpnService() {
             ACTION_RESUME -> {
                 val config = activeConfig
                 if (paused && !config.isNullOrBlank()) {
-                    startTunnel(config, null, null, false, true)
+                    startTunnel(config, null, null, automaticMode, true)
                 }
             }
             ACTION_SWITCH -> {
@@ -74,14 +74,14 @@ class GilrTanoVpnService : VpnService() {
                     broadcastStatus("Добавьте VLESS-ссылку или Clash YAML")
                     stopSelf()
                 } else {
-                    // Product modes are always explicitly selected by the user.
-                    // Never activate automatic cross-mode fallback, even for stale intents.
-                    automaticMode = false
+                    // Keep optional Quattro-only server optimization, but never
+                    // accept a fallback config that could change the selected product mode.
+                    automaticMode = intent.getBooleanExtra(EXTRA_AUTO, false)
                     fallbackConfig = null
                     preferredConfig = null
                     usingFallback = false
                     consecutiveProbeFailures = 0
-                    startTunnel(config, null, null, false, false)
+                    startTunnel(config, null, null, automaticMode, false)
                 }
             }
         }
