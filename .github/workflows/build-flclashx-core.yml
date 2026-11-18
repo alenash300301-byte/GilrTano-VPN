@@ -92,6 +92,12 @@ jobs:
             -x :app:copyFlutterAssetsDebug \
             --no-daemon --stacktrace
 
+      - name: Stage FlClashX core for GilrTano Android app
+        run: |
+          mkdir -p app/libs app/src/main/assets/licenses
+          cp FlClashX/android/core/build/gomobile/core.aar app/libs/flclashx-core.aar
+          cp FlClashX/LICENSE app/src/main/assets/licenses/FLCLASHX-GPL-3.0.txt
+
       - name: Verify native core and Kotlin bridge
         working-directory: .
         run: |
@@ -100,6 +106,19 @@ jobs:
           unzip -l "$AAR" | grep -E 'jni/arm64-v8a/libclash.so'
           unzip -p "$AAR" classes.jar > /tmp/flclashx-classes.jar
           jar tf /tmp/flclashx-classes.jar | grep -E 'com/follow/clashx/core/mobile/Mobile.class'
+
+      - name: Compile GilrTano ARM64 debug APK against FlClashX
+        run: |
+          chmod +x ./gradlew
+          ./gradlew :app:assembleDebug --no-daemon --stacktrace
+
+      - name: Upload GilrTano APK with FlClashX core
+        uses: actions/upload-artifact@v4
+        with:
+          name: GilrTano-FlClashX-ARM64-Debug
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Upload FlClashX ARM64 core
         uses: actions/upload-artifact@v4
