@@ -60,7 +60,6 @@ class MainActivity : Activity() {
     private lateinit var servers: Spinner
     private lateinit var quattroTab: Button
     private lateinit var portalTab: Button
-    private var autoMode = false
     private var buttonShellAnimator: ValueAnimator? = null
     private var activeMode: String = "quattro"
     private var activePortal = false
@@ -76,8 +75,6 @@ class MainActivity : Activity() {
     private var settingsExpanded = false
     private var quattroNodes: List<ImportedNode> = emptyList()
     private var pendingConfig: String? = null
-    private var pendingFallbackConfig: String? = null
-    private var pendingPreferredConfig: String? = null
     private var pendingAutomatic = false
     private val requestCode = 4101
     private val docxRequestCode = 4102
@@ -188,7 +185,7 @@ class MainActivity : Activity() {
 
         val importPrimary = Button(this).apply {
             text = "Импортировать Quattro"
-            setOnClickListener { importFrom(primarySource.text.toString().trim(), false) }
+            setOnClickListener { importFrom(primarySource.text.toString().trim()) }
         }
         val importDocx = Button(this).apply {
             text = "Выбрать DOCX Quattro"
@@ -240,11 +237,7 @@ class MainActivity : Activity() {
                 } else {
                     try {
                         val config = GilrTanoVpnService.meowConfigForNode(node)
-                        val fallbackConfig: String? = null
-                        val preferredConfig: String? = null
-                        pendingConfig = config
-                        pendingFallbackConfig = null
-                        pendingPreferredConfig = null
+                                                pendingConfig = config
                         // Quattro may optimize servers inside its own profile.
                         // Cross-mode fallback to Portal/FREE is deliberately disabled.
                         pendingAutomatic = activeMode == "quattro"
@@ -252,7 +245,7 @@ class MainActivity : Activity() {
                         status.text = "Подключаю: ${node.name}…"
                         val permission = VpnService.prepare(this@MainActivity)
                         if (permission != null) startActivityForResult(permission, requestCode)
-                        else startVpn(config, null, null, pendingAutomatic)
+                        else startVpn(config, automatic = pendingAutomatic)
                     } catch (e: Exception) {
                         pendingConfig = null
                         connectButton.isEnabled = true
@@ -383,7 +376,7 @@ class MainActivity : Activity() {
                     addView(LinearLayout(this@MainActivity).apply {
                         orientation = LinearLayout.VERTICAL
                         serverCardTitle = TextView(this@MainActivity).apply {
-                            text = "Автоматический сервер"; textSize = 16f
+                            text = "Выбранный сервер"; textSize = 16f
                             setTextColor(Color.WHITE)
                             setOnLongClickListener {
                                 showMeowGroupsDialog()
@@ -391,14 +384,14 @@ class MainActivity : Activity() {
                             }
                         }
                         serverCardSubtitle = TextView(this@MainActivity).apply {
-                            text = "Автовыбор"; textSize = 12f
+                            text = "Выбор сервера"; textSize = 12f
                             setTextColor(Color.LTGRAY)
                         }
                         addView(serverCardTitle)
                         addView(serverCardSubtitle)
                     }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
                     addView(TextView(this@MainActivity).apply {
-                        text = "AUTO PORTAL"
+                        text = "PORTAL / QUATTRO"
                         textSize = 10f
                         typeface = android.graphics.Typeface.DEFAULT_BOLD
                         gravity = android.view.Gravity.CENTER
@@ -575,7 +568,7 @@ class MainActivity : Activity() {
         val serverRows = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         serverPage.addView(serverRows)
         fun updateServerPage() {
-            serverState.text = "Режим: " + if (autoMode) "AUTO · Quattro с бесплатным резервом" else modeDisplayName()
+            serverState.text = "Режим: " + modeDisplayName()
             serverRows.removeAllViews()
             val query = proxySearch.text.toString().trim().lowercase()
             val nodes = activeNodes.mapIndexed { index, node -> index to node }.filter { it.second.name.lowercase().contains(query) }
@@ -661,7 +654,7 @@ class MainActivity : Activity() {
                 .setPositiveButton("Импортировать") { _, _ ->
                     val value = field.text.toString().trim()
                     prefs.edit().putString("subscription_url", value).apply()
-                    importFrom(value, false)
+                    importFrom(value)
                 }.show()
         }, LinearLayout.LayoutParams(0, dp(46), 1f).apply { leftMargin = dp(5) })
         profilesPage.addView(profileActions)
@@ -813,7 +806,6 @@ class MainActivity : Activity() {
         activeMode = prefs.getString("connection_mode", "quattro") ?: "quattro"
         if (activeMode !in setOf("quattro", "portal")) activeMode = "quattro"
         prefs.edit().putString("connection_mode", activeMode).putBoolean("active_free_mode", false).apply()
-        activeFree = activeMode == "free"
         activePortal = activeMode == "portal"
         portalNodes = restoreNodes("portal_nodes")
         refreshMode()
@@ -1064,8 +1056,8 @@ class MainActivity : Activity() {
             val ping = Regex("(\\d+)\\s*мс").find(pingStatus.text.toString())?.groupValues?.get(1)
             serverCardPing.text = ping?.let { "$it мс" } ?: ""
         } else {
-            serverCardTitle.text = if (quattroNodes.isEmpty() && freeNodes.isEmpty()) "Сервер не добавлен" else "Автоматический сервер"
-            serverCardSubtitle.text = if (quattroNodes.isEmpty() && freeNodes.isEmpty()) "Добавьте подписку в настройках" else "Автовыбор"
+            serverCardTitle.text = if (activeNodes.isEmpty()) "Сервер не добавлен" else "Выбранный сервер"
+            serverCardSubtitle.text = if (activeNodes.isEmpty()) "Добавьте профиль" else modeDisplayName()
             serverCardPing.text = ""
         }
     }
@@ -1250,7 +1242,6 @@ class MainActivity : Activity() {
             Toast.makeText(this, "Подписка должна иметь HTTP- или HTTPS-адрес", Toast.LENGTH_LONG).show()
             return
         }
-        activeFree = false
         primarySource.setText(incoming)
         Toast.makeText(this, "Получена ссылка подписки. Загружаю профиль…", Toast.LENGTH_LONG).show()
         importFrom(incoming, false)
@@ -1350,11 +1341,11 @@ class MainActivity : Activity() {
         val current = status.text.toString()
         val active = current.contains("Подключено") || current.contains("Приостановлено") || current.startsWith("Подключаю") || current.startsWith("Запускаю") || current.startsWith("Запуск Meow") || current.startsWith("Переключаю") || current.startsWith("Приостанавливаю") || current.startsWith("Возобновляю")
         if (active) {
-            pendingConfig = null; pendingFallbackConfig = null; pendingPreferredConfig = null; pendingAutomatic = false
+            pendingConfig = null; pendingAutomatic = false
             status.text = "Отключаю VPN для смены режима…"
             startService(Intent(this, GilrTanoVpnService::class.java).setAction(GilrTanoVpnService.ACTION_STOP))
         }
-        activeMode = mode; activeFree = false; activePortal = mode == "portal"; autoMode = false
+        activeMode = mode; activePortal = mode == "portal"
         prefs.edit().putString("connection_mode", mode).putBoolean("active_free_mode", false).apply()
         refreshMode(); updateServerCard(false)
         if (active) status.text = "Отключаю VPN… выбран режим " + mode.uppercase()
@@ -1408,7 +1399,7 @@ class MainActivity : Activity() {
         quattroTab.background = bg(q); portalTab.background = bg(p)
         quattroTab.setTextColor(if (q) Color.WHITE else Color.LTGRAY); portalTab.setTextColor(if (p) Color.WHITE else Color.LTGRAY)
         if (::protocolMetric.isInitialized) protocolMetric.text = modeDisplayName()
-        primarySource.visibility = if (q) View.VISIBLE else View.GONE; freeSource.visibility = View.GONE
+        primarySource.visibility = if (q) View.VISIBLE else View.GONE
         findImportButtonsVisibility()
         val list = activeNodes
         servers.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, list.map { it.name })
@@ -1440,12 +1431,13 @@ class MainActivity : Activity() {
         updateButton.visibility = if (settingsExpanded) View.VISIBLE else View.GONE
     }
 
-    private fun importFrom(source: String, isFree: Boolean) {
+
+    private fun importFrom(source: String) {
         if (source.isBlank()) {
             Toast.makeText(this, "Укажи ссылку или конфигурацию", Toast.LENGTH_LONG).show()
             return
         }
-        status.text = if (isFree) "Загружаю резерв…" else "Загружаю Quattro…"
+        status.text = "Загружаю Quattro…"
         Thread {
             try {
                 val imported = SubscriptionImporter.load(source)
@@ -1454,23 +1446,15 @@ class MainActivity : Activity() {
                         status.text = "Не найдено поддерживаемых серверов или Clash/Mihomo-профилей"
                         return@runOnUiThread
                     }
-                    if (isFree) {
-                        freeNodes = imported
-                        prefs.edit().putString("free_subscription_url", source).apply()
-                        saveNodes("free_nodes", freeNodes)
-                    } else {
-                        quattroNodes = imported
-                        prefs.edit().putString("subscription_url", source).apply()
-                        saveNodes("quattro_nodes", quattroNodes)
-                    }
-                    activeFree = false
-                    prefs.edit().putBoolean("active_free_mode", false).apply()
+                    quattroNodes = imported
+                    prefs.edit().putString("subscription_url", source).putBoolean("active_free_mode", false).apply()
+                    saveNodes("quattro_nodes", quattroNodes)
                     refreshMode()
                     settingsExpanded = false
                     settingsHeader.text = "Настройки"
                     findImportButtonsVisibility()
-                    status.text = "Серверы добавлены"
-                    if (isFree) findBestFreeServers() else measureSelectedPing()
+                    status.text = "Серверы QUATTRO добавлены"
+                    measureSelectedPing()
                 }
             } catch (e: Exception) {
                 runOnUiThread { status.text = "Ошибка импорта: ${e.message}" }
@@ -1512,25 +1496,6 @@ class MainActivity : Activity() {
     /**
      * Always refresh public nodes before measuring them. Saved free nodes are only
      * a fallback cache; public endpoints expire and must not be trusted as current.
-     */    private fun connectAutomaticallySelected() {
-        val node = activeNodes.getOrNull(servers.selectedItemPosition) ?: return
-        try {
-            val config = GilrTanoVpnService.meowConfigForNode(node)
-            val fallbackNode = if (activeFree) freeNodes.getOrNull(1) else freeNodes.firstOrNull()
-            val fallback = fallbackNode
-                ?.let { runCatching { GilrTanoVpnService.meowConfigForNode(it) }.getOrNull() }
-            pendingConfig = config
-            pendingFallbackConfig = fallback
-            pendingPreferredConfig = config
-            pendingAutomatic = true
-            status.text = "Подключаю лучший доступный сервер…"
-            val permission = VpnService.prepare(this)
-            if (permission != null) startActivityForResult(permission, requestCode)
-            else startVpn(config, fallback, config, true)
-        } catch (e: Exception) {
-            status.text = "Не удалось подготовить сервер: ${e.message}"
-        }
-    }
 
     private fun measureSelectedPing() {
         val node = activeNodes.getOrNull(servers.selectedItemPosition)
@@ -1580,23 +1545,12 @@ class MainActivity : Activity() {
         return file.absolutePath
     }
 
-    private fun startVpn(
-        config: String,
-        fallbackConfig: String? = null,
-        preferredConfig: String? = null,
-        automatic: Boolean = false
-    ) {
+    private fun startVpn(config: String, automatic: Boolean = false) {
         connectButton.isEnabled = true
         val intent = Intent(this, GilrTanoVpnService::class.java)
             .setAction(GilrTanoVpnService.ACTION_START)
             .putExtra(GilrTanoVpnService.EXTRA_CONFIG, storeEngineConfig(config, "active"))
             .putExtra(GilrTanoVpnService.EXTRA_AUTO, automatic)
-        fallbackConfig?.let {
-            intent.putExtra(GilrTanoVpnService.EXTRA_FALLBACK_CONFIG, storeEngineConfig(it, "fallback"))
-        }
-        preferredConfig?.let {
-            intent.putExtra(GilrTanoVpnService.EXTRA_PREFERRED_CONFIG, storeEngineConfig(it, "preferred"))
-        }
         startForegroundService(intent)
         status.text = "Запускаю VPN…"
         connectButton.setState(PowerOrbButtonView.State.CONNECTING)
@@ -1607,10 +1561,8 @@ class MainActivity : Activity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == this.requestCode && resultCode == RESULT_OK) {
             pendingConfig?.let {
-                startVpn(it, pendingFallbackConfig, pendingPreferredConfig, pendingAutomatic)
+                startVpn(it, automatic = pendingAutomatic)
                 pendingConfig = null
-                pendingFallbackConfig = null
-                pendingPreferredConfig = null
                 pendingAutomatic = false
             } ?: run { status.text = "Подключение отменено" }
         } else if (requestCode == this.requestCode) {
