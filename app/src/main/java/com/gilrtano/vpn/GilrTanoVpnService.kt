@@ -392,7 +392,9 @@ class GilrTanoVpnService : VpnService() {
         if (monitorRunning || !automaticMode) return
         monitorRunning = true
         Thread({
-            var lastGroupScanAt = 0L
+            // The mandatory 17-service scan already ran before TUN creation.
+            // Start the rescan clock now instead of repeating the whole sweep immediately.
+            var lastGroupScanAt = if (!autoGroupName.isNullOrBlank() && !usingFallback) System.currentTimeMillis() else 0L
             var firstMonitorIteration = true
             while (monitorRunning && automaticMode && !stopping && !paused) {
                 try {
