@@ -48,11 +48,13 @@ class GilrTanoVpnService : VpnService() {
                     automaticMode = false
                     switchTunnel(config)
                 } else {
-                    automaticMode = intent.getBooleanExtra(EXTRA_AUTO, false)
-                    fallbackConfig = intent.getStringExtra(EXTRA_FALLBACK_CONFIG)
-                    preferredConfig = intent.getStringExtra(EXTRA_PREFERRED_CONFIG)
+                    // Never change the selected product mode as a connection fallback.
+                    automaticMode = false
+                    fallbackConfig = null
+                    preferredConfig = null
                     usingFallback = false
                     consecutiveProbeFailures = 0
+                    monitorRunning = false
                     startTunnel(config)
                 }
             }
@@ -105,30 +107,16 @@ class GilrTanoVpnService : VpnService() {
                         Log.i(TAG, "Xray status=$status $message")
                         if (status == 0L && !stopping) establishTun()
                         else if (status < 0L && !stopping) {
-                            if (automaticMode && !usingFallback && !fallbackConfig.isNullOrBlank()) {
-                                usingFallback = true
-                                lastAutomaticSwitchAt = System.currentTimeMillis()
-                                broadcastStatus("Quattro недоступен. Запускаю бесплатный резерв…")
-                                switchTunnel(fallbackConfig!!)
-                            } else {
-                                broadcastStatus("Ошибка Xray: $message")
-                                stopTunnel()
-                            }
+                            broadcastStatus("Ошибка Xray: $message")
+                            stopTunnel()
                         }
                     }
                 })
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to start Xray", e)
                 if (!stopping) {
-                    if (automaticMode && !usingFallback && !fallbackConfig.isNullOrBlank()) {
-                        usingFallback = true
-                        lastAutomaticSwitchAt = System.currentTimeMillis()
-                        broadcastStatus("Не удалось запустить Quattro. Пробую бесплатный резерв…")
-                        switchTunnel(fallbackConfig!!)
-                    } else {
-                        broadcastStatus("Ошибка запуска: ${e.message}")
-                        stopTunnel()
-                    }
+                    broadcastStatus("Ошибка запуска: ${e.message}")
+                    stopTunnel()
                 }
             }
         }, "GilrTano-Xray-start").start()
@@ -183,24 +171,15 @@ class GilrTanoVpnService : VpnService() {
                 throw IllegalStateException("Не все обязательные сервисы доступны через VPN")
             }
 
-            val connectedMessage = if (automaticMode) {
-                if (usingFallback) "Quattro · бесплатный резерв" else "Quattro"
-            } else "Xray и TUN работают"
+            val connectedMessage = "Xray и TUN работают"
             broadcastStatus(if (resuming) "Возобновлено · $connectedMessage" else "Подключено · $connectedMessage")
             resuming = false
             updateNotification("Подключено · защищённый трафик")
             startConnectionMonitor()
         } catch (e: Exception) {
             Log.w(TAG, "VPN tunnel did not pass internet verification", e)
-            if (automaticMode && !usingFallback && !fallbackConfig.isNullOrBlank() && !stopping) {
-                usingFallback = true
-                lastAutomaticSwitchAt = System.currentTimeMillis()
-                broadcastStatus("У выбранного сервера нет интернета. Пробую бесплатный резерв…")
-                switchTunnel(fallbackConfig!!)
-            } else {
-                broadcastStatus("Не удалось подключиться: ${e.message}")
-                stopTunnel()
-            }
+            broadcastStatus("Не удалось подключиться: ${e.message}")
+            stopTunnel()
         }
     }
 
