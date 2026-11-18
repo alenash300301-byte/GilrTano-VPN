@@ -179,7 +179,7 @@ class MainActivity : Activity() {
             setOnClickListener { switchMode("quattro") }
         }
         portalTab = Button(this).apply {
-            text = "FREE"
+            text = "PORTAL"
             setOnClickListener { switchMode("portal") }
         }
 
@@ -391,7 +391,7 @@ class MainActivity : Activity() {
                         addView(serverCardSubtitle)
                     }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
                     addView(TextView(this@MainActivity).apply {
-                        text = "ПОДПИСКА / FREE"
+                        text = "ПОДПИСКА / PORTAL"
                         textSize = 10f
                         typeface = android.graphics.Typeface.DEFAULT_BOLD
                         gravity = android.view.Gravity.CENTER
@@ -630,7 +630,7 @@ class MainActivity : Activity() {
         val serverModes = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         serverModes.addView(actionButton("ПОДПИСКА") { switchMode("quattro"); updateServerPage() },
             LinearLayout.LayoutParams(0, dp(48), 1f))
-        serverModes.addView(actionButton("FREE") { switchMode("portal"); updateServerPage() },
+        serverModes.addView(actionButton("PORTAL") { switchMode("portal"); updateServerPage() },
             LinearLayout.LayoutParams(0, dp(48), 1f))
         serverPage.addView(serverModes)
         serverPage.addView(actionButton("Серверы Quattro") { showMeowGroupsDialog() })
@@ -1334,7 +1334,7 @@ class MainActivity : Activity() {
         if (mode !in setOf("quattro", "portal")) return
         val nodes = if (mode == "portal") portalNodes else quattroNodes
         if (nodes.isEmpty()) {
-            val message = if (mode == "portal") "Импортируй FREE YAML" else "Импортируй профиль подписки"
+            val message = if (mode == "portal") "Импортируй PORTAL YAML" else "Импортируй профиль подписки"
             Toast.makeText(this, message, Toast.LENGTH_LONG).show(); return
         }
         if (activeMode == mode) return
@@ -1349,11 +1349,11 @@ class MainActivity : Activity() {
         prefs.edit().putString("connection_mode", mode).putBoolean("active_free_mode", false).apply()
         refreshMode(); updateServerCard(false)
         if (active) status.text = "Отключаю VPN… выбран режим " + mode.uppercase()
-        else Toast.makeText(this, "Выбран режим " + if (mode == "quattro") "ПОДПИСКА" else "FREE", Toast.LENGTH_SHORT).show()
+        else Toast.makeText(this, "Выбран режим " + if (mode == "quattro") "ПОДПИСКА" else "PORTAL", Toast.LENGTH_SHORT).show()
     }
 
     private fun activeSelectionKey(): String = if (activeMode == "portal") "portal_selected" else "quattro_selected"
-    private fun modeDisplayName(): String = if (activeMode == "quattro") "ПОДПИСКА" else "FREE"
+    private fun modeDisplayName(): String = if (activeMode == "quattro") "ПОДПИСКА" else "PORTAL"
 
     private fun pickPortalYaml() {
         val pick = Intent(Intent.ACTION_OPEN_DOCUMENT).apply { addCategory(Intent.CATEGORY_OPENABLE); type = "*/*" }
