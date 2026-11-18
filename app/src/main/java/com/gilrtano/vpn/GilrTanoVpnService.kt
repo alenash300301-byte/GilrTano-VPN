@@ -312,7 +312,7 @@ class GilrTanoVpnService : VpnService() {
                 })
             }
             repeat(members.size) {
-                val result = runCatching { completion.take().get() }.getOrNull() ?: return@repeat
+                val result = completion.take().get()
                 result.second?.let { delays[result.first] = it }
             }
         } finally {
@@ -378,8 +378,9 @@ class GilrTanoVpnService : VpnService() {
                         runCatching { discoverAutoGroup() }
                             .onFailure { Log.w(TAG, "Automatic group discovery failed", it) }
                     }
+                    val nextScanInterval = if (pendingBetterMember != null) CONFIRM_SCAN_INTERVAL_MS else AUTO_RESCAN_INTERVAL_MS
                     val shouldScanGroup = !autoGroupName.isNullOrBlank() && !usingFallback &&
-                        (lastGroupScanAt == 0L || now - lastGroupScanAt >= AUTO_RESCAN_INTERVAL_MS ||
+                        (lastGroupScanAt == 0L || now - lastGroupScanAt >= nextScanInterval ||
                             consecutiveProbeFailures >= FAILURE_LIMIT)
                     var groupHasWorkingMember: Boolean? = null
                     if (shouldScanGroup) {
@@ -593,6 +594,7 @@ class GilrTanoVpnService : VpnService() {
         private const val SWITCH_COOLDOWN_MS = 60_000L
         private const val RECOVERY_INTERVAL_MS = 5 * 60_000L
         private const val AUTO_RESCAN_INTERVAL_MS = 3 * 60_000L
+        private const val CONFIRM_SCAN_INTERVAL_MS = 30_000L
         private const val AUTO_PROBE_TIMEOUT_MS = 3500
         private const val AUTO_SCAN_WORKERS = 16
         private const val MIN_IMPROVEMENT_MS = 25
