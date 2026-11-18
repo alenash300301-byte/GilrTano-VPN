@@ -60,9 +60,9 @@ class MainActivity : Activity() {
     private lateinit var quattroTab: Button
     private lateinit var freeTab: Button
     private lateinit var autoTab: Button
-    private var autoMode = true
+    private var autoMode = false
     private var buttonShellAnimator: ValueAnimator? = null
-    private var activeMode: String = "auto"
+    private var activeMode: String = "quattro"
     private lateinit var bestFreeButton: Button
     private lateinit var checkPing: Button
     private lateinit var updateButton: Button
@@ -158,6 +158,10 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         quattroNodes = restoreNodes("quattro_nodes")
         freeNodes = restoreNodes("free_nodes")
+        // Restore the user's explicit mode choice; never auto-select another mode.
+        activeFree = prefs.getBoolean("active_free_mode", false)
+        activeMode = if (activeFree) "free" else "quattro"
+        autoMode = false
 
         status = TextView(this).apply { text = "Отключено"; textSize = 14f; maxLines = 2; gravity = android.view.Gravity.CENTER; setPadding(dp(18), dp(4), dp(18), dp(4)) }
         pingStatus = TextView(this).apply { text = "Пинг: —"; textSize = 15f }
