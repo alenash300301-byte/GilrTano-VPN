@@ -859,6 +859,11 @@ class MainActivity : Activity() {
     }
 
     private fun showServerPicker() {
+        val selectedNode = activeNodes.getOrNull(servers.selectedItemPosition)
+        if (selectedNode?.yamlConfig != null) {
+            showMeowGroupsDialog()
+            return
+        }
         val nodes = activeNodes
         if (nodes.isEmpty()) {
             settingsExpanded = true
@@ -1748,7 +1753,14 @@ class MainActivity : Activity() {
                             activeFree = false
                             prefs.edit().putBoolean("active_free_mode", false).apply()
                             refreshMode()
-                            status.text = "Quattro сохранён: ${imported.size} серверов. Импортировать снова не нужно."
+                            val serverCount = imported.sumOf { node ->
+                                val yaml = node.yamlConfig
+                                if (yaml.isNullOrBlank()) 1 else {
+                                    val proxySection = yaml.substringAfter("proxies:", "").substringBefore("proxy-groups:")
+                                    proxySection.lineSequence().count { it.trimStart().startsWith("- name:") }
+                                }
+                            }
+                            status.text = "Quattro сохранён: $serverCount серверов. Импортировать снова не нужно."
                             measureSelectedPing()
                         }
                     }
