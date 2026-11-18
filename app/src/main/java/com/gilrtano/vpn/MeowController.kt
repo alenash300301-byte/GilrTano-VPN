@@ -38,6 +38,27 @@ object MeowController {
         }
     }
 
+    /**
+     * Measures a real proxy through Meow's delay endpoint. A successful
+     * result means the proxy reached the HTTP health-check URL and received
+     * the expected status, not merely that its TCP port was open.
+     */
+    fun probeMember(
+        context: Context,
+        memberName: String,
+        url: String = "https://cp.cloudflare.com/generate_204",
+        timeoutMs: Int = 5000,
+    ): Int {
+        require(memberName.isNotBlank())
+        require(timeoutMs in 1..65535)
+        val path = "/proxies/${encode(memberName)}/delay" +
+            "?url=${encode(url)}&timeout=$timeoutMs&expected=204"
+        val response = request(context, "GET", path)
+        val delay = JSONObject(response).optInt("delay", -1)
+        if (delay < 0) throw IllegalStateException("Meow вернул некорректную задержку для $memberName")
+        return delay
+    }
+
     fun selectMember(context: Context, groupName: String, memberName: String) {
         require(groupName.isNotBlank() && memberName.isNotBlank())
         val path = "/api/proxy-groups/${encode(groupName)}/select"
