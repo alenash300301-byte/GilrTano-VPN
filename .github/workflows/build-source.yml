@@ -30,6 +30,20 @@ jobs:
           ref: ad3b6e32292215a62feed27ab74157251b1575fb
           path: meow-android
 
+      - name: Expand Meow HTTP probe body cap for service checks
+        working-directory: meow-android
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          source = Path("core/src/main/rust/meow-android-ffi/src/probe/http.rs")
+          text = source.read_text()
+          old = "const GET_BODY_CAP: usize = 64 * 1024;"
+          new = "const GET_BODY_CAP: usize = 1024 * 1024;"
+          if old not in text:
+              raise SystemExit("Pinned Meow HTTP probe source changed; refusing an unsafe patch")
+          source.write_text(text.replace(old, new, 1))
+          PY
+
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
