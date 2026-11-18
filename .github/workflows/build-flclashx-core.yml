@@ -96,7 +96,7 @@ jobs:
           for name in ("settings.gradle.kts", "build.gradle.kts"):
               path = Path(name)
               source = path.read_text()
-              mirror = 'maven { url = uri("https://maven-central.storage-download.googleapis.com/maven2/") }\\n        mavenCentral()'
+              mirror = 'maven { url = uri("https://maven-central.storage-download.googleapis.com/maven2/") }\n        mavenCentral()'
               path.write_text(source.replace("mavenCentral()", mirror))
           PY
 
@@ -106,10 +106,10 @@ jobs:
           ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
         run: |
           for attempt in 1 2 3 4; do
-            if ./gradlew :core:assembleDebug \\
-              -Ptarget-platform=android-arm64 \\
-              -x :app:compileFlutterBuildDebug \\
-              -x :app:copyFlutterAssetsDebug \\
+            if ./gradlew :core:assembleDebug \
+              -Ptarget-platform=android-arm64 \
+              -x :app:compileFlutterBuildDebug \
+              -x :app:copyFlutterAssetsDebug \
               --no-daemon --stacktrace; then
               exit 0
             fi
