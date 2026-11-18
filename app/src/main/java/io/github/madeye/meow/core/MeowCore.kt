@@ -26,5 +26,7 @@ object MeowCore {
     external fun nativeResetOutbound(network: String)
     external fun nativeVersion(): String
     external fun nativeGetLogs(): String
+    external fun nativeProbeProxy(id: Long, proxy: String, kind: String, arg: String): String?
+    external fun nativeCancelProxyProbe(id: Long)
     external fun nativeValidateConfig(yaml: String): Int
 }
