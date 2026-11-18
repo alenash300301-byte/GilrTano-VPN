@@ -367,10 +367,12 @@ class GilrTanoVpnService : VpnService() {
         monitorRunning = true
         Thread({
             var lastGroupScanAt = 0L
+            var firstMonitorIteration = true
             while (monitorRunning && automaticMode && !stopping && !paused) {
                 try {
                     // Run the first full server scan immediately after the tunnel comes up.
-                    if (lastGroupScanAt != 0L) Thread.sleep(MONITOR_INTERVAL_MS)
+                    if (!firstMonitorIteration) Thread.sleep(MONITOR_INTERVAL_MS)
+                    firstMonitorIteration = false
                     if (!monitorRunning || stopping || paused) break
                     val now = System.currentTimeMillis()
                     if (probeTunnel() < 0L) consecutiveProbeFailures++ else consecutiveProbeFailures = 0
