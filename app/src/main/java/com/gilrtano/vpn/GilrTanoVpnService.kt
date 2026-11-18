@@ -323,6 +323,9 @@ class GilrTanoVpnService : VpnService() {
                 })
             }
             repeat(members.size) {
+                if (stopping || !automaticMode || paused) {
+                    throw TimeoutException("Автоматическое сканирование отменено")
+                }
                 val remainingNanos = scanDeadline - System.nanoTime()
                 if (remainingNanos <= 0L) {
                     throw TimeoutException("Полное сканирование 17 сервисов превысило ${MAX_SCAN_DURATION_MS / 1000} секунд")
