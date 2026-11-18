@@ -288,9 +288,10 @@ class GilrTanoVpnService : VpnService() {
     }
 
     /**
-     * Re-measures every member of the active Quattro selector through Meow.
-     * A failed current node is replaced immediately; otherwise a new node must
-     * be at least 20% and 25 ms faster in two consecutive scans to avoid flapping.
+     * Tests every member against Instagram, YouTube, VK and Telegram through Meow.
+     * Nodes failing any required platform are excluded. Remaining nodes are ranked
+     * by mean response time. A failed current node is replaced immediately; otherwise
+     * a faster node must win two consecutive scans to avoid flapping.
      */
     private fun scanAndMaybeSwitchFastest(): Boolean {
         val groupName = autoGroupName ?: return false
@@ -299,28 +300,50 @@ class GilrTanoVpnService : VpnService() {
         val members = group.members.distinct()
         if (members.isEmpty()) return false
 
-        val workerCount = minOf(AUTO_SCAN_WORKERS, members.size)
+        // A node is eligible only when all four requested social platforms respond.
+        // Probe endpoints concurrently; rank eligible nodes by their mean response time.
+        val totalChecks = members.size * SOCIAL_ENDPOINTS.size
+        val workerCount = minOf(AUTO_SCAN_WORKERS, totalChecks)
         val executor = Executors.newFixedThreadPool(workerCount)
-        val completion = ExecutorCompletionService<Pair<String, Int?>>(executor)
-        val delays = HashMap<String, Int>()
+        val completion = ExecutorCompletionService<Pair<Pair<String, String>, Int?>>(executor)
+        val checksByMember = HashMap<String, MutableMap<String, Int>>()
         try {
             members.forEach { member ->
-                completion.submit(Callable {
-                    member to runCatching {
-                        MeowController.probeMember(this, member, timeoutMs = AUTO_PROBE_TIMEOUT_MS)
-                    }.getOrNull()
-                })
+                SOCIAL_ENDPOINTS.forEach { (serviceName, url, expectedStatus) ->
+                    completion.submit(Callable {
+                        (member to serviceName) to runCatching {
+                            MeowController.probeMember(
+                                this,
+                                member,
+                                url = url,
+                                timeoutMs = AUTO_PROBE_TIMEOUT_MS,
+                                expectedStatus = expectedStatus,
+                            )
+                        }.getOrNull()
+                    })
+                }
             }
-            repeat(members.size) {
+            repeat(totalChecks) {
                 val result = completion.take().get()
-                result.second?.let { delays[result.first] = it }
+                result.second?.let { delay ->
+                    val (member, serviceName) = result.first
+                    checksByMember.getOrPut(member) { HashMap() }[serviceName] = delay
+                }
             }
         } finally {
             executor.shutdownNow()
         }
 
+        val delays = checksByMember.mapNotNull { (member, serviceResults) ->
+            if (serviceResults.size == SOCIAL_ENDPOINTS.size) {
+                member to serviceResults.values.average().toInt()
+            } else null
+        }.toMap()
+
+        val filteredCount = members.size - delays.size
+        Log.i(TAG, "Social filter: ${delays.size}/${members.size} nodes passed all checks; filtered=$filteredCount")
         if (delays.isEmpty()) {
-            Log.w(TAG, "Automatic scan: no reachable members in $groupName")
+            Log.w(TAG, "Automatic scan: no nodes can reach all required social platforms in $groupName")
             return false
         }
         val current = group.selected ?: autoSelectedMember
@@ -599,7 +622,13 @@ class GilrTanoVpnService : VpnService() {
         private const val AUTO_RESCAN_INTERVAL_MS = 3 * 60_000L
         private const val CONFIRM_SCAN_INTERVAL_MS = 30_000L
         private const val AUTO_PROBE_TIMEOUT_MS = 3500
-        private const val AUTO_SCAN_WORKERS = 16
+        private const val AUTO_SCAN_WORKERS = 64
+        private val SOCIAL_ENDPOINTS = listOf(
+            Triple("Instagram", "https://www.instagram.com/robots.txt", 200),
+            Triple("YouTube", "https://www.youtube.com/generate_204", 204),
+            Triple("ВКонтакте", "https://vk.com/robots.txt", 200),
+            Triple("Telegram", "https://telegram.org/robots.txt", 200),
+        )
         private const val MIN_IMPROVEMENT_MS = 25
         private const val REQUIRED_BETTER_SCANS = 2
 
