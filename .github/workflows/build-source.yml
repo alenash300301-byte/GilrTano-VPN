@@ -72,14 +72,14 @@ jobs:
           ) -> ProbeResult {
               let mut conn = open(proxy, url).await?;
               let mut request = format!(
-                  "POST {} HTTP/1.1\\r\\nHost: {}\\r\\nUser-Agent: {USER_AGENT}\\r\\nAccept: */*\\r\\nConnection: close\\r\\n",
+                  "POST {} HTTP/1.1\r\nHost: {}\r\nUser-Agent: {USER_AGENT}\r\nAccept: */*\r\nConnection: close\r\n",
                   url.target,
                   url.host_header(),
               );
               for (name, value) in headers {
-                  request.push_str(&format!("{name}: {value}\\r\\n"));
+                  request.push_str(&format!("{name}: {value}\r\n"));
               }
-              request.push_str(&format!("Content-Length: {}\\r\\n\\r\\n", body.len()));
+              request.push_str(&format!("Content-Length: {}\r\n\r\n", body.len()));
               write_all(&mut conn, request.as_bytes()).await?;
               write_all(&mut conn, body).await?;
 
@@ -135,7 +135,7 @@ jobs:
           if get_line not in mod_text:
               raise SystemExit("Pinned Meow HTTP GET probe dispatch changed")
           if '"http-post" =>' not in mod_text:
-              probe_mod.write_text(mod_text.replace(get_line, get_line + "\\n" + post_line, 1))
+              probe_mod.write_text(mod_text.replace(get_line, get_line + "\n" + post_line, 1))
           PY
 
       - name: Setup Java
