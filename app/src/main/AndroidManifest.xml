@@ -7,7 +7,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <application android:networkSecurityConfig="@xml/network_security_config" android:allowBackup="false" android:icon="@drawable/gilrtano_icon" android:roundIcon="@drawable/gilrtano_icon" android:label="GilrTano VPN" android:theme="@android:style/Theme.Material.Light.NoActionBar">
+    <application android:name=".GilrTanoApplication" android:networkSecurityConfig="@xml/network_security_config" android:allowBackup="false" android:icon="@drawable/gilrtano_icon" android:roundIcon="@drawable/gilrtano_icon" android:label="GilrTano VPN" android:theme="@android:style/Theme.Material.Light.NoActionBar">
         <activity android:name=".SplashActivity" android:exported="true" android:theme="@style/GilrTanoSplashTheme">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
