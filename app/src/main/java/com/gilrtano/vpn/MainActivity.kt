@@ -87,6 +87,7 @@ class MainActivity : Activity() {
     private var pendingAutomatic = false
     private val requestCode = 4101
     private val docxRequestCode = 4102
+    private val portalRequestCode = 4103
 
     private val prefs by lazy { getPreferences(MODE_PRIVATE) }
     private val activeNodes: List<ImportedNode>
@@ -738,7 +739,8 @@ class MainActivity : Activity() {
             }
             startActivityForResult(pick, docxRequestCode)
         })
-        profilesPage.addView(actionButton("Импортировать PORTAL YAML") { showPortalImportDialog() })
+        profilesPage.addView(actionButton("Импортировать PORTAL YAML по ссылке") { showPortalImportDialog() })
+        profilesPage.addView(actionButton("Выбрать файл PORTAL YAML") { pickPortalYaml() })
         profilesPage.addView(actionButton("Импортировать бесплатный резерв") {
             val value = prefs.getString("free_subscription_url", "").orEmpty()
             if (value.isNotBlank()) importFrom(value, true)
@@ -1401,6 +1403,22 @@ class MainActivity : Activity() {
     private fun activeSelectionKey(): String = when (activeMode) { "portal" -> "portal_selected"; "free" -> "free_selected"; else -> "quattro_selected" }
     private fun modeDisplayName(): String = activeMode.uppercase()
 
+    private fun pickPortalYaml() {
+        val pick = Intent(Intent.ACTION_OPEN_DOCUMENT).apply { addCategory(Intent.CATEGORY_OPENABLE); type = "*/*" }
+        startActivityForResult(pick, portalRequestCode)
+    }
+
+    private fun importPortalYamlText(yaml: String) {
+        val imported = runCatching { SubscriptionImporter.parse(yaml) }.getOrElse {
+            Toast.makeText(this, "Ошибка чтения PORTAL YAML: " + it.message, Toast.LENGTH_LONG).show(); return
+        }
+        if (imported.isEmpty()) { Toast.makeText(this, "В YAML не найдены поддерживаемые прокси", Toast.LENGTH_LONG).show(); return }
+        portalNodes = imported
+        saveNodes("portal_nodes", portalNodes)
+        switchMode("portal")
+        Toast.makeText(this, "PORTAL: импортировано профилей " + imported.size, Toast.LENGTH_LONG).show()
+    }
+
     private fun showPortalImportDialog() {
         val field = EditText(this).apply { hint = "HTTPS-ссылка на Portal Clash/Mihomo YAML"; isSingleLine = true; setText(prefs.getString("portal_subscription_url", "")) }
         AlertDialog.Builder(this).setTitle("Импорт PORTAL")
@@ -1848,6 +1866,16 @@ class MainActivity : Activity() {
             pendingConfig = null
             connectButton.isEnabled = true
             status.text = "Разрешение VPN не предоставлено"
+        } else if (requestCode == portalRequestCode && resultCode == RESULT_OK) {
+            val uri = data?.data ?: return
+            status.text = "Читаю PORTAL YAML…"
+            Thread {
+                val result = runCatching { contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: error("Не удалось открыть файл") }
+                runOnUiThread {
+                    result.onSuccess { importPortalYamlText(it) }
+                        .onFailure { Toast.makeText(this, "Ошибка чтения файла: " + it.message, Toast.LENGTH_LONG).show() }
+                }
+            }.start()
         } else if (requestCode == docxRequestCode && resultCode == RESULT_OK) {
             val uri = data?.data ?: return
             status.text = "Читаю DOCX локально…"
