@@ -1547,6 +1547,7 @@ class MainActivity : Activity() {
             .setAction(GilrTanoVpnService.ACTION_START)
             .putExtra(GilrTanoVpnService.EXTRA_CONFIG, storeEngineConfig(config, "active"))
             .putExtra(GilrTanoVpnService.EXTRA_AUTO, automatic)
+            .putExtra(GilrTanoVpnService.EXTRA_ENGINE, if (activeMode == "quattro") GilrTanoVpnService.ENGINE_FLCLASHX else GilrTanoVpnService.ENGINE_FREE)
         startForegroundService(intent)
         status.text = "Запускаю VPN…"
         connectButton.setState(PowerOrbButtonView.State.CONNECTING)
