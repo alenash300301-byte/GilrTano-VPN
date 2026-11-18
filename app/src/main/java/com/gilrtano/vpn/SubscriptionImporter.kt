@@ -2,6 +2,8 @@ package com.gilrtano.vpn
 
 import android.net.Uri
 import android.util.Base64
+import android.os.Build
+import android.provider.Settings
 import org.yaml.snakeyaml.LoaderOptions
 import org.yaml.snakeyaml.Yaml
 import org.yaml.snakeyaml.constructor.SafeConstructor
@@ -11,7 +13,7 @@ import java.net.URL
 data class ImportedNode(
     val name: String,
     val uri: String,
-    /** Full Clash/Mihomo YAML is kept intact and passed to the Meow engine. */
+    /** Full Clash/Mihomo YAML is kept intact and passed to the selected Mihomo engine. */
     val yamlConfig: String? = null,
 )
 
@@ -46,6 +48,11 @@ object SubscriptionImporter {
                     setRequestProperty("Accept", "text/plain, application/yaml, application/octet-stream, */*")
                     setRequestProperty("Cache-Control", "no-cache")
                     setRequestProperty("Connection", "close")
+                    // FlClashX-compatible provider identity headers used by subscription panels.
+                    setRequestProperty("x-hwid", Settings.Secure.getString(GilrTanoApplication.contextResolver, Settings.Secure.ANDROID_ID).orEmpty())
+                    setRequestProperty("x-device-os", "android")
+                    setRequestProperty("x-ver-os", Build.VERSION.RELEASE.orEmpty())
+                    setRequestProperty("x-device-model", listOf(Build.MANUFACTURER, Build.MODEL).filter { it.isNotBlank() }.joinToString(" "))
                     instanceFollowRedirects = true
                     useCaches = false
                 }
