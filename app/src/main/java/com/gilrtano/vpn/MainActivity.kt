@@ -267,12 +267,14 @@ class MainActivity : Activity() {
                         pendingConfig = config
                         pendingFallbackConfig = null
                         pendingPreferredConfig = null
-                        pendingAutomatic = false
+                        // Quattro may optimize servers inside its own profile.
+                        // Cross-mode fallback to Portal/FREE is deliberately disabled.
+                        pendingAutomatic = activeMode == "quattro"
                         connectButton.isEnabled = true
                         status.text = "Подключаю: ${node.name}…"
                         val permission = VpnService.prepare(this@MainActivity)
                         if (permission != null) startActivityForResult(permission, requestCode)
-                        else startVpn(config, null, null, false)
+                        else startVpn(config, null, null, pendingAutomatic)
                     } catch (e: Exception) {
                         pendingConfig = null
                         connectButton.isEnabled = true
