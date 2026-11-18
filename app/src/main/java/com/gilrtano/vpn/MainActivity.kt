@@ -94,24 +94,26 @@ class MainActivity : Activity() {
         override fun onReceive(context: Context?, intent: Intent?) {
             val message = intent?.getStringExtra(GilrTanoVpnService.EXTRA_STATUS) ?: "—"
             status.text = when {
-                message.startsWith("Подключено") || message.startsWith("Возобновлено") -> "●  Подключено"
+                message.startsWith("Подключено") || message.startsWith("Возобновлено") || message.startsWith("Сервер переключён") -> "●  Подключено"
                 message == "Отключено" -> "●  Отключено"
                 else -> message
             }
-            if (message.startsWith("Подключено") || message.startsWith("Возобновлено")) {
+            if (message.startsWith("Подключено") || message.startsWith("Возобновлено") || message.startsWith("Сервер переключён")) {
                 val resumed = message.startsWith("Возобновлено")
+                val switched = message.startsWith("Сервер переключён")
                 if (message.contains("бесплатный резерв")) activeFree = true
                 else if (message.contains("Quattro")) activeFree = false
                 refreshMode()
                 status.setTextColor(Color.rgb(36, 255, 72))
                 updatePowerOrb(true)
                 if (::connectionTimer.isInitialized) {
-                    if (!resumed) connectionTimer.base = SystemClock.elapsedRealtime()
+                    if (!resumed && !switched) connectionTimer.base = SystemClock.elapsedRealtime()
                     connectionTimer.visibility = View.VISIBLE
                     connectionTimer.start()
                 }
                 updateServerCard(true)
-                igniteConnectButton()
+                if (switched) serverCardSubtitle.text = message.removePrefix("Сервер переключён:").trim()
+                if (!switched) igniteConnectButton()
             } else if (message == "Приостановлено") {
                 status.text = "Ⅱ  Приостановлено"
                 status.setTextColor(Color.LTGRAY)
@@ -138,7 +140,7 @@ class MainActivity : Activity() {
             // and while connected so it can disconnect.
             connectButton.isEnabled = true
             setPowerButtonLabel(
-                if (message.startsWith("Подключено") || message.startsWith("Возобновлено")) "Ⅱ  ПАУЗА"
+                if (message.startsWith("Подключено") || message.startsWith("Возобновлено") || message.startsWith("Сервер переключён")) "Ⅱ  ПАУЗА"
                 else if (message == "Приостановлено") "Ⅱ  ВОЗОБНОВИТЬ"
                 else if (message.startsWith("Отключаю")) "ОТКЛЮЧЕНИЕ…"
                 else if (message.startsWith("Переключаю")) "ПЕРЕКЛЮЧЕНИЕ…"
@@ -148,7 +150,7 @@ class MainActivity : Activity() {
                 else "▶ ПОДКЛЮЧИТЬ"
             )
             connectButton.contentDescription = when {
-                message.startsWith("Подключено") || message.startsWith("Возобновлено") -> "Приостановить VPN"
+                message.startsWith("Подключено") || message.startsWith("Возобновлено") || message.startsWith("Сервер переключён") -> "Приостановить VPN"
                 message == "Приостановлено" -> "Возобновить VPN"
                 busy -> "Отменить подключение"
                 else -> "Подключить VPN"
