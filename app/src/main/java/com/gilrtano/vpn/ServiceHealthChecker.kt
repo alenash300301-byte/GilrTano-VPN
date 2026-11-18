@@ -227,7 +227,7 @@ object ServiceHealthChecker {
         val query = JSONObject()
             .put(
                 "query",
-                "mutation refreshToken($input: RefreshTokenInput!) { refreshToken(refreshToken: $input) { activeSession { sessionId } } }",
+                "mutation refreshToken(\$input: RefreshTokenInput!) { refreshToken(refreshToken: \$input) { activeSession { sessionId } } }",
             )
             .put(
                 "variables",
