@@ -50,7 +50,7 @@ internal object FlClashXEngine {
         }
         check(initError == null) { "FlClashX: ${initError ?: "ошибка инициализации"}" }
 
-        val pfd = VpnService.Builder(service)
+        val pfd = service.Builder()
             .setSession("GilrTano VPN · FlClashX")
             .setMtu(TUN_MTU)
             .addAddress(IPV4_ADDRESS, IPV4_PREFIX)
