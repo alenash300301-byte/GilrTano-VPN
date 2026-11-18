@@ -4,6 +4,7 @@ import android.util.Log
 import io.github.madeye.meow.core.MeowCore
 import org.json.JSONObject
 import java.util.Locale
+import java.net.URLEncoder
 import java.util.concurrent.Callable
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
@@ -15,7 +16,7 @@ import java.util.concurrent.atomic.AtomicLong
  * through the named outbound, never through Android's default network.
  *
  * The catalogue mirrors FlClashX v0.5.8's 17 service targets. The Meow probe
- * currently exposes GET/status/body (1 MiB body cap, 5 s native timeout),
+ * exposes GET and the service-specific POST handshake (1 MiB body cap, 5 s native timeout),
  * so checks use lightweight public endpoints and classify what those
  * responses can prove. They do not claim account-login or playback success.
  */
@@ -127,6 +128,7 @@ object ServiceHealthChecker {
     }
 
     private fun checkOne(proxyName: String, target: Target): Result {
+        if (target.rule == Rule.DISNEY) return checkDisney(proxyName, target)
         val started = System.nanoTime()
         val raw = try {
             MeowCore.nativeProbeProxy(
@@ -160,6 +162,114 @@ object ServiceHealthChecker {
         }
         val (status, region, detail) = classify(target.rule, code, body, lower, base)
         return Result(target.id, target.label, status, elapsed, region, detail)
+    }
+
+    private fun checkDisney(proxyName: String, target: Target): Result {
+        val started = System.nanoTime()
+        fun post(url: String, headers: Map<String, String>, body: String): JSONObject? {
+            val args = JSONObject()
+                .put("url", url)
+                .put("headers", JSONObject(headers))
+                .put("body", body)
+                .toString()
+            val raw = runCatching {
+                MeowCore.nativeProbeProxy(ids.incrementAndGet(), proxyName, "http-post", args)
+            }.getOrNull() ?: return null
+            val response = runCatching { JSONObject(raw) }.getOrNull() ?: return null
+            if (response.has("error")) return null
+            return response
+        }
+
+        val auth = "Bearer ZGlzbmV5JmJyb3dzZXImMS4wLjA.Cu56AgSfBTDag5NiRA81oLHkDZfu5L3CKadnefEAY84"
+        val device = post(
+            "https://disney.api.edge.bamgrid.com/devices",
+            mapOf(
+                "authorization" to auth,
+                "content-type" to "application/json; charset=UTF-8",
+            ),
+            """{"deviceFamily":"browser","applicationRuntime":"chrome","deviceProfile":"windows","attributes":{}}""",
+        ) ?: return disneyFailure(target, started, "Disney device handshake failed")
+        val deviceCode = device.optInt("status", -1)
+        val deviceBody = device.optString("body", "")
+        if (deviceCode == 403) return Result(target.id, target.label, Status.BLOCKED, elapsed(started))
+        if (deviceCode !in 200..299) {
+            return Result(target.id, target.label, statusFromHttp(deviceCode), elapsed(started))
+        }
+        val assertion = runCatching { JSONObject(deviceBody).optString("assertion") }.getOrNull()
+            ?.takeIf { it.isNotBlank() }
+            ?: return disneyFailure(target, started, "Disney did not return a device assertion")
+
+        val form = "grant_type=urn:ietf:params:oauth:grant-type:token-exchange" +
+            "&latitude=0&longitude=0&platform=browser" +
+            "&subject_token=" + URLEncoder.encode(assertion, "UTF-8") +
+            "&subject_token_type=urn:bamtech:params:oauth:token-type:device"
+        val token = post(
+            "https://disney.api.edge.bamgrid.com/token",
+            mapOf(
+                "authorization" to auth,
+                "content-type" to "application/x-www-form-urlencoded",
+            ),
+            form,
+        ) ?: return disneyFailure(target, started, "Disney token exchange failed")
+        val tokenCode = token.optInt("status", -1)
+        val tokenBody = token.optString("body", "")
+        if (tokenCode == 403 || tokenBody.contains("forbidden-location", true) ||
+            tokenBody.contains("403 ERROR", true)) {
+            return Result(target.id, target.label, Status.BLOCKED, elapsed(started))
+        }
+        if (tokenCode !in 200..299) {
+            return Result(target.id, target.label, statusFromHttp(tokenCode), elapsed(started))
+        }
+        val refresh = runCatching { JSONObject(tokenBody).optString("refresh_token") }.getOrNull()
+            ?.takeIf { it.isNotBlank() }
+            ?: return disneyFailure(target, started, "Disney did not return a refresh token")
+
+        val query = JSONObject()
+            .put(
+                "query",
+                "mutation refreshToken($input: RefreshTokenInput!) { refreshToken(refreshToken: $input) { activeSession { sessionId } } }",
+            )
+            .put(
+                "variables",
+                JSONObject().put("input", JSONObject().put("refreshToken", refresh)),
+            )
+            .toString()
+        val session = post(
+            "https://disney.api.edge.bamgrid.com/graph/v1/device/graphql",
+            mapOf(
+                "authorization" to auth,
+                "content-type" to "application/json",
+            ),
+            query,
+        ) ?: return disneyFailure(target, started, "Disney session request failed")
+        val sessionCode = session.optInt("status", -1)
+        val sessionBody = session.optString("body", "")
+        if (sessionCode !in 200..299 || sessionBody.isBlank()) {
+            return disneyFailure(target, started, "Disney returned no active session")
+        }
+        val country = Regex("\"countryCode\"\\s*:\\s*\"([^\"]+)\"")
+            .find(sessionBody)?.groupValues?.getOrNull(1)?.let(::normalizeRegion)
+            ?: return Result(target.id, target.label, Status.UNAVAILABLE, elapsed(started))
+        val supported = Regex("\"inSupportedLocation\"\\s*:\\s*(true|false)")
+            .find(sessionBody)?.groupValues?.getOrNull(1)
+        val status = when (supported) {
+            "true" -> Status.AVAILABLE
+            "false" -> Status.COMING_SOON
+            else -> Status.FAILED
+        }
+        return Result(target.id, target.label, status, elapsed(started), country)
+    }
+
+    private fun disneyFailure(target: Target, started: Long, detail: String) =
+        Result(target.id, target.label, Status.FAILED, null, detail = detail)
+
+    private fun elapsed(started: Long): Int =
+        ((System.nanoTime() - started) / 1_000_000L).coerceAtLeast(1L).toInt()
+
+    private fun statusFromHttp(code: Int): Status = when {
+        code == 401 || code == 403 || code == 429 || code == 451 -> Status.RESTRICTED
+        code in 100..599 -> Status.UNAVAILABLE
+        else -> Status.FAILED
     }
 
     private data class Classification(val status: Status, val region: String?, val detail: String?)
