@@ -1,0 +1,121 @@
+name: Build FlClashX Android ARM64 core
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [subscription-flclashx-integration]
+    paths:
+      - '.github/workflows/build-flclashx-core.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: flclashx-core-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-core:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout GilrTano
+        uses: actions/checkout@v4
+
+      - name: Checkout FlClashX v0.5.7
+        uses: actions/checkout@v4
+        with:
+          repository: pluralplay/FlClashX
+          ref: v0.5.7
+          path: FlClashX
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.47.6'
+          cache: true
+
+      - name: Install Flutter dependencies
+        working-directory: FlClashX
+        run: flutter pub get
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.27.1'
+          cache: true
+          cache-dependency-path: FlClashX/core/go.sum
+
+      - name: Download Mihomo core dependencies
+        working-directory: FlClashX/core
+        run: go mod download
+
+      - name: Setup Android NDK
+        uses: nttld/setup-ndk@v1
+        id: ndk
+        with:
+          ndk-version: r28c
+          link-to-sdk: true
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Prepare FlClashX Android build
+        working-directory: FlClashX/android
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: |
+          {
+            echo "flutter.sdk=$FLUTTER_ROOT"
+            echo "sdk.dir=$ANDROID_HOME"
+          } > local.properties
+          wrapper="$FLUTTER_ROOT/bin/cache/artifacts/gradle_wrapper"
+          test -d "$wrapper" || flutter precache
+          cp -R "$wrapper/." .
+          chmod +x gradlew
+
+      - name: Build FlClashX gomobile core (ARM64 only)
+        working-directory: FlClashX/android
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: |
+          ./gradlew :core:assembleDebug \
+            -Ptarget-platform=android-arm64 \
+            -x :app:compileFlutterBuildDebug \
+            -x :app:copyFlutterAssetsDebug \
+            --no-daemon --stacktrace
+
+      - name: Verify native core and Kotlin bridge
+        working-directory: FlClashX
+        run: |
+          AAR="build/core/outputs/aar/core-debug.aar"
+          test -s "$AAR" || AAR="build/core/outputs/aar/core-release.aar"
+          test -s "$AAR"
+          unzip -l "$AAR" | grep -E 'jni/arm64-v8a/libclash.so'
+          unzip -p "$AAR" classes.jar > /tmp/flclashx-classes.jar
+          jar tf /tmp/flclashx-classes.jar | grep -E 'com/follow/clashx/core/Core.class'
+
+      - name: Upload FlClashX ARM64 core
+        uses: actions/upload-artifact@v4
+        with:
+          name: FlClashX-v0.5.7-Android-ARM64-Core
+          path: FlClashX/build/core/outputs/aar/*.aar
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload GPL-3.0 license and source reference
+        uses: actions/upload-artifact@v4
+        with:
+          name: FlClashX-v0.5.7-GPL-3.0
+          path: |
+            FlClashX/LICENSE
+            FlClashX/README.md
+          if-no-files-found: error
+          retention-days: 14
