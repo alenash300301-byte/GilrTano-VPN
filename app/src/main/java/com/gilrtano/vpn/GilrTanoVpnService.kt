@@ -90,7 +90,16 @@ class GilrTanoVpnService : VpnService() {
         activeConfig = config
         automaticMode = automatic
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, notification("Запуск Meow…"))
+        try {
+            Log.i(TAG, "FGS: calling startForeground; sdk=${Build.VERSION.SDK_INT}")
+            startForeground(NOTIFICATION_ID, notification("Запуск Meow…"))
+            Log.i(TAG, "FGS: startForeground accepted")
+        } catch (e: Exception) {
+            Log.e(TAG, "FGS_START_FAILED: ${e.javaClass.name}: ${e.message}", e)
+            broadcastStatus("Ошибка запуска службы Android: ${e.javaClass.simpleName}: ${e.message ?: "без подробностей"}")
+            stopSelf()
+            return
+        }
         Thread({
             try {
                 synchronized(this) { stopEngineAndTun() }
@@ -99,6 +108,7 @@ class GilrTanoVpnService : VpnService() {
                 val home = File(noBackupFilesDir, "meow").apply { mkdirs() }
                 seedGeoAssets(home)
                 File(home, "config.yaml").writeText(prepareYaml(config))
+                Log.i(TAG, "START_STAGE: setting Meow home")
                 MeowCore.nativeSetHomeDir(home.absolutePath)
 
                 val controllerSecret = UUID.randomUUID().toString()
@@ -109,6 +119,7 @@ class GilrTanoVpnService : VpnService() {
                     setWritable(false, false)
                     setWritable(true, true)
                 }
+                Log.i(TAG, "START_STAGE: nativeStartEngine")
                 val engineResult = MeowCore.nativeStartEngine(
                     "127.0.0.1:9090",
                     controllerSecret,
@@ -139,6 +150,7 @@ class GilrTanoVpnService : VpnService() {
                     }
                 }
 
+                Log.i(TAG, "START_STAGE: establish VPN interface")
                 val builder = Builder()
                     .setSession("GilrTano VPN")
                     .setMtu(1500)
@@ -153,6 +165,7 @@ class GilrTanoVpnService : VpnService() {
                     ?: throw IllegalStateException("Android не создал VPN-интерфейс")
                 tun = pfd
 
+                Log.i(TAG, "START_STAGE: nativeStartTun2Socks")
                 val tunResult = MeowCore.nativeStartTun2Socks(this, pfd.fd, DNS_PORT)
                 if (tunResult != 0) {
                     throw IllegalStateException("TUN Meow: ${MeowCore.nativeGetLastError()}")
@@ -160,6 +173,7 @@ class GilrTanoVpnService : VpnService() {
                 if (!MeowCore.nativeIsRunning()) {
                     throw IllegalStateException("Движок Meow остановился во время запуска")
                 }
+                Log.i(TAG, "START_STAGE: probe tunnel")
                 val latency = probeTunnel()
                 if (latency < 0L) {
                     throw IllegalStateException("Туннель запущен, но интернет через него не отвечает")
