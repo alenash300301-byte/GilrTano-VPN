@@ -82,19 +82,21 @@ jobs:
           for f in "$SRC"/*.kt; do
             n=$(basename "$f")
             case "$n" in
-              MainActivity.kt|AndroidEngineMethodHandler.kt|AndroidUiPluginRegistration.kt|AndroidRecentsVisibility.kt|AndroidShortcutController.kt|UsqueApplication.kt|TrackedPreferencesContext.kt|TrackedPreferencesMessenger.kt|TrackedPreferencesPlugin.kt) continue ;;
+              MainActivity.kt|AndroidEngineMethodHandler.kt|AndroidUiPluginRegistration.kt|AndroidRecentsVisibility.kt|AndroidShortcutController.kt|UsqueApplication.kt|TrackedPreferencesContext.kt|TrackedPreferencesMessenger.kt|TrackedPreferencesPlugin.kt|VpnControlClient.kt|VpnPermissionRequestQueue.kt|OnboardingPermissionCoordinator.kt|ProtonVerificationWindow.kt|TvInputHost.kt|UsqueTileService.kt) continue ;;
             esac
             cp "$f" "$DST/$n"
           done
           cp "$SRC/NativeEngine.kt" "$DST/NativeEngine.kt"
           # Android resource IDs are aliased into GilrTano's existing namespace.
           mkdir -p app/src/main/res/values
-          cp usque-app/apps/usque_gui/android/app/src/main/res/values/strings.xml app/src/main/res/values/usque_strings.xml
+          test -s app/src/main/res/values/usque_strings.xml
           for d in usque-app/apps/usque_gui/android/app/src/main/res/drawable-*; do
             [ -d "$d" ] || continue
             mkdir -p "app/src/main/res/$(basename "$d")"
             cp "$d"/* app/src/main/res/$(basename "$d")/ 2>/dev/null || true
           done
+          # Use GilrTano's own notification icon; the upstream notification asset is not required.
+          sed -i 's/R.drawable.ic_stat_usque/R.drawable.gilrtano_icon/g' "$DST/VpnNotificationController.kt"
 
       - name: Setup Java
         uses: actions/setup-java@v4
