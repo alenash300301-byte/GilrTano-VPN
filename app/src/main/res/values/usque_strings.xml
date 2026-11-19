@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="vpn_channel_name">GilrTano FREE</string>
+    <string name="vpn_channel_description">Статус подключения бесплатного режима WARP</string>
+    <string name="vpn_notif_disconnect">Отключить</string>
+    <string name="vpn_notif_preparing">Подготовка защищённого туннеля</string>
+    <string name="vpn_notif_connecting_h3">Подключение через HTTP/3</string>
+    <string name="vpn_notif_connecting_h2">Подключение через HTTP/2</string>
+    <string name="vpn_notif_connected">Подключено</string>
+    <string name="vpn_notif_connected_via">Подключено через %1$s</string>
+    <string name="vpn_notif_degraded">Подключено, но доступ к интернету ограничен</string>
+    <string name="vpn_notif_reconnecting">Повторное подключение</string>
+    <string name="vpn_notif_error">Сетевой сервис остановлен из-за ошибки</string>
+    <string name="vpn_notif_disconnecting">Отключение</string>
+    <string name="vpn_notif_idle">GilrTano FREE</string>
+    <string name="vpn_notif_invalid_profile">Недействительный профиль VPN</string>
+    <string name="vpn_notif_invalid_network_profile">Недействительный сетевой профиль</string>
+    <string name="vpn_notif_recovery_unavailable">Восстановление VPN недоступно</string>
+    <string name="vpn_notif_ip_unavailable">Подключено, но %1$s недоступен</string>
+    <string name="tile_connected">Подключено</string>
+    <string name="tile_disconnected">Отключено</string>
+    <string name="tile_connecting">Подключение</string>
+    <string name="tile_reconnecting">Повторное подключение</string>
+    <string name="tile_disconnecting">Отключение</string>
+    <string name="tile_checking">Проверка</string>
+    <string name="tile_working">Работа</string>
+    <string name="tile_open_app">Открыть GilrTano</string>
+    <string name="tile_profile_required">Откройте GilrTano и подключитесь один раз.</string>
+    <string name="tile_identity_required">Настройте учётную запись WARP.</string>
+    <string name="tile_vpn_permission_required">Разрешите создание VPN-подключения Android.</string>
+    <string name="tile_proxy_only">Активен только локальный прокси.</string>
+    <string name="shortcut_connect">Подключить</string>
+    <string name="shortcut_disconnect">Отключить</string>
+    <string name="shortcut_profiles">Профили</string>
+</resources>
