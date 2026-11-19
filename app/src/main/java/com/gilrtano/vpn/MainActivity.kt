@@ -597,6 +597,7 @@ class MainActivity : Activity() {
         var oneColumnView = false
         var groupExpanded = true
         var sortByDelay = false
+        lateinit var proxySearch: EditText
         lateinit var testAllButton: Button
         var testAllAnimator: ObjectAnimator? = null
         testAllButton = actionButton("⟳") {
@@ -681,7 +682,7 @@ class MainActivity : Activity() {
         serverPage.addView(proxyToolbar, 0, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, dp(58)
         ).apply { bottomMargin = dp(8) })
-        val proxySearch = EditText(this).apply {
+        proxySearch = EditText(this).apply {
             hint = "Поиск серверов"
             isSingleLine = true
             setTextColor(Color.WHITE)
