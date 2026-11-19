@@ -35,25 +35,19 @@ jobs:
           toolchain: 1.97.1
           targets: aarch64-linux-android
 
-      - name: Install Android NDK
-        uses: nttld/setup-ndk@v1
-        id: ndk
-        with:
-          ndk-version: 29.0.14206865
-          link-to-sdk: true
+      - name: Install Android SDK and pinned NDK
+        uses: android-actions/setup-android@v3
 
-      - name: Install native build tools
-        env:
-          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+      - name: Install native build tools and NDK
         run: |
-          sudo apt-get update
-          sudo apt-get install -y cmake ninja-build clang
-          echo "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin" >> "$GITHUB_PATH"
+          sdkmanager --install "ndk;29.0.14206865" "cmake;3.22.1"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/29.0.14206865" >> "$GITHUB_ENV"
+          echo "$ANDROID_HOME/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin" >> "$GITHUB_PATH"
 
       - name: Configure Android ARM64 toolchain
         working-directory: Usque
         env:
-          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+          ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
         run: |
           TOOLCHAIN="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64"
           echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$TOOLCHAIN/bin/aarch64-linux-android26-clang" >> "$GITHUB_ENV"
