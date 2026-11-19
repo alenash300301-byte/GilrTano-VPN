@@ -1589,7 +1589,7 @@ class MainActivity : Activity() {
                     } else {
                         contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() } ?: error("Не удалось открыть файл")
                     }
-                    val imported = SubscriptionImporter.parse(raw)
+                    val imported = SubscriptionImporter.load(raw)
                     runOnUiThread {
                         if (imported.isEmpty()) status.text = "В документе не найдены поддерживаемые VPN-профили"
                         else {
