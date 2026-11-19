@@ -143,6 +143,48 @@ internal object FlClashXEngine {
         Log.i(TAG, "FlClashX v0.5.7 TUN started; GeoIP/GeoSite configured in ${configFile.absolutePath}")
     }
 
+    private fun invokeCoreMethod(method: String, arguments: JSONObject? = null): JSONObject {
+        val completed = CountDownLatch(1)
+        var response: JSONObject? = null
+        val request = JSONObject().put("method", method)
+        if (arguments != null) request.put("arguments", arguments)
+        Core.invokeMethod(request.toString()) { bytes ->
+            response = runCatching { JSONObject(bytes?.decodeToString().orEmpty()) }.getOrNull()
+            completed.countDown()
+        }
+        check(completed.await(15, TimeUnit.SECONDS)) { "Ядро не ответило на запрос: $method" }
+        val result = response ?: error("Пустой ответ ядра: $method")
+        val error = result.optJSONObject("error")
+        check(error == null) { error?.optString("message") ?: "Ошибка ядра: $method" }
+        return result.optJSONObject("result") ?: JSONObject()
+    }
+
+    /** Returns the live proxy groups and their members from the running Mihomo core. */
+    fun getProxyGroups(): JSONObject {
+        return invokeCoreMethod("getProxies")
+    }
+
+    /** Selects a member in a real subscription proxy group. */
+    fun selectProxy(groupName: String, proxyName: String): String {
+        val result = invokeCoreMethod(
+            "changeProxy",
+            JSONObject().put("group-name", groupName).put("proxy-name", proxyName),
+        )
+        return result.optString("message")
+    }
+
+    /** Tests one proxy through the core's own delay probe. */
+    fun testProxyDelay(proxyName: String): Int {
+        val result = invokeCoreMethod(
+            "asyncTestDelay",
+            JSONObject()
+                .put("proxy-name", proxyName)
+                .put("test-url", "https://www.gstatic.com/generate_204")
+                .put("timeout", 5000),
+        )
+        return result.optInt("value", -1)
+    }
+
     fun stop() {
         if (tunStarted) {
             runCatching { Core.stopTun() }
