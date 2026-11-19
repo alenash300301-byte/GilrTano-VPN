@@ -764,7 +764,6 @@ class MainActivity : Activity() {
                 .start()
             currentPageIndex = index
             if (index == 1) updateServerPage()
-            if (index == 2) refreshProfileCard()
         }
         root.addView(pageHost, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         val navigationDock = FlClashNavigationDock(this) { destination ->
