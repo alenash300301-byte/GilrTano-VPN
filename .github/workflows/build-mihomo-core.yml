@@ -5,7 +5,7 @@ on:
   push:
     paths:
       - ".github/workflows/build-mihomo-core.yml"
-      - "app/src/main/java/com/follow/clashx/core/Core.kt"
+      - "integrations/mihomo/Core.kt"
 
 permissions:
   contents: read
