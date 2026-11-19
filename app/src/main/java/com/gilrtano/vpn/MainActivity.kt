@@ -597,6 +597,10 @@ class MainActivity : Activity() {
         var oneColumnView = false
         var groupExpanded = true
         var sortByDelay = false
+        var showOnlyWorking = false
+        var showProtocol = true
+        var compactCards = false
+        val expandedGroups = prefs.getStringSet("proxy_expanded_groups", emptySet())?.toMutableSet() ?: mutableSetOf("Все серверы")
         lateinit var proxySearch: EditText
         lateinit var testAllButton: Button
         var testAllAnimator: ObjectAnimator? = null
@@ -666,15 +670,38 @@ class MainActivity : Activity() {
             }, LinearLayout.LayoutParams(dp(44), dp(44)).apply { leftMargin = dp(6) })
             addView(toolbarIcon("⋮", "Дополнительные действия") {
                 val items = arrayOf(
-                    if (groupExpanded) "Свернуть группу" else "Развернуть группу",
-                    if (sortByDelay) "Исходный порядок" else "Сортировать по пингу",
-                    if (oneColumnView) "Сетка" else "Список"
+                    if (groupExpanded) "Свернуть все группы" else "Развернуть все группы",
+                    if (sortByDelay) "Исходный порядок" else "Сортировать по задержке",
+                    if (oneColumnView) "Сетка из двух колонок" else "Список в одну колонку",
+                    if (showOnlyWorking) "Показать все серверы" else "Показывать только рабочие",
+                    if (showProtocol) "Скрыть протокол в карточках" else "Показывать протокол в карточках",
+                    if (compactCards) "Обычный размер карточек" else "Компактные карточки",
+                    "Настройки вкладки прокси"
                 )
                 AlertDialog.Builder(this@MainActivity).setItems(items) { _, which ->
                     when (which) {
                         0 -> { groupExpanded = !groupExpanded; refreshServerPage() }
                         1 -> { sortByDelay = !sortByDelay; refreshServerPage() }
                         2 -> { oneColumnView = !oneColumnView; refreshServerPage() }
+                        3 -> { showOnlyWorking = !showOnlyWorking; refreshServerPage() }
+                        4 -> { showProtocol = !showProtocol; refreshServerPage() }
+                        5 -> { compactCards = !compactCards; refreshServerPage() }
+                        6 -> AlertDialog.Builder(this@MainActivity)
+                            .setTitle("Настройки прокси")
+                            .setMultiChoiceItems(
+                                arrayOf("Только рабочие серверы", "Сортировка по задержке", "Показывать протокол", "Компактные карточки", "Одна колонка"),
+                                booleanArrayOf(showOnlyWorking, sortByDelay, showProtocol, compactCards, oneColumnView)
+                            ) { _, index, checked ->
+                                when (index) {
+                                    0 -> showOnlyWorking = checked
+                                    1 -> sortByDelay = checked
+                                    2 -> showProtocol = checked
+                                    3 -> compactCards = checked
+                                    4 -> oneColumnView = checked
+                                }
+                            }
+                            .setPositiveButton("Применить") { _, _ -> refreshServerPage() }
+                            .setNegativeButton("Отмена", null).show()
                     }
                 }.show()
             }, LinearLayout.LayoutParams(dp(44), dp(44)).apply { leftMargin = dp(6) })
@@ -701,8 +728,13 @@ class MainActivity : Activity() {
             serverState.text = "Режим: " + if (autoMode) "AUTO · Quattro с бесплатным резервом" else if (activeFree) "FREE" else "Подписка"
             serverRows.removeAllViews()
             val query = proxySearch.text.toString().trim().lowercase()
-            val nodesUnsorted = activeNodes.mapIndexed { index, node -> index to node }.filter { it.second.name.lowercase().contains(query) }
-            val nodes = if (sortByDelay) nodesUnsorted.sortedBy { serverDelays[it.second.uri]?.takeIf { value -> value > 0L } ?: Long.MAX_VALUE } else nodesUnsorted
+            val nodesUnsorted = activeNodes.mapIndexed { index, node -> index to node }
+                .filter { it.second.name.lowercase().contains(query) }
+                .filter { !showOnlyWorking || (serverDelays[it.second.uri] ?: 0L) > 0L }
+            val nodes = if (sortByDelay) nodesUnsorted.sortedWith(
+                compareBy<Pair<Int, ImportedNode>> { serverDelays[it.second.uri]?.takeIf { value -> value > 0L } ?: Long.MAX_VALUE }
+                    .thenBy { it.second.name.lowercase() }
+            ) else nodesUnsorted
             serverRows.visibility = if (groupExpanded) View.VISIBLE else View.GONE
             if (!groupExpanded) return
             if (nodes.isEmpty()) {
@@ -742,7 +774,7 @@ class MainActivity : Activity() {
                             textSize = 14f; maxLines = 3; setTextColor(if (delay != null && delay > 0L) Color.rgb(65, 235, 105) else Color.WHITE)
                             typeface = android.graphics.Typeface.DEFAULT_BOLD
                         })
-                        addView(TextView(this@MainActivity).apply {
+                        if (showProtocol) addView(TextView(this@MainActivity).apply {
                             text = node.uri.substringBefore("://").uppercase()
                             textSize = 11f; setTextColor(Color.rgb(169, 184, 255)); setPadding(0, dp(8), 0, 0)
                         })
@@ -752,7 +784,26 @@ class MainActivity : Activity() {
                             setPadding(0, dp(7), 0, 0)
                         })
                     }
-                    row.addView(tile, LinearLayout.LayoutParams(0, dp(116), 1f).apply {
+                    tile.setOnLongClickListener {
+                        AlertDialog.Builder(this@MainActivity)
+                            .setTitle(node.name)
+                            .setItems(arrayOf("Выбрать сервер", "Копировать ссылку", "Показать сведения")) { _, action ->
+                                when (action) {
+                                    0 -> tile.performClick()
+                                    1 -> {
+                                        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Proxy URI", node.uri))
+                                        Toast.makeText(this@MainActivity, "Ссылка скопирована", Toast.LENGTH_SHORT).show()
+                                    }
+                                    2 -> AlertDialog.Builder(this@MainActivity)
+                                        .setTitle(node.name)
+                                        .setMessage("Протокол: ${node.uri.substringBefore("://").uppercase()}\\nАдрес: ${Uri.parse(node.uri).host ?: "—"}\\nПорт: ${Uri.parse(node.uri).port.takeIf { it > 0 } ?: "по умолчанию"}\\nЗадержка: ${serverDelays[node.uri]?.let { if (it > 0L) "$it мс" else "тайм-аут" } ?: "не проверена"}")
+                                        .setPositiveButton("ОК", null).show()
+                                }
+                            }.show()
+                        true
+                    }
+                    row.addView(tile, LinearLayout.LayoutParams(0, dp(if (compactCards) 88 else 116), 1f).apply {
                         leftMargin = dp(3); rightMargin = dp(3); topMargin = dp(4); bottomMargin = dp(4)
                     })
                 }
