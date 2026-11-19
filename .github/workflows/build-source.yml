@@ -3,7 +3,7 @@ name: Build GilrTano VPN APK
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, feature/two-modes-three-imports]
 
 permissions:
   contents: read
