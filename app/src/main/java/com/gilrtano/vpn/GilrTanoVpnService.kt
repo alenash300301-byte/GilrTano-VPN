@@ -96,7 +96,7 @@ class GilrTanoVpnService : VpnService() {
         createNotificationChannel()
         try {
             Log.i(TAG, "FGS: calling startForeground; sdk=${Build.VERSION.SDK_INT}")
-            startForeground(NOTIFICATION_ID, notification(if (engine == ENGINE_FLCLASHX) "Запуск FlClashX…" else "Запуск FREE…"))
+            startForeground(NOTIFICATION_ID, notification(if (engine == ENGINE_FLCLASHX) "Запуск подписки…" else "Запуск FREE…"))
             Log.i(TAG, "FGS: startForeground accepted")
         } catch (e: Exception) {
             Log.e(TAG, "FGS_START_FAILED: ${e.javaClass.name}: ${e.message}", e)
@@ -110,11 +110,11 @@ class GilrTanoVpnService : VpnService() {
                 if (stopping) return@Thread
 
                 if (engine == ENGINE_FLCLASHX) {
-                    updateNotification("Запуск ядра FlClashX v0.5.7…")
+                    updateNotification("Запуск подписки…")
                     FlClashXEngine.start(this, config)
                     if (stopping) { FlClashXEngine.stop(); return@Thread }
-                    broadcastStatus(if (resumed) "Возобновлено · FlClashX" else "Подключено · FlClashX")
-                    updateNotification("Подключено · подписка · FlClashX")
+                    broadcastStatus(if (resumed) "Возобновлено · подписка" else "Подключено · подписка")
+                    updateNotification("Подключено · подписка")
                     Log.i(TAG, "FlClashX subscription engine connected")
                     return@Thread
                 }
