@@ -1645,9 +1645,11 @@ class MainActivity : Activity() {
     private fun switchMode(mode: String) {
         if (mode !in setOf("quattro", "portal")) return
         val nodes = if (mode == "portal") portalNodes else quattroNodes
-        if (nodes.isEmpty()) {
-            val message = if (mode == "portal") "Импортируй FREE YAML" else "Импортируй профиль подписки"
-            Toast.makeText(this, message, Toast.LENGTH_LONG).show(); return
+        // Usque FREE provisions its own Cloudflare WARP identity on first connect.
+        // An imported YAML profile is not required for the FREE mode.
+        if (mode == "quattro" && nodes.isEmpty()) {
+            Toast.makeText(this, "Импортируй профиль подписки", Toast.LENGTH_LONG).show()
+            return
         }
         if (activeMode == mode) return
         val current = status.text.toString()
