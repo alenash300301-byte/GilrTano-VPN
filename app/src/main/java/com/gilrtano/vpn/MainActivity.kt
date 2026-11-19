@@ -228,6 +228,20 @@ class MainActivity : Activity() {
                         .setAction(GilrTanoVpnService.ACTION_STOP))
                     return@setOnClickListener
                 }
+                if (activeMode == "portal") {
+                    // FREE is Consumer WARP via Usque; imported Portal YAML/VLESS is not a Usque profile.
+                    pendingConfig = "usque"
+                    pendingAutomatic = false
+                    connectButton.isEnabled = true
+                    status.text = "Запускаю Usque…"
+                    val permission = VpnService.prepare(this@MainActivity)
+                    if (permission != null) startActivityForResult(permission, requestCode)
+                    else {
+                        startVpn("usque", automatic = false)
+                        pendingConfig = null
+                    }
+                    return@setOnClickListener
+                }
                 if (activeNodes.isEmpty()) {
                     Toast.makeText(this@MainActivity, "В режиме " + activeMode.uppercase() + " нет профиля. Импортируй конфигурацию.", Toast.LENGTH_LONG).show()
                     return@setOnClickListener
