@@ -164,7 +164,7 @@ class MainActivity : Activity() {
         status = TextView(this).apply { text = "Отключено"; textSize = 14f; maxLines = 2; gravity = android.view.Gravity.CENTER; setPadding(dp(18), dp(4), dp(18), dp(4)) }
         pingStatus = TextView(this).apply { text = "Пинг: —"; textSize = 15f }
         primarySource = EditText(this).apply {
-            hint = "Ссылка Quattro или Clash YAML"
+            hint = "Ссылка на подписку"
             minLines = 2
             maxLines = 5
             setText(prefs.getString("subscription_url", ""))
@@ -189,11 +189,11 @@ class MainActivity : Activity() {
         }
 
         quattroTab = Button(this).apply {
-            text = "QUATTRO"
+            text = "ПОДПИСКА"
             setOnClickListener { switchMode(false) }
         }
         freeTab = Button(this).apply {
-            text = "БЕСПЛАТНЫЙ"
+            text = "FREE"
             setOnClickListener { switchMode(true) }
         }
         autoTab = Button(this).apply {
@@ -202,7 +202,7 @@ class MainActivity : Activity() {
         }
 
         val importPrimary = Button(this).apply {
-            text = "Импортировать Quattro"
+            text = "Добавить подписку"
             setOnClickListener { importFrom(primarySource.text.toString().trim(), false) }
         }
         val importDocx = Button(this).apply {
