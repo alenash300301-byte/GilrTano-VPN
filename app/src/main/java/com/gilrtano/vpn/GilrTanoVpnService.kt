@@ -33,6 +33,8 @@ class GilrTanoVpnService : VpnService() {
     @Volatile private var consecutiveProbeFailures = 0
     @Volatile private var lastAutomaticSwitchAt = 0L
     @Volatile private var usingFallback = false
+    @Volatile private var mihomoRuntime: MihomoRuntime? = null
+    @Volatile private var useMihomo = true
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
@@ -46,8 +48,10 @@ class GilrTanoVpnService : VpnService() {
                     stopSelf()
                 } else if (intent.action == ACTION_SWITCH) {
                     automaticMode = false
+                    useMihomo = intent.getBooleanExtra(EXTRA_USE_MIHOMO, true)
                     switchTunnel(config)
                 } else {
+                    useMihomo = intent.getBooleanExtra(EXTRA_USE_MIHOMO, true)
                     automaticMode = intent.getBooleanExtra(EXTRA_AUTO, false)
                     fallbackConfig = intent.getStringExtra(EXTRA_FALLBACK_CONFIG)
                     preferredConfig = intent.getStringExtra(EXTRA_PREFERRED_CONFIG)
@@ -67,6 +71,10 @@ class GilrTanoVpnService : VpnService() {
         broadcastStatus("Переключаю сервер…")
         Thread({
             synchronized(this) {
+                runCatching { mihomoRuntime?.stop() }
+                mihomoRuntime = null
+                runCatching { mihomoRuntime?.stop() }
+                mihomoRuntime = null
                 runCatching { Teapodcore.stopTun2Socks() }
                 runCatching { Teapodcore.stopXray() }
                 runCatching { tun?.close() }
@@ -83,7 +91,11 @@ class GilrTanoVpnService : VpnService() {
         resuming = false
         activeConfig = config
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, notification("Запуск Xray…"))
+        startForeground(NOTIFICATION_ID, notification(if (useMihomo) "Запуск Mihomo…" else "Запуск Xray…"))
+        if (useMihomo) {
+            Thread({ startMihomoTunnel(config) }, "GilrTano-Mihomo-start").start()
+            return
+        }
         // Native core initialization/start can block; never run it on Android's service main thread.
         Thread({
             try {
@@ -132,6 +144,40 @@ class GilrTanoVpnService : VpnService() {
                 }
             }
         }, "GilrTano-Xray-start").start()
+    }
+
+
+    private fun startMihomoTunnel(config: String) {
+        try {
+            if (stopping) return
+            val runtime = MihomoRuntime(this)
+            mihomoRuntime = runtime
+            runtime.start(config)
+            if (stopping) {
+                runtime.stop()
+                return
+            }
+            var internetReady = false
+            repeat(3) { attempt ->
+                if (!internetReady && !stopping) {
+                    internetReady = probeTunnel() >= 0L
+                    if (!internetReady && attempt < 2) Thread.sleep(650)
+                }
+            }
+            if (!internetReady) throw IllegalStateException("Mihomo запустился, но интернет через VPN не проходит")
+            if (!verifyRequiredServices()) throw IllegalStateException("Не все обязательные сервисы доступны через VPN")
+            broadcastStatus("Подключено · Mihomo")
+            updateNotification("Подключено · Mihomo")
+            startConnectionMonitor()
+        } catch (e: Exception) {
+            Log.e(TAG, "Mihomo startup failed", e)
+            runCatching { mihomoRuntime?.stop() }
+            mihomoRuntime = null
+            if (!stopping) {
+                broadcastStatus("Ошибка Mihomo: ${e.message}")
+                stopTunnel()
+            }
+        }
     }
 
     @Synchronized private fun establishTun() {
@@ -356,9 +402,13 @@ class GilrTanoVpnService : VpnService() {
         broadcastStatus("Приостанавливаю VPN…")
         Thread({
             synchronized(this) {
-                runCatching { Teapodcore.stopTun2Socks() }
-                runCatching { tun?.close() }
-                tun = null
+                if (useMihomo) {
+                    runCatching { mihomoRuntime?.stop() }
+                } else {
+                    runCatching { Teapodcore.stopTun2Socks() }
+                    runCatching { tun?.close() }
+                    tun = null
+                }
             }
             if (paused && !stopping) {
                 updateNotification("VPN приостановлен · трафик идёт напрямую")
@@ -375,9 +425,12 @@ class GilrTanoVpnService : VpnService() {
         updateNotification("Возобновление VPN…")
         Thread({
             synchronized(this) {
-                if (!stopping && !paused && tun == null) establishTun()
+                if (!stopping && !paused) {
+                    if (useMihomo) activeConfig?.let { startMihomoTunnel(it) }
+                    else if (tun == null) establishTun()
+                }
             }
-        }, "GilrTano-Xray-resume").start()
+        }, "GilrTano-VPN-resume").start()
     }
 
     private fun stopTunnel() {
@@ -468,6 +521,7 @@ class GilrTanoVpnService : VpnService() {
         const val ACTION_RESUME = "com.gilrtano.vpn.RESUME"
         const val ACTION_STATUS = "com.gilrtano.vpn.STATUS"
         const val EXTRA_CONFIG = "xray_config"
+        const val EXTRA_USE_MIHOMO = "use_mihomo"
         const val EXTRA_STATUS = "status"
         const val EXTRA_AUTO = "automatic_mode"
         const val EXTRA_FALLBACK_CONFIG = "fallback_config"
