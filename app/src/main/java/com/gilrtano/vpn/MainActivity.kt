@@ -787,7 +787,19 @@ class MainActivity : Activity() {
             serverRows.removeAllViews()
             val query = proxySearch.text.toString().trim().lowercase()
             val groups = activeProxyGroups
-            if (selectedProxyGroup != "Все" && groups.none { it.name == selectedProxyGroup }) selectedProxyGroup = groups.firstOrNull()?.name ?: "Все"
+            // FlClashX opens the first real group instead of showing every proxy
+            // with no active tab. Keep the last selected group independently
+            // for FREE and Subscription.
+            if (groups.isNotEmpty() &&
+                (selectedProxyGroup == "Все" || groups.none { it.name == selectedProxyGroup })) {
+                selectedProxyGroup = groups.first().name
+                prefs.edit().putString(
+                    if (activeFree) "free_current_proxy_group" else "quattro_current_proxy_group",
+                    selectedProxyGroup
+                ).apply()
+            } else if (groups.isEmpty()) {
+                selectedProxyGroup = "Все"
+            }
             groupTabs.removeAllViews()
             val tabNames = if (groups.isEmpty()) listOf("Все") else groups.map { it.name }
             tabNames.forEach { groupName ->
@@ -812,6 +824,16 @@ class MainActivity : Activity() {
                 groupTabs.addView(tab, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(38)).apply {
                     rightMargin = dp(7)
                 })
+            }
+            // Keep the active chip visible when a profile restores a later group.
+            groupScroll.post {
+                val selectedIndex = tabNames.indexOf(selectedProxyGroup)
+                if (selectedIndex >= 0) {
+                    val selectedView = groupTabs.getChildAt(selectedIndex)
+                    if (selectedView != null) groupScroll.smoothScrollTo(
+                        (selectedView.left - dp(16)).coerceAtLeast(0), 0
+                    )
+                }
             }
             fun membersOf(groupName: String, visited: MutableSet<String> = mutableSetOf()): Set<String> {
                 if (!visited.add(groupName)) return emptySet()
