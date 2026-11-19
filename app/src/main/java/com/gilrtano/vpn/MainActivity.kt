@@ -598,12 +598,15 @@ class MainActivity : Activity() {
         val serverDelays = mutableMapOf<String, Long>()
         var testingAllServers = false
         var refreshServerPage: () -> Unit = {}
-        var oneColumnView = false
+        var oneColumnView = prefs.getBoolean("proxy_one_column", false)
         var groupExpanded = true
-        var sortByDelay = false
-        var showOnlyWorking = false
-        var showProtocol = true
-        var compactCards = false
+        var sortByDelay = prefs.getString("proxy_sort", "default") == "delay"
+        var sortByName = prefs.getString("proxy_sort", "default") == "name"
+        var showOnlyWorking = prefs.getBoolean("proxy_hide_timeout", false)
+        var showProtocol = prefs.getBoolean("proxy_show_protocol", true)
+        var compactCards = prefs.getString("proxy_card_size", "standard") == "compact"
+        var proxyCardSize = prefs.getString("proxy_card_size", "standard") ?: "standard"
+        var proxyLayout = prefs.getString("proxy_layout", "standard") ?: "standard"
         val expandedGroups = prefs.getStringSet("proxy_expanded_groups", emptySet())?.toMutableSet() ?: mutableSetOf("Все серверы")
         lateinit var proxySearch: EditText
         lateinit var testAllButton: Button
@@ -663,49 +666,80 @@ class MainActivity : Activity() {
                 proxySearch.visibility = if (proxySearch.visibility == View.VISIBLE) View.GONE else View.VISIBLE
                 if (proxySearch.visibility == View.VISIBLE) proxySearch.requestFocus()
             })
-            addView(toolbarIcon("▦", "Сменить вид списка") {
-                oneColumnView = !oneColumnView
-                refreshServerPage()
-            }, LinearLayout.LayoutParams(dp(44), dp(44)).apply { leftMargin = dp(6) })
             addView(testAllButton, LinearLayout.LayoutParams(dp(44), dp(44)).apply { leftMargin = dp(6) })
-            addView(toolbarIcon("⇅", "Сортировать по задержке") {
-                sortByDelay = !sortByDelay
-                refreshServerPage()
-            }, LinearLayout.LayoutParams(dp(44), dp(44)).apply { leftMargin = dp(6) })
             addView(toolbarIcon("⋮", "Дополнительные действия") {
                 val items = arrayOf(
+                    "Прокрутить к выбранному серверу",
                     if (groupExpanded) "Свернуть все группы" else "Развернуть все группы",
-                    if (sortByDelay) "Исходный порядок" else "Сортировать по задержке",
-                    if (oneColumnView) "Сетка из двух колонок" else "Список в одну колонку",
-                    if (showOnlyWorking) "Показать все серверы" else "Показывать только рабочие",
-                    if (showProtocol) "Скрыть протокол в карточках" else "Показывать протокол в карточках",
-                    if (compactCards) "Обычный размер карточек" else "Компактные карточки",
-                    "Настройки вкладки прокси"
+                    "Настройки"
                 )
                 AlertDialog.Builder(this@MainActivity).setItems(items) { _, which ->
                     when (which) {
-                        0 -> { groupExpanded = !groupExpanded; refreshServerPage() }
-                        1 -> { sortByDelay = !sortByDelay; refreshServerPage() }
-                        2 -> { oneColumnView = !oneColumnView; refreshServerPage() }
-                        3 -> { showOnlyWorking = !showOnlyWorking; refreshServerPage() }
-                        4 -> { showProtocol = !showProtocol; refreshServerPage() }
-                        5 -> { compactCards = !compactCards; refreshServerPage() }
-                        6 -> AlertDialog.Builder(this@MainActivity)
-                            .setTitle("Настройки прокси")
-                            .setMultiChoiceItems(
-                                arrayOf("Только рабочие серверы", "Сортировка по задержке", "Показывать протокол", "Компактные карточки", "Одна колонка"),
-                                booleanArrayOf(showOnlyWorking, sortByDelay, showProtocol, compactCards, oneColumnView)
-                            ) { _, index, checked ->
-                                when (index) {
-                                    0 -> showOnlyWorking = checked
-                                    1 -> sortByDelay = checked
-                                    2 -> showProtocol = checked
-                                    3 -> compactCards = checked
-                                    4 -> oneColumnView = checked
+                        0 -> {
+                            val selectedIndex = servers.selectedItemPosition
+                            val selectedNode = activeNodes.getOrNull(selectedIndex)
+                            val target = selectedNode?.let { node -> (0 until serverRows.childCount).firstOrNull { rowIndex ->
+                                val row = serverRows.getChildAt(rowIndex) as? LinearLayout ?: return@firstOrNull false
+                                (0 until row.childCount).any { col ->
+                                    val tile = row.getChildAt(col) as? LinearLayout ?: return@any false
+                                    tile.getTag(R.id.proxy_node_uri) == node.uri
                                 }
+                            } }
+                            if (target != null) serverRows.getChildAt(target).requestFocus()
+                            else Toast.makeText(this@MainActivity, "Выбранный сервер не виден в этой группе", Toast.LENGTH_SHORT).show()
+                        }
+                        1 -> { groupExpanded = !groupExpanded; refreshServerPage() }
+                        2 -> {
+                            val cardSizes = arrayOf("Свободный", "Стандартный", "Компактный", "В одну строку")
+                            val sizeValues = arrayOf("loose", "standard", "compact", "oneline")
+                            val layouts = arrayOf("Плотная", "Стандартная", "Свободная")
+                            val layoutValues = arrayOf("tight", "standard", "loose")
+                            val sortValues = arrayOf("default", "delay", "name")
+                            val sortLabels = arrayOf("По умолчанию", "По задержке", "По имени")
+                            val cardIndex = sizeValues.indexOf(proxyCardSize).coerceAtLeast(0)
+                            val layoutIndex = layoutValues.indexOf(proxyLayout).coerceAtLeast(0)
+                            val sortIndex = sortValues.indexOf(when { sortByDelay -> "delay"; sortByName -> "name"; else -> "default" }).coerceAtLeast(0)
+                            val content = LinearLayout(this@MainActivity).apply {
+                                orientation = LinearLayout.VERTICAL
+                                setPadding(dp(22), dp(8), dp(22), dp(4))
                             }
-                            .setPositiveButton("Применить") { _, _ -> refreshServerPage() }
-                            .setNegativeButton("Отмена", null).show()
+                            fun addChoice(title: String, values: Array<String>, selected: Int, changed: (Int) -> Unit) {
+                                content.addView(TextView(this@MainActivity).apply {
+                                    text = title; textSize = 13f; setTextColor(Color.LTGRAY)
+                                    setPadding(0, dp(12), 0, dp(5))
+                                })
+                                val spinner = Spinner(this@MainActivity).apply {
+                                    adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, values)
+                                    setSelection(selected)
+                                    onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+                                        override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) { changed(position) }
+                                        override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
+                                    }
+                                }
+                                content.addView(spinner)
+                            }
+                            var nextCard = proxyCardSize
+                            var nextLayout = proxyLayout
+                            var nextSort = when { sortByDelay -> "delay"; sortByName -> "name"; else -> "default" }
+                            addChoice("Размер карточек", cardSizes, cardIndex) { nextCard = sizeValues[it] }
+                            addChoice("Расположение", layouts, layoutIndex) { nextLayout = layoutValues[it] }
+                            addChoice("Сортировка", sortLabels, sortIndex) { nextSort = sortValues[it] }
+                            val hideTimeout = android.widget.CheckBox(this@MainActivity).apply { text = "Скрывать серверы без ответа"; setTextColor(Color.WHITE); isChecked = showOnlyWorking }
+                            val protocol = android.widget.CheckBox(this@MainActivity).apply { text = "Показывать тип протокола"; setTextColor(Color.WHITE); isChecked = showProtocol }
+                            val oneColumn = android.widget.CheckBox(this@MainActivity).apply { text = "Одна колонка"; setTextColor(Color.WHITE); isChecked = oneColumnView }
+                            content.addView(hideTimeout); content.addView(protocol); content.addView(oneColumn)
+                            AlertDialog.Builder(this@MainActivity).setTitle("Настройки прокси").setView(content)
+                                .setPositiveButton("Применить") { _, _ ->
+                                    proxyCardSize = nextCard; compactCards = nextCard == "compact"
+                                    proxyLayout = nextLayout
+                                    sortByDelay = nextSort == "delay"; sortByName = nextSort == "name"
+                                    showOnlyWorking = hideTimeout.isChecked; showProtocol = protocol.isChecked; oneColumnView = oneColumn.isChecked
+                                    prefs.edit().putString("proxy_card_size", proxyCardSize).putString("proxy_layout", proxyLayout)
+                                        .putString("proxy_sort", nextSort).putBoolean("proxy_hide_timeout", showOnlyWorking)
+                                        .putBoolean("proxy_show_protocol", showProtocol).putBoolean("proxy_one_column", oneColumnView).apply()
+                                    refreshServerPage()
+                                }.setNegativeButton("Отмена", null).show()
+                        }
                     }
                 }.show()
             }, LinearLayout.LayoutParams(dp(44), dp(44)).apply { leftMargin = dp(6) })
@@ -780,10 +814,11 @@ class MainActivity : Activity() {
                 .filter { allowedMembers == null || it.second.name in allowedMembers }
                 .filter { it.second.name.lowercase().contains(query) }
                 .filter { !showOnlyWorking || (serverDelays[it.second.uri] ?: 0L) > 0L }
-            val nodes = if (sortByDelay) nodesUnsorted.sortedWith(
-                compareBy<Pair<Int, ImportedNode>> { serverDelays[it.second.uri]?.takeIf { value -> value > 0L } ?: Long.MAX_VALUE }
-                    .thenBy { it.second.name.lowercase() }
-            ) else nodesUnsorted
+            val nodes = when {
+                sortByDelay -> nodesUnsorted.sortedWith(compareBy<Pair<Int, ImportedNode>> { serverDelays[it.second.uri]?.takeIf { value -> value > 0L } ?: Long.MAX_VALUE }.thenBy { it.second.name.lowercase() })
+                sortByName -> nodesUnsorted.sortedBy { it.second.name.lowercase() }
+                else -> nodesUnsorted
+            }
             serverRows.visibility = if (groupExpanded) View.VISIBLE else View.GONE
             if (!groupExpanded) return
             if (nodes.isEmpty()) {
@@ -798,7 +833,8 @@ class MainActivity : Activity() {
                     val tile = LinearLayout(this).apply {
                         orientation = LinearLayout.VERTICAL
                         gravity = android.view.Gravity.CENTER_VERTICAL
-                        setPadding(dp(13), dp(13), dp(10), dp(13))
+                        setPadding(dp(if (proxyCardSize == "loose") 17 else 13), dp(if (proxyCardSize == "compact" || proxyCardSize == "oneline") 9 else 13), dp(10), dp(if (proxyCardSize == "compact" || proxyCardSize == "oneline") 9 else 13))
+                        setTag(R.id.proxy_node_uri, node.uri)
                         background = GradientDrawable().apply {
                             setColor(if (selected) Color.rgb(8, 35, 17) else Color.rgb(34, 35, 39))
                             cornerRadius = dp(20).toFloat()
@@ -820,17 +856,19 @@ class MainActivity : Activity() {
                                 delay > 0L -> "   ·   ${delay} мс"
                                 else -> "   ·   тайм-аут"
                             }
-                            textSize = 14f; maxLines = 3; setTextColor(if (delay != null && delay > 0L) Color.rgb(65, 235, 105) else Color.WHITE)
+                            textSize = if (proxyCardSize == "compact" || proxyCardSize == "oneline") 13f else 14f
+                            maxLines = if (proxyCardSize == "compact" || proxyCardSize == "oneline") 1 else if (proxyCardSize == "loose") 3 else 2
+                            setTextColor(if (delay != null && delay > 0L) Color.rgb(65, 235, 105) else Color.WHITE)
                             typeface = android.graphics.Typeface.DEFAULT_BOLD
                         })
-                        if (showProtocol) addView(TextView(this@MainActivity).apply {
+                        if (showProtocol && proxyCardSize != "oneline") addView(TextView(this@MainActivity).apply {
                             text = node.uri.substringBefore("://").uppercase()
-                            textSize = 11f; setTextColor(Color.rgb(169, 184, 255)); setPadding(0, dp(8), 0, 0)
+                            textSize = 11f; setTextColor(Color.rgb(169, 184, 255)); setPadding(0, dp(6), 0, 0)
                         })
-                        addView(TextView(this@MainActivity).apply {
+                        if (proxyCardSize != "compact" && proxyCardSize != "oneline") addView(TextView(this@MainActivity).apply {
                             text = if (selected) "ВЫБРАН" else "Нажмите для выбора"
                             textSize = 10f; setTextColor(if (selected) Color.rgb(55, 245, 90) else Color.LTGRAY)
-                            setPadding(0, dp(7), 0, 0)
+                            setPadding(0, dp(5), 0, 0)
                         })
                     }
                     tile.setOnLongClickListener {
@@ -852,11 +890,12 @@ class MainActivity : Activity() {
                             }.show()
                         true
                     }
-                    row.addView(tile, LinearLayout.LayoutParams(0, dp(if (compactCards) 88 else 116), 1f).apply {
-                        leftMargin = dp(3); rightMargin = dp(3); topMargin = dp(4); bottomMargin = dp(4)
+                    val tileHeight = when (proxyCardSize) { "compact", "oneline" -> 62; "loose" -> 136; else -> 112 }
+                    row.addView(tile, LinearLayout.LayoutParams(0, dp(tileHeight), 1f).apply {
+                        leftMargin = dp(if (proxyLayout == "tight") 2 else 4); rightMargin = dp(if (proxyLayout == "tight") 2 else 4); topMargin = dp(if (proxyLayout == "tight") 2 else 5); bottomMargin = dp(if (proxyLayout == "tight") 2 else 5)
                     })
                 }
-                if (pair.size == 1) row.addView(View(this), LinearLayout.LayoutParams(0, dp(if (compactCards) 88 else 116), 1f))
+                if (pair.size == 1) row.addView(View(this), LinearLayout.LayoutParams(0, dp(when (proxyCardSize) { "compact", "oneline" -> 62; "loose" -> 136; else -> 112 }), 1f))
                 serverRows.addView(row)
             }
         }
