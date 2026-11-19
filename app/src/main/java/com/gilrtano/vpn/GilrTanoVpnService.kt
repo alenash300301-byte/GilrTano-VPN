@@ -441,6 +441,8 @@ class GilrTanoVpnService : VpnService() {
         // Native shutdown may block; run it away from Android's main thread.
         Thread({
             synchronized(this) {
+                runCatching { mihomoRuntime?.stop() }
+                mihomoRuntime = null
                 runCatching { Teapodcore.stopTun2Socks() }
                 runCatching { Teapodcore.stopXray() }
                 runCatching { tun?.close() }
