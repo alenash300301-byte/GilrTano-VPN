@@ -657,6 +657,9 @@ class GilrTanoVpnService : VpnService() {
     }
 
     @Suppress("unused")
+    fun getUnderlyingNetworkHandle(): Long = lastUnderlyingNetwork?.networkHandle ?: 0L
+
+    @Suppress("unused")
     fun getUnderlyingNetworkGeneration(): Long = usqueNetworkGeneration
 
     @Suppress("unused")
@@ -763,12 +766,12 @@ class GilrTanoVpnService : VpnService() {
 
     private fun stopEngineAndTun() {
         unregisterNetworkCallback()
-        if (activeEngine == ENGINE_FREE) {
-            runCatching { io.github.georgexie2333.usque.NativeEngine.cancel() }
-            runCatching { io.github.georgexie2333.usque.NativeEngine.stop() }
-        } else {
-            runCatching { FlClashXEngine.stop() }
-        }
+        // Retire every possible previous owner before a mode change; only the selected
+        // engine is started again below. This prevents stale TUN ownership across manual switches.
+        runCatching { io.github.georgexie2333.usque.NativeEngine.cancel() }
+        runCatching { io.github.georgexie2333.usque.NativeEngine.stop() }
+        runCatching { FlClashXEngine.stop() }
+        runCatching { MeowCore.nativeStopEngine() }
         runCatching { tun?.close() }
         tun = null
     }
