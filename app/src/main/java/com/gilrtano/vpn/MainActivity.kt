@@ -728,13 +728,58 @@ class MainActivity : Activity() {
         }
         proxySearch.visibility = View.GONE
         serverPage.addView(proxySearch, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(50)).apply { bottomMargin = dp(12) })
+        var selectedProxyGroup = prefs.getString(if (activeFree) "free_current_proxy_group" else "quattro_current_proxy_group", "Все") ?: "Все"
+        val groupTabs = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+        }
+        val groupScroll = android.widget.HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            addView(groupTabs)
+        }
+        serverPage.addView(groupScroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)).apply { bottomMargin = dp(8) })
         val serverRows = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         serverPage.addView(serverRows)
         fun updateServerPage() {
             serverState.text = "Режим: " + if (autoMode) "AUTO · Quattro с бесплатным резервом" else if (activeFree) "FREE" else "Подписка"
             serverRows.removeAllViews()
             val query = proxySearch.text.toString().trim().lowercase()
+            val groups = activeProxyGroups
+            if (selectedProxyGroup != "Все" && groups.none { it.name == selectedProxyGroup }) selectedProxyGroup = "Все"
+            groupTabs.removeAllViews()
+            val tabNames = listOf("Все") + groups.map { it.name }
+            tabNames.forEach { groupName ->
+                val selectedTab = selectedProxyGroup == groupName
+                val tab = TextView(this@MainActivity).apply {
+                    text = groupName
+                    textSize = 13f
+                    setTextColor(if (selectedTab) Color.WHITE else Color.LTGRAY)
+                    setPadding(dp(15), dp(9), dp(15), dp(9))
+                    background = GradientDrawable().apply {
+                        setColor(if (selectedTab) Color.rgb(80, 31, 39) else Color.rgb(30, 31, 35))
+                        cornerRadius = dp(18).toFloat()
+                        if (selectedTab) setStroke(dp(1), Color.rgb(190, 58, 69))
+                    }
+                    setOnClickListener {
+                        selectedProxyGroup = groupName
+                        prefs.edit().putString(if (activeFree) "free_current_proxy_group" else "quattro_current_proxy_group", groupName).apply()
+                        updateServerPage()
+                    }
+                }
+                groupTabs.addView(tab, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(38)).apply {
+                    rightMargin = dp(7)
+                })
+            }
+            fun membersOf(groupName: String, visited: MutableSet<String> = mutableSetOf()): Set<String> {
+                if (!visited.add(groupName)) return emptySet()
+                val group = groups.firstOrNull { it.name == groupName } ?: return setOf(groupName)
+                return group.members.flatMap { member ->
+                    if (groups.any { it.name == member }) membersOf(member, visited) else listOf(member)
+                }.toSet()
+            }
+            val allowedMembers = if (selectedProxyGroup == "Все") null else membersOf(selectedProxyGroup)
             val nodesUnsorted = activeNodes.mapIndexed { index, node -> index to node }
+                .filter { allowedMembers == null || it.second.name in allowedMembers }
                 .filter { it.second.name.lowercase().contains(query) }
                 .filter { !showOnlyWorking || (serverDelays[it.second.uri] ?: 0L) > 0L }
             val nodes = if (sortByDelay) nodesUnsorted.sortedWith(
