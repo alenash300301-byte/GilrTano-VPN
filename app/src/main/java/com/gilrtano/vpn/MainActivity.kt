@@ -691,6 +691,13 @@ class MainActivity : Activity() {
                             val current = groupObject.optString("now")
                             val fixed = groupObject.optString("fixed")
                             val selected = fixed.ifBlank { current }
+                            val groupType = groupObject.optString("type")
+                            // Mihomo's computed groups choose their active member automatically;
+                            // Selector groups allow a direct manual choice.
+                            val computedSelection = groupType.equals("URLTest", true) ||
+                                groupType.equals("Fallback", true) ||
+                                groupType.equals("LoadBalance", true)
+                            val allowsManualSelection = groupType.equals("Selector", true) || computedSelection
                             val filtered = (0 until members.length()).mapNotNull { n ->
                                 val item = members.optJSONObject(n)
                                 val name = item?.optString("name").orEmpty().ifBlank {
@@ -725,10 +732,19 @@ class MainActivity : Activity() {
                                             setStroke(dp(1), if (inUse) Color.rgb(57, 220, 94) else Color.rgb(57, 58, 63))
                                         }
                                         setOnClickListener {
-                                            serverState.text = "Переключаю: $nodeName"
+                                            if (!allowsManualSelection) {
+                                                Toast.makeText(
+                                                    this@MainActivity,
+                                                    "Эта группа управляет выбором автоматически",
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                                return@setOnClickListener
+                                            }
+                                            val requestedNode = if (computedSelection && nodeName == selected) "" else nodeName
+                                            serverState.text = if (requestedNode.isBlank()) "Сбрасываю предпочтение…" else "Переключаю: $nodeName"
                                             Thread({
                                                 val changed = runCatching {
-                                                    FlClashXEngine.selectProxy(groupName, nodeName)
+                                                    FlClashXEngine.selectProxy(groupName, requestedNode)
                                                 }
                                                 runOnUiThread {
                                                     val message = changed.getOrElse { it.message ?: "Ошибка выбора" }
