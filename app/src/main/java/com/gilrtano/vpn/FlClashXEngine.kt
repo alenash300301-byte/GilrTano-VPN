@@ -159,6 +159,7 @@ internal object FlClashXEngine {
         return result.optJSONObject("result") ?: JSONObject()
     }
 
+    // Subscription server browsing uses the same live core API as the native client.
     /** Returns the live proxy groups and their members from the running Mihomo core. */
     fun getProxyGroups(): JSONObject {
         return invokeCoreMethod("getProxies")
