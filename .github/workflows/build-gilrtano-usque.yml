@@ -1,0 +1,98 @@
+name: Build GilrTano with Usque v0.3.4 native library
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [subscription-flclashx-integration]
+    paths:
+      - '.github/workflows/build-gilrtano-usque.yml'
+      - 'app/src/main/java/io/github/georgexie2333/usque/**'
+      - 'app/src/main/java/com/gilrtano/vpn/UsqueIdentityStore.kt'
+      - 'app/build.gradle.kts'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gilrtano-usque-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout GilrTano
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned Usque v0.3.4
+        uses: actions/checkout@v4
+        with:
+          repository: GeorgeXie2333/usque-app
+          ref: v0.3.4
+          path: usque-app
+
+      - name: Setup Rust 1.97.1
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.97.1
+          targets: aarch64-linux-android
+
+      - name: Install Android SDK and NDK
+        run: |
+          echo "ANDROID_HOME=/usr/local/lib/android/sdk" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=/usr/local/lib/android/sdk" >> "$GITHUB_ENV"
+          SDKMANAGER=$(find /usr/local/lib/android/sdk/cmdline-tools -type f -name sdkmanager | head -n1)
+          test -n "$SDKMANAGER"
+          echo "$(dirname "$SDKMANAGER")" >> "$GITHUB_PATH"
+          yes | "$SDKMANAGER" --licenses >/dev/null
+          "$SDKMANAGER" --install "ndk;29.0.14206865" "platforms;android-35" "build-tools;35.0.0"
+          echo "ANDROID_NDK_HOME=/usr/local/lib/android/sdk/ndk/29.0.14206865" >> "$GITHUB_ENV"
+
+      - name: Configure ARM64 Rust linker
+        run: |
+          TOOLCHAIN="$ANDROID_HOME/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64"
+          echo "$TOOLCHAIN/bin" >> "$GITHUB_PATH"
+          echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$TOOLCHAIN/bin/aarch64-linux-android29-clang" >> "$GITHUB_ENV"
+          echo "CC_aarch64_linux_android=$TOOLCHAIN/bin/aarch64-linux-android29-clang" >> "$GITHUB_ENV"
+          echo "AR_aarch64_linux_android=$TOOLCHAIN/bin/llvm-ar" >> "$GITHUB_ENV"
+          echo "LIBCLANG_PATH=$TOOLCHAIN/lib" >> "$GITHUB_ENV"
+          echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
+
+      - name: Build Usque JNI library
+        working-directory: usque-app
+        run: |
+          cargo build --locked --package usque-android --target aarch64-linux-android --release
+          test -s target/aarch64-linux-android/release/libusque_android.so
+          readelf -h target/aarch64-linux-android/release/libusque_android.so | grep -E 'Machine:.*AArch64'
+          mkdir -p "$GITHUB_WORKSPACE/app/src/main/jniLibs/arm64-v8a"
+          cp target/aarch64-linux-android/release/libusque_android.so "$GITHUB_WORKSPACE/app/src/main/jniLibs/arm64-v8a/"
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Build GilrTano debug APK
+        run: gradle --no-daemon :app:assembleDebug --stacktrace
+
+      - name: Verify APK contains Usque ARM64 library
+        run: |
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -l "$APK" | grep 'lib/arm64-v8a/libusque_android.so'
+          sha256sum "$APK"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: GilrTano-Usque-v0.3.4-ARM64-Integration-Candidate
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
