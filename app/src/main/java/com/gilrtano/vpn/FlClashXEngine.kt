@@ -6,14 +6,13 @@ import android.util.Log
 import com.follow.clashx.core.Core
 import org.json.JSONObject
 import java.io.File
-import java.net.InetSocketAddress
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 /**
  * Android runtime adapter for the FlClashX v0.5.7 gomobile/Mihomo core.
- * The config is kept intact: proxy groups, rules, providers and subscription
- * metadata are parsed by Mihomo itself, not rewritten by the app.
+ * Subscription rules and proxy groups remain intact; only GeoIP/GeoSite
+ * database endpoints are pinned to the selected Russia V2Ray rules release.
  */
 internal object FlClashXEngine {
     private const val TAG = "GilrTano-FlClashX"
@@ -23,12 +22,65 @@ internal object FlClashXEngine {
     private const val TUN_STACK = "gvisor"
     private const val TUN_MTU = 9000
 
+    private const val GEOIP_URL =
+        "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/geoip.dat"
+    private const val GEOSITE_URL =
+        "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/geosite.dat"
+
     @Volatile private var tunStarted = false
+
+    /**
+     * Updates only geoip/geosite in the top-level geox-url block.
+     * Other subscription settings (including mmdb/asn) are preserved.
+     */
+    private fun withRussiaGeoDatabases(rawConfig: String): String {
+        val lines = rawConfig.trim().lines().toMutableList()
+        val sectionStart = lines.indexOfFirst {
+            it == it.trimStart() && it.startsWith("geox-url:")
+        }
+
+        if (sectionStart < 0) {
+            lines.add("")
+            lines.add("geox-url:")
+            lines.add("  geoip: \"$GEOIP_URL\"")
+            lines.add("  geosite: \"$GEOSITE_URL\"")
+            return lines.joinToString("\n") + "\n"
+        }
+
+        var sectionEnd = lines.size
+        for (i in sectionStart + 1 until lines.size) {
+            val line = lines[i]
+            if (line.isNotBlank() && !line.trimStart().startsWith("#") &&
+                line == line.trimStart() && line.contains(":")) {
+                sectionEnd = i
+                break
+            }
+        }
+
+        fun setEntry(key: String, value: String) {
+            val entry = Regex("^(\\s*)${Regex.escape(key)}\\s*:.*$")
+            val existing = (sectionStart + 1 until sectionEnd).firstOrNull {
+                entry.matches(lines[it])
+            }
+            val replacement = "  $key: \"$value\""
+            if (existing != null) {
+                lines[existing] = replacement
+            } else {
+                lines.add(sectionEnd, replacement)
+                sectionEnd++
+            }
+        }
+
+        setEntry("geoip", GEOIP_URL)
+        setEntry("geosite", GEOSITE_URL)
+        return lines.joinToString("\n") + "\n"
+    }
 
     fun start(service: VpnService, rawConfig: String) {
         require(rawConfig.isNotBlank()) { "Пустая подписка" }
         val home = File(service.noBackupFilesDir, "flclashx").apply { mkdirs() }
-        File(home, "config.yaml").writeText(rawConfig.trim() + "\n")
+        val configFile = File(home, "config.yaml")
+        configFile.writeText(withRussiaGeoDatabases(rawConfig))
 
         Core.load()
         val initialized = CountDownLatch(1)
@@ -88,7 +140,7 @@ internal object FlClashXEngine {
             error("FlClashX отклонил TUN-дескриптор")
         }
         tunStarted = true
-        Log.i(TAG, "FlClashX v0.5.7 TUN started; config preserved at ${File(home, "config.yaml")}")
+        Log.i(TAG, "FlClashX v0.5.7 TUN started; GeoIP/GeoSite configured in ${configFile.absolutePath}")
     }
 
     fun stop() {
