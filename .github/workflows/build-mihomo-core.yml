@@ -1,0 +1,82 @@
+name: Build Mihomo Android Core
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/build-mihomo-core.yml"
+      - "app/src/main/java/com/follow/clashx/core/Core.kt"
+
+permissions:
+  contents: read
+
+jobs:
+  build-mihomo:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout GilrTano VPN
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.x"
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install Android SDK and NDK
+        run: |
+          echo "ANDROID_HOME=/usr/local/lib/android/sdk" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=/usr/local/lib/android/sdk" >> "$GITHUB_ENV"
+          SDKMANAGER=$(find /usr/local/lib/android/sdk/cmdline-tools -type f -name sdkmanager | head -n1)
+          test -n "$SDKMANAGER"
+          echo "$(dirname "$SDKMANAGER")" >> "$GITHUB_PATH"
+          "$SDKMANAGER" --install "ndk;28.2.13676358"
+          echo "ANDROID_NDK_HOME=/usr/local/lib/android/sdk/ndk/28.2.13676358" >> "$GITHUB_ENV"
+          echo "$HOME/go/bin" >> "$GITHUB_PATH"
+
+      - name: Checkout pinned FlClashX Mihomo bridge
+        run: |
+          git clone https://github.com/pluralplay/FlClashX.git upstream/FlClashX
+          git -C upstream/FlClashX checkout a9bbb66f6aec3e47359819c93976148a1d270e23
+
+      - name: Install gomobile
+        working-directory: upstream/FlClashX/core
+        run: |
+          go install golang.org/x/mobile/cmd/gomobile@latest
+          gomobile init
+
+      - name: Build ARM64 Mihomo AAR
+        working-directory: upstream/FlClashX/core
+        env:
+          CGO_ENABLED: "1"
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/app/libs"
+          gomobile bind \
+            -target=android/arm64 \
+            -androidapi=29 \
+            -javapkg=com.follow.clashx.core \
+            -tags=with_gvisor,cmfa \
+            -ldflags="-w -s -X=github.com/metacubex/mihomo/constant.Version=v1.19.34" \
+            -o "$GITHUB_WORKSPACE/app/libs/mihomo-core.aar" \
+            ./mobile
+          test -s "$GITHUB_WORKSPACE/app/libs/mihomo-core.aar"
+
+      - name: Verify AAR contents
+        run: |
+          unzip -l app/libs/mihomo-core.aar | tee mihomo-aar-contents.txt
+          grep -q "jni/arm64-v8a/libgojni.so" mihomo-aar-contents.txt
+          unzip -p app/libs/mihomo-core.aar classes.jar > /tmp/mihomo-classes.jar
+          jar tf /tmp/mihomo-classes.jar | grep -q "com/follow/clashx/core/mobile/Mobile.class"
+
+      - name: Upload Mihomo AAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: GilrTano-Mihomo-Android-ARM64-AAR
+          path: app/libs/mihomo-core.aar
+          if-no-files-found: error
