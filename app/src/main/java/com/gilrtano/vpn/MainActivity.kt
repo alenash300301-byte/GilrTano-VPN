@@ -595,8 +595,6 @@ class MainActivity : Activity() {
             setOnClickListener { action() }
         }
         val serverPage = page("Прокси")
-        val serverState = TextView(this).apply { textSize = 13f; setTextColor(Color.LTGRAY) }
-        serverPage.addView(serverState)
         val serverDelays = mutableMapOf<String, Long>()
         var testingAllServers = false
         var refreshServerPage: () -> Unit = {}
@@ -741,24 +739,24 @@ class MainActivity : Activity() {
         val serverRows = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         serverPage.addView(serverRows)
         fun updateServerPage() {
-            serverState.text = "Режим: " + if (autoMode) "AUTO · Quattro с бесплатным резервом" else if (activeFree) "FREE" else "Подписка"
             serverRows.removeAllViews()
             val query = proxySearch.text.toString().trim().lowercase()
             val groups = activeProxyGroups
-            if (selectedProxyGroup != "Все" && groups.none { it.name == selectedProxyGroup }) selectedProxyGroup = "Все"
+            if (selectedProxyGroup != "Все" && groups.none { it.name == selectedProxyGroup }) selectedProxyGroup = groups.firstOrNull()?.name ?: "Все"
             groupTabs.removeAllViews()
-            val tabNames = listOf("Все") + groups.map { it.name }
+            val tabNames = if (groups.isEmpty()) listOf("Все") else groups.map { it.name }
             tabNames.forEach { groupName ->
                 val selectedTab = selectedProxyGroup == groupName
                 val tab = TextView(this@MainActivity).apply {
                     text = groupName
                     textSize = 13f
-                    setTextColor(if (selectedTab) Color.WHITE else Color.LTGRAY)
-                    setPadding(dp(15), dp(9), dp(15), dp(9))
+                    typeface = android.graphics.Typeface.DEFAULT_BOLD
+                    setTextColor(if (selectedTab) Color.rgb(235, 255, 239) else Color.LTGRAY)
+                    setPadding(dp(16), dp(9), dp(16), dp(9))
                     background = GradientDrawable().apply {
-                        setColor(if (selectedTab) Color.rgb(80, 31, 39) else Color.rgb(30, 31, 35))
-                        cornerRadius = dp(18).toFloat()
-                        if (selectedTab) setStroke(dp(1), Color.rgb(190, 58, 69))
+                        setColor(if (selectedTab) Color.rgb(49, 68, 55) else Color.rgb(30, 31, 35))
+                        cornerRadius = dp(22).toFloat()
+                        setStroke(dp(1), if (selectedTab) Color.rgb(83, 190, 112) else Color.rgb(58, 60, 66))
                     }
                     setOnClickListener {
                         selectedProxyGroup = groupName
@@ -777,7 +775,7 @@ class MainActivity : Activity() {
                     if (groups.any { it.name == member }) membersOf(member, visited) else listOf(member)
                 }.toSet()
             }
-            val allowedMembers = if (selectedProxyGroup == "Все") null else membersOf(selectedProxyGroup)
+            val allowedMembers = if (selectedProxyGroup == "Все" || groups.isEmpty()) null else membersOf(selectedProxyGroup)
             val nodesUnsorted = activeNodes.mapIndexed { index, node -> index to node }
                 .filter { allowedMembers == null || it.second.name in allowedMembers }
                 .filter { it.second.name.lowercase().contains(query) }
