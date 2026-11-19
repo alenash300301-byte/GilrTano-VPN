@@ -77,6 +77,7 @@ class MainActivity : Activity() {
     private var quattroNodes: List<ImportedNode> = emptyList()
     private var pendingConfig: String? = null
     private var pendingAutomatic = false
+    private var pendingUsqueFree = false
     private val requestCode = 4101
     private val docxRequestCode = 4102
     private val portalRequestCode = 4103
@@ -210,9 +211,15 @@ class MainActivity : Activity() {
                     currentStatus.startsWith("Переключаю") || currentStatus.startsWith("Приостанавливаю") ||
                     currentStatus.startsWith("Возобновляю")
                 if (isConnected) {
-                    status.text = "Приостанавливаю VPN…"
-                    startService(Intent(this@MainActivity, GilrTanoVpnService::class.java)
-                        .setAction(GilrTanoVpnService.ACTION_PAUSE))
+                    if (activeMode == "portal") {
+                        status.text = "Отключаю Usque FREE…"
+                        startService(Intent(this@MainActivity, io.github.georgexie2333.usque.UsqueVpnService::class.java)
+                            .setAction(io.github.georgexie2333.usque.UsqueVpnService.ACTION_DISCONNECT))
+                    } else {
+                        status.text = "Приостанавливаю VPN…"
+                        startService(Intent(this@MainActivity, GilrTanoVpnService::class.java)
+                            .setAction(GilrTanoVpnService.ACTION_PAUSE))
+                    }
                     return@setOnClickListener
                 }
                 if (isSuspended) {
@@ -223,9 +230,19 @@ class MainActivity : Activity() {
                 }
                 if (isConnecting) {
                     pendingConfig = null
+                    pendingUsqueFree = false
                     status.text = "Отменяю подключение…"
-                    startService(Intent(this@MainActivity, GilrTanoVpnService::class.java)
-                        .setAction(GilrTanoVpnService.ACTION_STOP))
+                    if (activeMode == "portal") {
+                        startService(Intent(this@MainActivity, io.github.georgexie2333.usque.UsqueVpnService::class.java)
+                            .setAction(io.github.georgexie2333.usque.UsqueVpnService.ACTION_DISCONNECT))
+                    } else {
+                        startService(Intent(this@MainActivity, GilrTanoVpnService::class.java)
+                            .setAction(GilrTanoVpnService.ACTION_STOP))
+                    }
+                    return@setOnClickListener
+                }
+                if (activeMode == "portal") {
+                    requestUsqueFreeConnection()
                     return@setOnClickListener
                 }
                 if (activeNodes.isEmpty()) {
@@ -260,8 +277,13 @@ class MainActivity : Activity() {
             if (currentStatus.contains("Подключено") || currentStatus.contains("Приостановлено") ||
                 currentStatus.contains("Приостанавливаю") || currentStatus.contains("Возобновляю")) {
                 status.text = "Отключаю VPN…"
-                startService(Intent(this@MainActivity, GilrTanoVpnService::class.java)
-                    .setAction(GilrTanoVpnService.ACTION_STOP))
+                if (activeMode == "portal") {
+                    startService(Intent(this@MainActivity, io.github.georgexie2333.usque.UsqueVpnService::class.java)
+                        .setAction(io.github.georgexie2333.usque.UsqueVpnService.ACTION_DISCONNECT))
+                } else {
+                    startService(Intent(this@MainActivity, GilrTanoVpnService::class.java)
+                        .setAction(GilrTanoVpnService.ACTION_STOP))
+                }
                 true
             } else false
         }
@@ -1831,6 +1853,61 @@ class MainActivity : Activity() {
         return file.absolutePath
     }
 
+    private fun requestUsqueFreeConnection() {
+        if (prefs.getBoolean("usque_terms_accepted", false)) {
+            beginUsqueFreeConnection()
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Cloudflare WARP")
+            .setMessage("Для режима FREE будет создана бесплатная WARP-идентичность Cloudflare. Продолжая, ты подтверждаешь согласие с условиями Cloudflare и обработкой данных, необходимой для регистрации и VPN-подключения.")
+            .setNegativeButton("Отмена", null)
+            .setPositiveButton("Продолжить") { _, _ ->
+                prefs.edit().putBoolean("usque_terms_accepted", true).apply()
+                beginUsqueFreeConnection()
+            }
+            .show()
+    }
+
+    private fun beginUsqueFreeConnection() {
+        val permission = VpnService.prepare(this)
+        if (permission != null) {
+            pendingUsqueFree = true
+            pendingConfig = null
+            status.text = "Ожидаю разрешение VPN…"
+            startActivityForResult(permission, requestCode)
+            return
+        }
+        pendingUsqueFree = false
+        status.text = "Регистрирую WARP и подготавливаю Usque…"
+        connectButton.setState(PowerOrbButtonView.State.CONNECTING)
+        Thread({
+            try {
+                val profile = UsqueFreeEngine.prepare(this)
+                runOnUiThread {
+                    try {
+                        startForegroundService(
+                            Intent(this, io.github.georgexie2333.usque.UsqueVpnService::class.java)
+                                .setAction(io.github.georgexie2333.usque.UsqueVpnService.ACTION_CONNECT)
+                                .putExtra(io.github.georgexie2333.usque.UsqueVpnService.EXTRA_PROFILE_JSON, profile)
+                        )
+                        status.text = "Запускаю Usque FREE…"
+                        connectButton.setState(PowerOrbButtonView.State.CONNECTING)
+                    } catch (error: Exception) {
+                        status.text = "Не удалось запустить Usque: ${error.message}"
+                        connectButton.setState(PowerOrbButtonView.State.IDLE)
+                    }
+                }
+            } catch (error: Exception) {
+                runOnUiThread {
+                    status.text = "Ошибка FREE / Usque: ${error.message ?: error.javaClass.simpleName}"
+                    connectButton.setState(PowerOrbButtonView.State.IDLE)
+                    Toast.makeText(this, status.text, Toast.LENGTH_LONG).show()
+                }
+            }
+        }, "GilrTano-Usque-bootstrap").start()
+    }
+
     private fun startVpn(config: String, automatic: Boolean = false) {
         connectButton.isEnabled = true
         val intent = Intent(this, GilrTanoVpnService::class.java)
@@ -1847,12 +1924,18 @@ class MainActivity : Activity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == this.requestCode && resultCode == RESULT_OK) {
-            pendingConfig?.let {
-                startVpn(it, automatic = pendingAutomatic)
-                pendingConfig = null
-                pendingAutomatic = false
-            } ?: run { status.text = "Подключение отменено" }
+            if (pendingUsqueFree) {
+                pendingUsqueFree = false
+                beginUsqueFreeConnection()
+            } else {
+                pendingConfig?.let {
+                    startVpn(it, automatic = pendingAutomatic)
+                    pendingConfig = null
+                    pendingAutomatic = false
+                } ?: run { status.text = "Подключение отменено" }
+            }
         } else if (requestCode == this.requestCode) {
+            pendingUsqueFree = false
             pendingConfig = null
             connectButton.isEnabled = true
             status.text = "Разрешение VPN не предоставлено"
