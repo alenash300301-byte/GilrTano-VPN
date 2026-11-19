@@ -8,6 +8,9 @@ on:
       - '.github/workflows/build-gilrtano-usque.yml'
       - 'app/src/main/java/io/github/georgexie2333/usque/**'
       - 'app/src/main/java/com/gilrtano/vpn/UsqueIdentityStore.kt'
+      - 'app/src/main/java/com/gilrtano/vpn/UsqueFreeEngine.kt'
+      - 'app/src/main/java/com/gilrtano/vpn/MainActivity.kt'
+      - 'app/src/main/AndroidManifest.xml'
       - 'app/build.gradle.kts'
 
 permissions:
