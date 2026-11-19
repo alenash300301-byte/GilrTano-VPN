@@ -1,0 +1,82 @@
+name: Build Usque FREE native engine (ARM64)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/free-usque-masque]
+    paths:
+      - '.github/workflows/build-usque-free-core.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: usque-free-core-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-usque:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout GilrTano
+        uses: actions/checkout@v4
+
+      - name: Checkout Usque v0.3.4
+        uses: actions/checkout@v4
+        with:
+          repository: GeorgeXie2333/usque-app
+          ref: v0.3.4
+          path: Usque
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.97.1
+          targets: aarch64-linux-android
+
+      - name: Install Android NDK
+        uses: nttld/setup-ndk@v1
+        id: ndk
+        with:
+          ndk-version: 29.0.14206865
+          link-to-sdk: true
+
+      - name: Install native build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build clang
+          echo "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin" >> "$GITHUB_PATH"
+          echo "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/lib" >> "$GITHUB_ENV"
+
+      - name: Configure Android ARM64 toolchain
+        working-directory: Usque
+        run: |
+          TOOLCHAIN="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64"
+          echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$TOOLCHAIN/bin/aarch64-linux-android26-clang" >> "$GITHUB_ENV"
+          echo "CC_aarch64_linux_android=$TOOLCHAIN/bin/aarch64-linux-android26-clang" >> "$GITHUB_ENV"
+          echo "CXX_aarch64_linux_android=$TOOLCHAIN/bin/aarch64-linux-android26-clang++" >> "$GITHUB_ENV"
+          echo "AR_aarch64_linux_android=$TOOLCHAIN/bin/llvm-ar" >> "$GITHUB_ENV"
+          echo "LIBCLANG_PATH=$TOOLCHAIN/lib" >> "$GITHUB_ENV"
+          echo "CMAKE_GENERATOR=Ninja" >> "$GITHUB_ENV"
+          echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
+
+      - name: Build Usque JNI library
+        working-directory: Usque
+        run: cargo build --locked --package usque-android --target aarch64-linux-android --release
+
+      - name: Verify JNI library
+        working-directory: Usque
+        run: |
+          LIB="target/aarch64-linux-android/release/libusque_android.so"
+          test -s "$LIB"
+          file "$LIB"
+          llvm-readelf -h "$LIB" | grep -E 'Class:.*ELF64|Machine:.*AArch64'
+
+      - name: Upload Usque native engine
+        uses: actions/upload-artifact@v4
+        with:
+          name: GilrTano-FREE-Usque-v0.3.4-ARM64
+          path: Usque/target/aarch64-linux-android/release/libusque_android.so
+          if-no-files-found: error
+          retention-days: 14
