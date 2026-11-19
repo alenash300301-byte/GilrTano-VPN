@@ -593,6 +593,7 @@ class MainActivity : Activity() {
         serverPage.addView(serverState)
         val serverDelays = mutableMapOf<String, Long>()
         var testingAllServers = false
+        var refreshServerPage: () -> Unit = {}
         lateinit var testAllButton: Button
         var testAllAnimator: ObjectAnimator? = null
         testAllButton = actionButton("⟳") {
@@ -611,7 +612,7 @@ class MainActivity : Activity() {
                     testAllAnimator = null
                     testAllButton.rotation = 0f
                 }
-            }, { updateServerPage() })
+            }, { refreshServerPage() })
         }
         testAllButton.apply {
             textSize = 25f
@@ -717,6 +718,7 @@ class MainActivity : Activity() {
                 serverRows.addView(row)
             }
         }
+        refreshServerPage = { updateServerPage() }
         proxySearch.addTextChangedListener(object : android.text.TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) { updateServerPage() }
