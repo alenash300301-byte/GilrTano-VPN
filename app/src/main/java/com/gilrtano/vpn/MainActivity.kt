@@ -694,10 +694,12 @@ class MainActivity : Activity() {
                             val groupType = groupObject.optString("type")
                             // Mihomo's computed groups choose their active member automatically;
                             // Selector groups allow a direct manual choice.
-                            val computedSelection = groupType.equals("URLTest", true) ||
-                                groupType.equals("Fallback", true) ||
-                                groupType.equals("LoadBalance", true)
-                            val allowsManualSelection = groupType.equals("Selector", true) || computedSelection
+                            val normalizedGroupType = groupType.lowercase().replace("-", "")
+                            // FlClashX v0.5.7 marks only URLTest and Fallback as computed-selected.
+                            val computedSelection = normalizedGroupType == "urltest" ||
+                                normalizedGroupType == "fallback"
+                            val allowsManualSelection = normalizedGroupType == "select" ||
+                                normalizedGroupType == "selector" || computedSelection
                             val filtered = (0 until members.length()).mapNotNull { n ->
                                 val item = members.optJSONObject(n)
                                 val name = item?.optString("name").orEmpty().ifBlank {
@@ -706,6 +708,35 @@ class MainActivity : Activity() {
                                 if (name.isBlank() || !name.contains(query, true)) null
                                 else Triple(name, item?.optString("type").orEmpty(),
                                     item?.optString("serverDescription").orEmpty())
+                            }.toMutableList()
+                            val sortKey = "subscription_proxy_sort"
+                            val sortMode = prefs.getString(sortKey, "none") ?: "none"
+                            val sortControl = TextView(this).apply {
+                                text = when (sortMode) {
+                                    "name" -> "Сортировка: по имени  ↕"
+                                    "delay" -> "Сортировка: по задержке  ↕"
+                                    else -> "Сортировка: как в подписке  ↕"
+                                }
+                                textSize = 12f
+                                setTextColor(Color.rgb(180, 190, 205))
+                                setPadding(dp(6), dp(8), dp(6), dp(12))
+                                setOnClickListener {
+                                    val next = when (prefs.getString(sortKey, "none")) {
+                                        "none" -> "name"
+                                        "name" -> "delay"
+                                        else -> "none"
+                                    }
+                                    prefs.edit().putString(sortKey, next).apply()
+                                    renderGroup(selectedGroupIndex)
+                                }
+                            }
+                            cardsHost.addView(sortControl)
+                            when (sortMode) {
+                                "name" -> filtered.sortBy { it.first.lowercase() }
+                                "delay" -> filtered.sortWith(compareBy(
+                                    { prefs.getInt("proxy_delay_" + it.first, Int.MAX_VALUE).let { value -> if (value > 0) value else Int.MAX_VALUE } },
+                                    { it.first.lowercase() }
+                                ))
                             }
                             if (filtered.isEmpty()) {
                                 cardsHost.addView(TextView(this).apply {
@@ -788,6 +819,7 @@ class MainActivity : Activity() {
                                                         FlClashXEngine.testProxyDelay(nodeName)
                                                     }.getOrDefault(-1)
                                                     runOnUiThread {
+                                                        if (ping > 0) prefs.edit().putInt("proxy_delay_" + nodeName, ping).apply()
                                                         text = if (ping > 0) "$ping ms" else "Timeout"
                                                         setTextColor(if (ping > 0) Color.rgb(75, 220, 112) else Color.rgb(235, 110, 100))
                                                     }
