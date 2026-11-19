@@ -78,6 +78,10 @@ class MainActivity : Activity() {
     private var settingsExpanded = false
     private var quattroNodes: List<ImportedNode> = emptyList()
     private var freeNodes: List<ImportedNode> = emptyList()
+    private var quattroProxyGroups: List<ImportedProxyGroup> = emptyList()
+    private var freeProxyGroups: List<ImportedProxyGroup> = emptyList()
+    private val activeProxyGroups: List<ImportedProxyGroup>
+        get() = if (activeFree) freeProxyGroups else quattroProxyGroups
     private var pendingConfig: String? = null
     private var pendingFallbackConfig: String? = null
     private var pendingPreferredConfig: String? = null
@@ -160,6 +164,8 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         quattroNodes = restoreNodes("quattro_nodes")
         freeNodes = restoreNodes("free_nodes")
+        quattroProxyGroups = restoreProxyGroups("quattro_proxy_groups")
+        freeProxyGroups = restoreProxyGroups("free_proxy_groups")
 
         status = TextView(this).apply { text = "Отключено"; textSize = 14f; maxLines = 2; gravity = android.view.Gravity.CENTER; setPadding(dp(18), dp(4), dp(18), dp(4)) }
         pingStatus = TextView(this).apply { text = "Пинг: —"; textSize = 15f }
@@ -1297,6 +1303,7 @@ class MainActivity : Activity() {
         prefs.edit().putString("connection_mode", activeMode).apply()
         if (activeFree == free) { refreshMode(); return }
         val targetNodes = if (free) freeNodes else quattroNodes
+        // Proxy group state is isolated between FREE and Subscription profiles.
         if (targetNodes.isEmpty()) {
             Toast.makeText(
                 this,
@@ -1412,11 +1419,13 @@ class MainActivity : Activity() {
                         prefs.edit().putString("free_subscription_url", source).apply()
                         saveNodes("free_nodes", freeNodes)
                         saveProxyGroups("free_proxy_groups", importedGroups)
+                        freeProxyGroups = importedGroups
                     } else {
                         quattroNodes = imported
                         prefs.edit().putString("subscription_url", source).apply()
                         saveNodes("quattro_nodes", quattroNodes)
                         saveProxyGroups("quattro_proxy_groups", importedGroups)
+                        quattroProxyGroups = importedGroups
                     }
                     activeFree = isFree
                     prefs.edit().putBoolean("active_free_mode", activeFree).apply()
