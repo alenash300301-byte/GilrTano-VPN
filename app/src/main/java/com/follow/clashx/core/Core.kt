@@ -8,7 +8,11 @@ import java.net.InetSocketAddress
 import java.net.URI
 
 object Core {
-    fun load() = Mobile.touch()
+    fun load() {
+        // Mihomo has a distinct soname so it can coexist with TeapodCore's libgojni.so.
+        System.loadLibrary("mihomo")
+        Mobile.touch()
+    }
     fun forceGC() = Mobile.forceGC()
     fun updateDNS(dns: String) = Mobile.updateDns(dns)
     fun resetNetwork() = Mobile.resetNetwork()
