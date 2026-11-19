@@ -48,4 +48,5 @@ dependencies {
     implementation("org.yaml:snakeyaml:2.4")
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
     implementation(files("libs/teapod-core-1.7.7.aar"))
+    implementation(files("libs/mihomo-core.aar"))
 }
