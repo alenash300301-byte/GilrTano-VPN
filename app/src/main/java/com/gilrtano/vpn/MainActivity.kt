@@ -591,6 +591,10 @@ class MainActivity : Activity() {
         val serverPage = page("Прокси")
         val serverState = TextView(this).apply { textSize = 13f; setTextColor(Color.LTGRAY) }
         serverPage.addView(serverState)
+        val serverDelays = mutableMapOf<String, Long>()
+        var testingAllServers = false
+        val testAllButton = actionButton("↻  ПРОВЕРИТЬ ВСЕ СЕРВЕРЫ") { testAllServers(serverDelays, { testingAllServers }, { testingAllServers = it; testAllButton.text = if (it) "ПРОВЕРКА… " else "↻  ПРОВЕРИТЬ ВСЕ СЕРВЕРЫ"; testAllButton.isEnabled = !it }, { updateServerPage() }) }
+        serverPage.addView(testAllButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(52)).apply { bottomMargin = dp(10) })
         val proxySearch = EditText(this).apply {
             hint = "Поиск серверов"
             isSingleLine = true
@@ -638,8 +642,13 @@ class MainActivity : Activity() {
                             updateServerPage()
                         }
                         addView(TextView(this@MainActivity).apply {
-                            text = (if (selected) "✓  " else "") + node.name
-                            textSize = 14f; maxLines = 2; setTextColor(Color.WHITE)
+                            val delay = serverDelays[node.uri]
+                            text = (if (selected) "✓  " else "") + node.name + when {
+                                delay == null -> ""
+                                delay > 0L -> "   ·   ${delay} мс"
+                                else -> "   ·   тайм-аут"
+                            }
+                            textSize = 14f; maxLines = 3; setTextColor(if (delay != null && delay > 0L) Color.rgb(65, 235, 105) else Color.WHITE)
                             typeface = android.graphics.Typeface.DEFAULT_BOLD
                         })
                         addView(TextView(this@MainActivity).apply {
@@ -672,7 +681,6 @@ class MainActivity : Activity() {
         serverModes.addView(actionButton("FREE") { switchMode(true); updateServerPage() },
             LinearLayout.LayoutParams(0, dp(48), 1f))
         serverPage.addView(serverModes)
-        serverPage.addView(actionButton("Проверить пинг") { measureSelectedPing() })
         serverPage.addView(actionButton("Найти лучший бесплатный сервер") { refreshFreeServersAndFindBest() })
         val profilesPage = page("Профили")
         fun importRow(title: String, subtitle: String, symbol: String, action: () -> Unit) {
@@ -1500,6 +1508,63 @@ class MainActivity : Activity() {
         } catch (e: Exception) {
             status.text = "Не удалось подготовить сервер: ${e.message}"
         }
+    }
+
+    private fun testAllServers(
+        results: MutableMap<String, Long>,
+        isRunning: () -> Boolean,
+        setRunning: (Boolean) -> Unit,
+        refreshUi: () -> Unit
+    ) {
+        if (isRunning()) return
+        val nodes = activeNodes.distinctBy { it.uri }
+        if (nodes.isEmpty()) {
+            Toast.makeText(this, "Сначала импортируй серверы в выбранный режим", Toast.LENGTH_LONG).show()
+            return
+        }
+        setRunning(true)
+        results.clear()
+        refreshUi()
+        status.text = "Проверяю все серверы: 0 из ${nodes.size}…"
+        Thread {
+            val pool = Executors.newFixedThreadPool(10)
+            val completion = java.util.concurrent.ExecutorCompletionService<Pair<String, Long?>>(pool)
+            try {
+                nodes.forEach { node ->
+                    completion.submit(Callable {
+                        val delay = runCatching {
+                            val config = GilrTanoVpnService.xrayConfigFromVless(node.uri)
+                            teapodcore.Teapodcore.measureOutboundDelay(config, "https://www.gstatic.com/generate_204")
+                        }.getOrNull()?.takeIf { it > 0L }
+                        node.uri to delay
+                    })
+                }
+                var done = 0
+                while (done < nodes.size) {
+                    val result = completion.take().get()
+                    done++
+                    runOnUiThread {
+                        results[result.first] = result.second ?: -1L
+                        status.text = "Проверка серверов: $done из ${nodes.size}"
+                        refreshUi()
+                    }
+                }
+                runOnUiThread {
+                    val working = results.values.count { it > 0L }
+                    status.text = "Проверка завершена: работает $working из ${nodes.size}"
+                    setRunning(false)
+                    refreshUi()
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    status.text = "Ошибка проверки серверов: ${e.message ?: "неизвестная ошибка"}"
+                    setRunning(false)
+                    refreshUi()
+                }
+            } finally {
+                pool.shutdownNow()
+            }
+        }.start()
     }
 
     private fun measureSelectedPing() {
