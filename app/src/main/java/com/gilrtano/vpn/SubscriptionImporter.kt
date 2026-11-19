@@ -23,7 +23,9 @@ object SubscriptionImporter {
     private const val MAX_NODES = 600
     private const val MAX_BYTES = 25 * 1024 * 1024
 
-    fun load(source: String): List<ImportedNode> {
+    fun load(source: String): List<ImportedNode> = loadProfile(source).first
+
+    fun loadProfile(source: String): Pair<List<ImportedNode>, List<ImportedProxyGroup>> {
         val trimmed = source.trim()
         val content = when {
             trimmed.startsWith("vless://") -> trimmed
@@ -31,7 +33,7 @@ object SubscriptionImporter {
             trimmed.startsWith("http://") || trimmed.startsWith("https://") -> download(trimmed)
             else -> error("Ожидается VLESS-ссылка, HTTPS-подписка или Clash YAML с блоком proxies:")
         }
-        return parse(content)
+        return parse(content) to parseProxyGroups(content)
     }
 
     private fun download(source: String): String {
