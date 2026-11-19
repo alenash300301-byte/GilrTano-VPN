@@ -1895,13 +1895,13 @@ class MainActivity : Activity() {
                         connectButton.setState(PowerOrbButtonView.State.CONNECTING)
                     } catch (error: Exception) {
                         status.text = "Не удалось запустить Usque: ${error.message}"
-                        connectButton.setState(PowerOrbButtonView.State.IDLE)
+                        connectButton.setState(PowerOrbButtonView.State.DISCONNECTED)
                     }
                 }
             } catch (error: Exception) {
                 runOnUiThread {
                     status.text = "Ошибка FREE / Usque: ${error.message ?: error.javaClass.simpleName}"
-                    connectButton.setState(PowerOrbButtonView.State.IDLE)
+                    connectButton.setState(PowerOrbButtonView.State.DISCONNECTED)
                     Toast.makeText(this, status.text, Toast.LENGTH_LONG).show()
                 }
             }
