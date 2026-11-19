@@ -685,8 +685,18 @@ class MainActivity : Activity() {
                                     tile.getTag() == node.uri
                                 }
                             } }
-                            if (target != null) serverRows.getChildAt(target).requestFocus()
-                            else Toast.makeText(this@MainActivity, "Выбранный сервер не виден в этой группе", Toast.LENGTH_SHORT).show()
+                            if (target != null) {
+                                val row = serverRows.getChildAt(target)
+                                val targetY = serverRows.top + row.top
+                                serverPageScroll.post {
+                                    serverPageScroll.smoothScrollTo(0, targetY.coerceAtLeast(0))
+                                    row.animate().alpha(0.55f).setDuration(110L).withEndAction {
+                                        row.animate().alpha(1f).setDuration(180L).start()
+                                    }.start()
+                                }
+                            } else {
+                                Toast.makeText(this@MainActivity, "Выбранный сервер не виден в этой группе или поиске", Toast.LENGTH_SHORT).show()
+                            }
                         }
                         1 -> { groupExpanded = !groupExpanded; refreshServerPage() }
                         2 -> {
@@ -964,7 +974,12 @@ class MainActivity : Activity() {
         // Only the Home page is visible on first launch. Keep the other tab
         // roots hidden so their profile/import controls cannot bleed through
         // the transparent tiger dashboard before the user opens that tab.
-        val proxyPageView = wrapPage(serverPage).apply { visibility = View.GONE }
+        // Keep a stable ScrollView instance for FlClashX-style scroll-to-selected.
+        val proxyPageView = serverPageScroll.apply {
+            isFillViewport = true
+            addView(serverPage, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            visibility = View.GONE
+        }
         val profilesPageView = wrapPage(profilesPage).apply { visibility = View.GONE }
         val settingsPageView = wrapPage(settingsPage).apply { visibility = View.GONE }
         pageHost.addView(scroll, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
