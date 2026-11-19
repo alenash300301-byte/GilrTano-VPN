@@ -73,7 +73,7 @@ jobs:
           test -s target/aarch64-linux-android/release/libusque_android.so
           mkdir -p "$GITHUB_WORKSPACE/usque-output/arm64-v8a"
           cp target/aarch64-linux-android/release/libusque_android.so "$GITHUB_WORKSPACE/usque-output/arm64-v8a/"
-          cp LICENSE "$GITHUB_WORKSPACE/usque-output/"
+          cp LICENSE.md "$GITHUB_WORKSPACE/usque-output/"
 
       - name: Verify native library architecture and JNI exports
         run: |
