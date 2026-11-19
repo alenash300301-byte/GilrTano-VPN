@@ -699,12 +699,12 @@ class MainActivity : Activity() {
             }.show()
         }
         importRow("Сканировать QR-код", "Открыть камеру телефона и считать код", "▣") {
-            IntentIntegrator(this@MainActivity)
-                .setDesiredBarcodeFormats(IntentIntegrator.QR_CODE)
-                .setPrompt("Наведите камеру на QR-код")
-                .setBeepEnabled(false)
-                .setOrientationLocked(false)
-                .initiateScan()
+            if (android.os.Build.VERSION.SDK_INT >= 23 &&
+                checkSelfPermission(android.Manifest.permission.CAMERA) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(arrayOf(android.Manifest.permission.CAMERA), 4105)
+            } else {
+                startQrScanner()
+            }
         }
         importRow("Документ", "Выбрать файл из памяти телефона", "▤") {
             val pick = Intent(Intent.ACTION_OPEN_DOCUMENT).apply { addCategory(Intent.CATEGORY_OPENABLE); type = "*/*"; putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("text/plain", "application/yaml", "text/yaml", "application/x-yaml", "application/octet-stream", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")) }
@@ -1554,6 +1554,30 @@ class MainActivity : Activity() {
         startForegroundService(intent)
         status.text = "Запускаю VPN…"
         connectButton.setState(PowerOrbButtonView.State.CONNECTING)
+    }
+
+    private fun startQrScanner() {
+        runCatching {
+            IntentIntegrator(this)
+                .setDesiredBarcodeFormats(IntentIntegrator.QR_CODE)
+                .setPrompt("Наведите камеру на QR-код")
+                .setBeepEnabled(false)
+                .setOrientationLocked(false)
+                .initiateScan()
+        }.onFailure {
+            Toast.makeText(this, "Не удалось открыть сканер: ${it.message ?: "ошибка камеры"}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 4105) {
+            if (grantResults.isNotEmpty() && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                startQrScanner()
+            } else {
+                Toast.makeText(this, "Для сканирования QR-кода разреши доступ к камере", Toast.LENGTH_LONG).show()
+            }
+        }
     }
 
     @Deprecated("Deprecated by Android API")
