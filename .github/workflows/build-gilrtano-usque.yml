@@ -11,6 +11,7 @@ on:
       - 'app/build.gradle.kts'
 
 permissions:
+  actions: read
   contents: read
 
 concurrency:
@@ -78,6 +79,18 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
+
+      - name: Restore unchanged FlClashX AAR dependency
+        uses: actions/download-artifact@v4
+        with:
+          name: FlClashX-v0.5.7-Android-ARM64-Core
+          path: app/libs
+          repository: alenash300301-byte/GilrTano-VPN
+          run-id: 44466747953
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify restored FlClashX dependency
+        run: test -s app/libs/flclashx-core.aar
 
       - name: Build GilrTano debug APK
         run: gradle --no-daemon :app:assembleDebug --stacktrace
