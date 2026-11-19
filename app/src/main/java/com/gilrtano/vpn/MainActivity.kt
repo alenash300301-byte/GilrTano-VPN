@@ -688,9 +688,9 @@ class MainActivity : Activity() {
 
                             cardsHost.removeAllViews()
                             val members = groupObject.optJSONArray("all") ?: JSONArray()
+                            // Keep runtime-selected (now) separate from the user's preferred (fixed) proxy.
                             val current = groupObject.optString("now")
                             val fixed = groupObject.optString("fixed")
-                            val selected = fixed.ifBlank { current }
                             val groupType = groupObject.optString("type")
                             // Mihomo's computed groups choose their active member automatically;
                             // Selector groups allow a direct manual choice.
@@ -752,7 +752,8 @@ class MainActivity : Activity() {
                                     orientation = LinearLayout.HORIZONTAL
                                 }
                                 pair.forEach { (nodeName, nodeType, description) ->
-                                    val inUse = nodeName == selected
+                                    val inUse = nodeName == current
+                                    val isPreferred = computedSelection && nodeName == fixed
                                     val card = LinearLayout(this).apply {
                                         orientation = LinearLayout.VERTICAL
                                         gravity = android.view.Gravity.CENTER_VERTICAL
@@ -771,7 +772,7 @@ class MainActivity : Activity() {
                                                 ).show()
                                                 return@setOnClickListener
                                             }
-                                            val requestedNode = if (computedSelection && nodeName == selected) "" else nodeName
+                                            val requestedNode = if (computedSelection && isPreferred) "" else nodeName
                                             serverState.text = if (requestedNode.isBlank()) "Сбрасываю предпочтение…" else "Переключаю: $nodeName"
                                             Thread({
                                                 val changed = runCatching {
@@ -790,6 +791,19 @@ class MainActivity : Activity() {
                                                     }
                                                 }
                                             }, "GilrTano-select-proxy").start()
+                                        }
+                                        if (isPreferred || inUse) {
+                                            addView(TextView(this@MainActivity).apply {
+                                                text = when {
+                                                    isPreferred && inUse -> "★  ПРЕДПОЧТИТЕЛЬНЫЙ · АКТИВЕН"
+                                                    isPreferred -> "★  ПРЕДПОЧТИТЕЛЬНЫЙ"
+                                                    else -> "●  СЕЙЧАС ИСПОЛЬЗУЕТСЯ"
+                                                }
+                                                textSize = 9f
+                                                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                                                setTextColor(if (isPreferred) Color.rgb(255, 204, 92) else Color.rgb(90, 225, 125))
+                                                maxLines = 1
+                                            })
                                         }
                                         addView(TextView(this@MainActivity).apply {
                                             text = nodeName
@@ -828,13 +842,13 @@ class MainActivity : Activity() {
                                         }
                                         addView(delay)
                                     }
-                                    row.addView(card, LinearLayout.LayoutParams(0, dp(112), 1f).apply {
+                                    row.addView(card, LinearLayout.LayoutParams(0, dp(124), 1f).apply {
                                         rightMargin = dp(4)
                                         leftMargin = dp(4)
                                         bottomMargin = dp(8)
                                     })
                                 }
-                                if (pair.size == 1) row.addView(View(this), LinearLayout.LayoutParams(0, dp(112), 1f))
+                                if (pair.size == 1) row.addView(View(this), LinearLayout.LayoutParams(0, dp(124), 1f))
                                 cardsHost.addView(row)
                             }
                             serverState.text = "$groupName · ${filtered.size} серверов"
