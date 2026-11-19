@@ -594,8 +594,41 @@ class MainActivity : Activity() {
         val serverDelays = mutableMapOf<String, Long>()
         var testingAllServers = false
         lateinit var testAllButton: Button
-        testAllButton = actionButton("↻  ПРОВЕРИТЬ ВСЕ СЕРВЕРЫ") { testAllServers(serverDelays, { testingAllServers }, { testingAllServers = it; testAllButton.text = if (it) "ПРОВЕРКА… " else "↻  ПРОВЕРИТЬ ВСЕ СЕРВЕРЫ"; testAllButton.isEnabled = !it }, { updateServerPage() }) }
-        serverPage.addView(testAllButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(52)).apply { bottomMargin = dp(10) })
+        var testAllAnimator: ObjectAnimator? = null
+        testAllButton = actionButton("⟳") {
+            if (!testingAllServers) testAllServers(serverDelays, { testingAllServers }, { running ->
+                testingAllServers = running
+                testAllButton.isEnabled = !running
+                if (running) {
+                    testAllAnimator = ObjectAnimator.ofFloat(testAllButton, View.ROTATION, 0f, 360f).apply {
+                        duration = 850L
+                        repeatCount = ValueAnimator.INFINITE
+                        interpolator = android.view.animation.LinearInterpolator()
+                        start()
+                    }
+                } else {
+                    testAllAnimator?.cancel()
+                    testAllAnimator = null
+                    testAllButton.rotation = 0f
+                }
+            }, { updateServerPage() })
+        }
+        testAllButton.apply {
+            textSize = 25f
+            isAllCaps = false
+            contentDescription = "Проверить все серверы"
+            background = GradientDrawable().apply {
+                setColor(Color.rgb(13, 13, 17))
+                cornerRadius = dp(22).toFloat()
+                setStroke(dp(1), Color.rgb(90, 28, 34))
+            }
+            setTextColor(Color.WHITE)
+            elevation = dp(4).toFloat()
+        }
+        serverPage.addView(testAllButton, LinearLayout.LayoutParams(dp(48), dp(44)).apply {
+            gravity = android.view.Gravity.END
+            bottomMargin = dp(8)
+        })
         val proxySearch = EditText(this).apply {
             hint = "Поиск серверов"
             isSingleLine = true
