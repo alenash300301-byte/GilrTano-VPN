@@ -78,12 +78,16 @@ jobs:
           file "$LIB"
           llvm-readelf -h "$LIB" | grep -E 'Class:.*ELF64|Machine:.*AArch64'
 
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
       - name: Package Usque into GilrTano APK
         run: |
           mkdir -p app/src/main/jniLibs/arm64-v8a
           cp Usque/target/aarch64-linux-android/release/libusque_android.so app/src/main/jniLibs/arm64-v8a/
-          chmod +x gradlew
-          ./gradlew --no-daemon :app:assembleDebug
+          gradle --no-daemon :app:assembleDebug
 
       - name: Upload GilrTano FREE integration APK
         uses: actions/upload-artifact@v4
