@@ -8,10 +8,19 @@ import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.util.Log
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
+import org.json.JSONObject
+import javax.crypto.Cipher
+import javax.crypto.KeyGenerator
+import javax.crypto.SecretKey
+import javax.crypto.spec.GCMParameterSpec
+import java.security.KeyStore
 import io.github.madeye.meow.core.MeowCore
 import org.yaml.snakeyaml.LoaderOptions
 import org.yaml.snakeyaml.Yaml
@@ -68,16 +77,16 @@ class GilrTanoVpnService : VpnService() {
             }
             ACTION_START, null -> {
                 val config = intent?.let { readConfigExtra(it, EXTRA_CONFIG) }
-                if (config.isNullOrBlank()) {
-                    broadcastStatus("Добавьте VLESS-ссылку или Clash YAML")
+                val requestedEngine = intent?.getStringExtra(EXTRA_ENGINE) ?: ENGINE_FREE
+                if (config.isNullOrBlank() && requestedEngine != ENGINE_FREE) {
+                    broadcastStatus("Добавьте конфигурацию подписки")
                     stopSelf()
                 } else {
-                    // Keep optional Quattro-only server optimization, but never
-                    // No cross-mode fallback is accepted by this service.
-                    activeEngine = intent.getStringExtra(EXTRA_ENGINE) ?: ENGINE_FREE
-                    automaticMode = activeEngine == ENGINE_FREE && intent.getBooleanExtra(EXTRA_AUTO, false)
+                    // Usque uses its own Consumer WARP profile, never Clash YAML or VLESS.
+                    activeEngine = requestedEngine
+                    automaticMode = false
                     consecutiveProbeFailures = 0
-                    startTunnel(config, automaticMode, false, activeEngine)
+                    startTunnel(config ?: "usque", false, false, activeEngine)
                 }
             }
         }
@@ -119,6 +128,12 @@ class GilrTanoVpnService : VpnService() {
                     broadcastStatus(if (resumed) "Возобновлено · подписка" else "Подключено · подписка")
                     updateNotification("Подключено · подписка")
                     Log.i(TAG, "FlClashX subscription engine connected")
+                    return@Thread
+                }
+
+                if (engine == ENGINE_FREE) {
+                    updateNotification("Запускаю Usque · Cloudflare WARP…")
+                    startUsqueTunnel(resumed)
                     return@Thread
                 }
 
@@ -210,6 +225,121 @@ class GilrTanoVpnService : VpnService() {
                 }
             }
         }, "GilrTano-Meow-start").start()
+    }
+
+    private fun startUsqueTunnel(resumed: Boolean) {
+        val native = io.github.georgexie2333.usque.NativeEngine
+        require(native.isLinked() && native.isReady()) { "Библиотека Usque не загружена или не готова" }
+        registerNetworkCallback()
+        val deadline = System.currentTimeMillis() + 8_000L
+        while (lastUnderlyingNetwork == null && System.currentTimeMillis() < deadline && !stopping) Thread.sleep(100)
+        require(!stopping) { "Подключение отменено" }
+        require(lastUnderlyingNetwork != null) { "Android не предоставил физическую сеть для WARP" }
+
+        val secret = loadWarpIdentity() ?: run {
+            updateNotification("Регистрирую Consumer WARP…")
+            native.registerConsumerWarp("en-US") ?: throw IllegalStateException("Cloudflare не выдал WARP-идентичность")
+        }
+        try {
+            val metadataJson = native.inspectWarpSecret(secret) ?: throw IllegalStateException("Не удалось проверить WARP-идентичность")
+            val metadata = JSONObject(metadataJson)
+            val ipv4 = metadata.getString("ipv4")
+            val ipv6 = metadata.getString("ipv6")
+            require(ipv4.isNotBlank() && ipv6.isNotBlank()) { "WARP identity has no assigned tunnel addresses" }
+            saveWarpIdentity(secret)
+
+            val builder = Builder()
+                .setSession("GilrTano FREE · Usque WARP")
+                .setMtu(1280)
+                .addAddress(ipv4, 32)
+                .addAddress(ipv6, 128)
+                .addDnsServer("1.1.1.1")
+                .addDnsServer("2606:4700:4700::1111")
+                .addRoute("0.0.0.0", 0)
+                .addRoute("::", 0)
+            lastUnderlyingNetwork?.let { builder.setUnderlyingNetworks(arrayOf(it)) }
+            val pfd = builder.establish() ?: throw IllegalStateException("Android не создал WARP VPN-интерфейс")
+            tun = pfd
+
+            updateNotification("Подключаю Usque · MASQUE…")
+            val result = native.start(pfd.fd, usqueProfileJson(), secret, this)
+            if (result != 0) throw IllegalStateException("Usque nativeStart завершился с кодом $result")
+            if (stopping) {
+                native.stop()
+                return
+            }
+            updateNotification("Проверяю интернет через WARP…")
+            val latency = probeTunnel()
+            if (latency < 0L) throw IllegalStateException("Usque запустился, но интернет через WARP не отвечает")
+            val label = "Usque · Cloudflare WARP"
+            broadcastStatus(if (resumed) "Возобновлено · $label" else "Подключено · $label")
+            updateNotification("Подключено · $label · \${latency} мс")
+            Log.i(TAG, "Usque connected, latency=\${latency}ms, identity=\${metadata.optString("provider")}")
+        } finally {
+            secret.fill(0)
+        }
+    }
+
+    private fun usqueProfileJson(): String = JSONObject()
+        .put("id", USQUE_PROFILE_ID).put("name", "GilrTano FREE").put("mode", "vpn")
+        .put("frontends", JSONObject().put("tunnel", true).put("socks5", false).put("http", false))
+        .put("transport", "automatic").put("ip_policy", "automatic").put("endpoint_selection", "automatic")
+        .put("endpoint_v4", "162.159.198.2").put("endpoint_v6", "2606:4700:103::2")
+        .put("endpoint_port", 443).put("sni", "engage.cloudflareclient.com").put("mtu", 1280)
+        .put("dns_v4", "1.1.1.1").put("dns_v6", "2606:4700:4700::1111").put("dns_mode", "tunnel")
+        .put("kill_switch", false).put("allow_lan", false).put("auto_connect", false)
+        .put("bypass_cidrs", org.json.JSONArray())
+        .put("proxy", JSONObject().put("socks_ipv4", "127.0.0.1").put("socks_ipv6", "::1")
+            .put("socks_port", 1080).put("http_ipv4", "127.0.0.1").put("http_ipv6", "::1")
+            .put("http_port", 8080).put("dns_mode", "remote"))
+        .toString()
+
+    private fun loadWarpIdentity(): ByteArray? {
+        val file = File(noBackupFilesDir, USQUE_IDENTITY_FILE)
+        if (!file.isFile) return null
+        return try {
+            val encoded = file.readBytes()
+            require(encoded.size > 12) { "Stored WARP identity is truncated" }
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.DECRYPT_MODE, warpIdentityKey(),
+                GCMParameterSpec(128, encoded.copyOfRange(0, 12)))
+            cipher.doFinal(encoded.copyOfRange(12, encoded.size))
+        } catch (error: Exception) {
+            Log.w(TAG, "Stored WARP identity cannot be decrypted; registering a new identity", error)
+            file.delete()
+            null
+        }
+    }
+
+    private fun saveWarpIdentity(secret: ByteArray) {
+        require(secret.isNotEmpty() && secret.size <= 128 * 1024) { "Invalid WARP identity size" }
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, warpIdentityKey())
+        val ciphertext = cipher.doFinal(secret)
+        val target = File(noBackupFilesDir, USQUE_IDENTITY_FILE)
+        val temporary = File(noBackupFilesDir, "$USQUE_IDENTITY_FILE.tmp")
+        temporary.outputStream().use { output ->
+            output.write(cipher.iv); output.write(ciphertext); output.flush(); output.fd.sync()
+        }
+        if (!temporary.renameTo(target)) {
+            target.delete()
+            check(temporary.renameTo(target)) { "Could not atomically save WARP identity" }
+        }
+        target.setReadable(false, false); target.setWritable(false, false)
+        target.setReadable(true, true); target.setWritable(true, true)
+        ciphertext.fill(0)
+    }
+
+    private fun warpIdentityKey(): SecretKey {
+        val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        (store.getKey(USQUE_KEY_ALIAS, null) as? SecretKey)?.let { return it }
+        val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
+        generator.init(KeyGenParameterSpec.Builder(
+            USQUE_KEY_ALIAS, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
+        ).setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+            .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+            .setRandomizedEncryptionRequired(true).build())
+        return generator.generateKey()
     }
 
     private fun readConfigExtra(intent: Intent, key: String): String? {
@@ -497,7 +627,11 @@ class GilrTanoVpnService : VpnService() {
             }
         }
         runCatching {
-            connectivity.registerDefaultNetworkCallback(callback)
+            val request = NetworkRequest.Builder()
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+                .build()
+            connectivity.registerNetworkCallback(request, callback)
             networkCallback = callback
         }.onFailure { Log.w(TAG, "Could not register network callback", it) }
     }
@@ -551,8 +685,11 @@ class GilrTanoVpnService : VpnService() {
         lastUnderlyingNetwork?.let { network ->
             runCatching {
                 connectivity.getLinkProperties(network)?.dnsServers.orEmpty()
-                    .mapNotNull { it.hostAddress?.substringBefore('%') }
-                    .distinct().take(8).toTypedArray()
+                    .mapNotNull { address ->
+                        val host = address.hostAddress?.substringBefore('%') ?: return@mapNotNull null
+                        val scope = (address as? java.net.Inet6Address)?.scopeId ?: 0
+                        "$host|$scope"
+                    }.distinct().take(8).toTypedArray()
             }.getOrDefault(emptyArray())
         } ?: emptyArray()
 
@@ -583,10 +720,17 @@ class GilrTanoVpnService : VpnService() {
     }
 
     @Suppress("unused")
-    fun persistRefreshedWarpIdentity(profileId: String, secret: ByteArray): Boolean {
-        secret.fill(0)
-        return false
-    }
+    fun persistRefreshedWarpIdentity(profileId: String, secret: ByteArray): Boolean =
+        try {
+            require(profileId == USQUE_PROFILE_ID) { "Unexpected WARP profile identity" }
+            saveWarpIdentity(secret)
+            true
+        } catch (error: Exception) {
+            Log.e(TAG, "Could not persist refreshed WARP identity", error)
+            false
+        } finally {
+            secret.fill(0)
+        }
 
     private fun pauseTunnel() {
         if (stopping || paused || tun == null) return
@@ -619,8 +763,12 @@ class GilrTanoVpnService : VpnService() {
 
     private fun stopEngineAndTun() {
         unregisterNetworkCallback()
-        runCatching { FlClashXEngine.stop() }
-        runCatching { MeowCore.nativeStopEngine() }
+        if (activeEngine == ENGINE_FREE) {
+            runCatching { io.github.georgexie2333.usque.NativeEngine.cancel() }
+            runCatching { io.github.georgexie2333.usque.NativeEngine.stop() }
+        } else {
+            runCatching { FlClashXEngine.stop() }
+        }
         runCatching { tun?.close() }
         tun = null
     }
@@ -724,6 +872,9 @@ class GilrTanoVpnService : VpnService() {
         private const val MAX_SCAN_DURATION_MS = 600_000L
         private const val MIN_IMPROVEMENT_MS = 25
         private const val REQUIRED_BETTER_SCANS = 2
+        private const val USQUE_PROFILE_ID = "7c8d2f10-6c35-4b91-9d27-1c8e5a4f0b62"
+        private const val USQUE_IDENTITY_FILE = "usque-warp-identity.bin"
+        private const val USQUE_KEY_ALIAS = "gilrtano.usque.warp.identity.v1"
 
         fun meowConfigForNode(node: ImportedNode): String {
             node.yamlConfig?.takeIf { it.isNotBlank() }?.let { return it }
