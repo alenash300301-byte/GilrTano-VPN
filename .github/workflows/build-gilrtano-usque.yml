@@ -69,6 +69,30 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/app/src/main/jniLibs/arm64-v8a"
           cp target/aarch64-linux-android/release/libusque_android.so "$GITHUB_WORKSPACE/app/src/main/jniLibs/arm64-v8a/"
 
+      - name: Stage complete Usque Android runtime v0.3.4
+        run: |
+          SRC=usque-app/apps/usque_gui/android/app/src/main/kotlin/io/github/georgexie2333/usque
+          DST=app/src/main/java/io/github/georgexie2333/usque
+          mkdir -p "$DST"
+          # Keep the complete native VPN service and its lifecycle/network dependencies.
+          # Flutter-only UI entry points are intentionally not imported into GilrTano.
+          for f in "$SRC"/*.kt; do
+            n=$(basename "$f")
+            case "$n" in
+              MainActivity.kt|AndroidEngineMethodHandler.kt|AndroidUiPluginRegistration.kt|AndroidRecentsVisibility.kt|AndroidShortcutController.kt|UsqueApplication.kt|TrackedPreferencesContext.kt|TrackedPreferencesMessenger.kt|TrackedPreferencesPlugin.kt) continue ;;
+            esac
+            cp "$f" "$DST/$n"
+          done
+          cp "$SRC/NativeEngine.kt" "$DST/NativeEngine.kt"
+          # Android resource IDs are aliased into GilrTano's existing namespace.
+          mkdir -p app/src/main/res/values
+          cp usque-app/apps/usque_gui/android/app/src/main/res/values/strings.xml app/src/main/res/values/usque_strings.xml
+          for d in usque-app/apps/usque_gui/android/app/src/main/res/drawable-*; do
+            [ -d "$d" ] || continue
+            mkdir -p "app/src/main/res/$(basename "$d")"
+            cp "$d"/* app/src/main/res/$(basename "$d")/ 2>/dev/null || true
+          done
+
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
