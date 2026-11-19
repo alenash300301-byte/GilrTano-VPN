@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
 import android.net.ConnectivityManager
+import android.net.LinkProperties
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.VpnService
@@ -22,6 +23,7 @@ import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.URL
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Callable
 import java.util.concurrent.ExecutorCompletionService
 import java.util.concurrent.Executors
@@ -46,6 +48,8 @@ class GilrTanoVpnService : VpnService() {
     private val connectivity by lazy { getSystemService(ConnectivityManager::class.java) }
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private var lastUnderlyingNetwork: Network? = null
+    @Volatile private var usqueNetworkGeneration: Long = 0L
+    private val usqueGenerationNetworks = ConcurrentHashMap<Long, Network>()
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
@@ -459,7 +463,12 @@ class GilrTanoVpnService : VpnService() {
     private fun registerNetworkCallback() {
         unregisterNetworkCallback()
         val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                rememberUsqueUnderlyingNetwork(network)
+            }
+
             override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
+                rememberUsqueUnderlyingNetwork(network)
                 val previous = lastUnderlyingNetwork
                 if (previous != null && previous != network) {
                     val kind = when {
@@ -481,7 +490,11 @@ class GilrTanoVpnService : VpnService() {
             }
 
             override fun onLost(network: Network) {
-                if (lastUnderlyingNetwork == network) lastUnderlyingNetwork = null
+                if (lastUnderlyingNetwork == network) {
+                    lastUnderlyingNetwork = null
+                    usqueNetworkGeneration += 1L
+                    io.github.georgexie2333.usque.NativeEngine.notifyNetworkChanged(usqueNetworkGeneration)
+                }
             }
         }
         runCatching {
@@ -496,6 +509,84 @@ class GilrTanoVpnService : VpnService() {
         }
         networkCallback = null
         lastUnderlyingNetwork = null
+    }
+
+    private fun rememberUsqueUnderlyingNetwork(network: Network) {
+        if (lastUnderlyingNetwork != network) {
+            usqueNetworkGeneration += 1L
+            usqueGenerationNetworks[usqueNetworkGeneration] = network
+            while (usqueGenerationNetworks.size > 2) {
+                usqueGenerationNetworks.keys.minOrNull()?.let(usqueGenerationNetworks::remove)
+            }
+            lastUnderlyingNetwork = network
+            io.github.georgexie2333.usque.NativeEngine.notifyNetworkChanged(usqueNetworkGeneration)
+        }
+    }
+
+    @Suppress("unused")
+    fun getUnderlyingNetworkGeneration(): Long = usqueNetworkGeneration
+
+    @Suppress("unused")
+    fun getUnderlyingRecoverySnapshot(): LongArray {
+        val network = lastUnderlyingNetwork ?: return longArrayOf(usqueNetworkGeneration, 0L, 0L)
+        return longArrayOf(usqueNetworkGeneration, 1L, underlyingFamilyMask(network).toLong())
+    }
+
+    @Suppress("unused")
+    fun getUnderlyingFamilyMask(): Int = lastUnderlyingNetwork?.let(::underlyingFamilyMask) ?: 0
+
+    private fun underlyingFamilyMask(network: Network): Int {
+        val routes = runCatching { connectivity.getLinkProperties(network)?.routes }.getOrNull().orEmpty()
+        var mask = 0
+        routes.filter { it.isDefaultRoute }.forEach {
+            when (it.destination.address) {
+                is java.net.Inet4Address -> mask = mask or 1
+                is java.net.Inet6Address -> mask = mask or 2
+            }
+        }
+        return mask
+    }
+
+    @Suppress("unused")
+    fun getUnderlyingDnsServers(): Array<String> =
+        lastUnderlyingNetwork?.let { network ->
+            runCatching {
+                connectivity.getLinkProperties(network)?.dnsServers.orEmpty()
+                    .mapNotNull { it.hostAddress?.substringBefore('%') }
+                    .distinct().take(8).toTypedArray()
+            }.getOrDefault(emptyArray())
+        } ?: emptyArray()
+
+    @Suppress("unused")
+    fun resolveUnderlyingHost(host: String): Array<String> =
+        lastUnderlyingNetwork?.let { network ->
+            runCatching { network.getAllByName(host).mapNotNull { it.hostAddress?.substringBefore('%') }.distinct().take(16).toTypedArray() }
+                .getOrDefault(emptyArray())
+        } ?: emptyArray()
+
+    @Suppress("unused")
+    fun cataloguePhysicalAllowed(): Boolean = false
+
+    @Suppress("unused")
+    fun bindSocketToUnderlyingGeneration(descriptor: Int, expectedGeneration: Long, requireVpnProtection: Boolean): Int {
+        if (descriptor < 0 || expectedGeneration != usqueNetworkGeneration) return 1
+        val network = usqueGenerationNetworks[expectedGeneration] ?: lastUnderlyingNetwork ?: return 1
+        return try {
+            ParcelFileDescriptor.fromFd(descriptor).use { duplicate ->
+                if (requireVpnProtection && !protect(duplicate.fd)) return -1
+                network.bindSocket(duplicate.fileDescriptor)
+            }
+            0
+        } catch (error: Exception) {
+            Log.w(TAG, "Usque socket binding failed", error)
+            -1
+        }
+    }
+
+    @Suppress("unused")
+    fun persistRefreshedWarpIdentity(profileId: String, secret: ByteArray): Boolean {
+        secret.fill(0)
+        return false
     }
 
     private fun pauseTunnel() {
