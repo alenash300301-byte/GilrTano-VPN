@@ -37,8 +37,7 @@ import android.text.SpannableString
 import android.text.Spanned
 import android.text.style.ForegroundColorSpan
 import android.net.Uri
-import com.journeyapps.barcodescanner.ScanContract
-import com.journeyapps.barcodescanner.ScanOptions
+import com.google.zxing.integration.android.IntentIntegrator
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.InetSocketAddress
@@ -86,10 +85,6 @@ class MainActivity : Activity() {
     private val requestCode = 4101
     private val docxRequestCode = 4102
     private val documentRequestCode = 4104
-    private val qrLauncher = registerForActivityResult(ScanContract()) { result ->
-        val value = result.contents?.trim().orEmpty()
-        if (value.isNotBlank()) importFrom(value, false)
-    }
 
     private val prefs by lazy { getPreferences(MODE_PRIVATE) }
     private val activeNodes: List<ImportedNode>
@@ -485,7 +480,7 @@ class MainActivity : Activity() {
                         format = "%s"
                     }
                     val protocolValue = TextView(this@MainActivity).apply {
-                        text = "QUATTRO"; textSize = 15f
+                        text = "ПОДПИСКА"; textSize = 15f
                         typeface = android.graphics.Typeface.DEFAULT_BOLD
                         setTextColor(Color.rgb(55, 255, 95))
                         protocolMetric = this
@@ -611,7 +606,7 @@ class MainActivity : Activity() {
         val serverRows = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         serverPage.addView(serverRows)
         fun updateServerPage() {
-            serverState.text = "Режим: " + if (autoMode) "AUTO · Quattro с бесплатным резервом" else if (activeFree) "Бесплатный" else "Quattro"
+            serverState.text = "Режим: " + if (autoMode) "AUTO · Quattro с бесплатным резервом" else if (activeFree) "FREE" else "Подписка"
             serverRows.removeAllViews()
             val query = proxySearch.text.toString().trim().lowercase()
             val nodes = activeNodes.mapIndexed { index, node -> index to node }.filter { it.second.name.lowercase().contains(query) }
@@ -637,7 +632,7 @@ class MainActivity : Activity() {
                             servers.setSelection(index)
                             prefs.edit().putInt(if (activeFree) "free_selected" else "quattro_selected", index).apply()
                             serverCardTitle.text = node.name
-                            serverCardSubtitle.text = if (activeFree) "Бесплатный" else "Quattro"
+                            serverCardSubtitle.text = if (activeFree) "FREE" else "Подписка"
                             serverCardPing.text = ""
                             pingStatus.text = "Пинг: —"
                             updateServerPage()
@@ -704,8 +699,12 @@ class MainActivity : Activity() {
             }.show()
         }
         importRow("Сканировать QR-код", "Открыть камеру телефона и считать код", "▣") {
-            val options = ScanOptions().apply { setPrompt("Наведите камеру на QR-код"); setBeepEnabled(false); setOrientationLocked(false); setDesiredBarcodeFormats(ScanOptions.QR_CODE) }
-            qrLauncher.launch(options)
+            IntentIntegrator(this@MainActivity)
+                .setDesiredBarcodeFormats(IntentIntegrator.QR_CODE)
+                .setPrompt("Наведите камеру на QR-код")
+                .setBeepEnabled(false)
+                .setOrientationLocked(false)
+                .initiateScan()
         }
         importRow("Документ", "Выбрать файл из памяти телефона", "▤") {
             val pick = Intent(Intent.ACTION_OPEN_DOCUMENT).apply { addCategory(Intent.CATEGORY_OPENABLE); type = "*/*"; putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("text/plain", "application/yaml", "text/yaml", "application/x-yaml", "application/octet-stream", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")) }
@@ -1200,7 +1199,7 @@ class MainActivity : Activity() {
         quattroTab.setTextColor(if (!autoMode && !activeFree) Color.WHITE else Color.LTGRAY)
         freeTab.setTextColor(if (!autoMode && activeFree) Color.WHITE else Color.LTGRAY)
         autoTab.setTextColor(if (autoMode) Color.WHITE else Color.LTGRAY)
-        if (::protocolMetric.isInitialized) protocolMetric.text = if (activeFree) "FREE" else "QUATTRO"
+        if (::protocolMetric.isInitialized) protocolMetric.text = if (activeFree) "FREE" else "ПОДПИСКА"
         primarySource.visibility = if (activeFree) ViewGroup.GONE else ViewGroup.VISIBLE
         freeSource.visibility = if (activeFree) ViewGroup.VISIBLE else ViewGroup.GONE
         findImportButtonsVisibility()
@@ -1561,6 +1560,12 @@ class MainActivity : Activity() {
     @Deprecated("Deprecated by Android API")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        val qrResult = IntentIntegrator.parseActivityResult(requestCode, resultCode, data)
+        if (qrResult != null) {
+            val value = qrResult.contents?.trim().orEmpty()
+            if (value.isNotBlank()) importFrom(value, false)
+            return
+        }
         if (requestCode == this.requestCode && resultCode == RESULT_OK) {
             pendingConfig?.let {
                 startVpn(it, pendingFallbackConfig, pendingPreferredConfig, pendingAutomatic)
