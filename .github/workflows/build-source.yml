@@ -76,8 +76,10 @@ jobs:
           rm -rf go
           jar cf ../classes.jar .
           cd ..
-          zip -q -r "$GITHUB_WORKSPACE/app/libs/mihomo-core.aar" . -x 'classes/*'
-          zip -q -u "$GITHUB_WORKSPACE/app/libs/mihomo-core.aar" classes.jar
+          rm -rf classes
+          zip -q -r "$RUNNER_TEMP/mihomo-core-fixed.aar" .
+          mv "$RUNNER_TEMP/mihomo-core-fixed.aar" "$GITHUB_WORKSPACE/app/libs/mihomo-core.aar"
+          unzip -tq "$GITHUB_WORKSPACE/app/libs/mihomo-core.aar"
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
