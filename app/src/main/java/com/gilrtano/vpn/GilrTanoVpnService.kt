@@ -73,8 +73,6 @@ class GilrTanoVpnService : VpnService() {
             synchronized(this) {
                 runCatching { mihomoRuntime?.stop() }
                 mihomoRuntime = null
-                runCatching { mihomoRuntime?.stop() }
-                mihomoRuntime = null
                 runCatching { Teapodcore.stopTun2Socks() }
                 runCatching { Teapodcore.stopXray() }
                 runCatching { tun?.close() }
