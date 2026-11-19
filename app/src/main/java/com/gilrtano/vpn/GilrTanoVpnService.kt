@@ -6,7 +6,6 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
 import android.net.ConnectivityManager
-import android.net.LinkProperties
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.VpnService
@@ -468,8 +467,8 @@ class GilrTanoVpnService : VpnService() {
             }
 
             override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
-                rememberUsqueUnderlyingNetwork(network)
                 val previous = lastUnderlyingNetwork
+                rememberUsqueUnderlyingNetwork(network)
                 if (previous != null && previous != network) {
                     val kind = when {
                         capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "Wi-Fi"
