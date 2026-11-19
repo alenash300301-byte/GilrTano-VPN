@@ -99,7 +99,7 @@ jobs:
           # Use GilrTano's own notification icon; the upstream notification asset is not required.
           sed -i 's/R.drawable.ic_stat_usque/R.drawable.gilrtano_icon/g' "$DST/VpnNotificationController.kt"
           # Resolve upstream resource references directly to the host app namespace.
-          sed -i 's/R\\.string\\./com.gilrtano.vpn.R.string./g; s/R\\.drawable\\./com.gilrtano.vpn.R.drawable./g' "$DST"/*.kt
+          sed -i 's/R\.string\./com.gilrtano.vpn.R.string./g; s/R\.drawable\./com.gilrtano.vpn.R.drawable./g' "$DST"/*.kt
 
       - name: Setup Java
         uses: actions/setup-java@v4
