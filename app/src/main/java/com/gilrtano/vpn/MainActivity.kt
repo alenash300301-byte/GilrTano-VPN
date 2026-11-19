@@ -1401,7 +1401,7 @@ class MainActivity : Activity() {
         status.text = if (isFree) "Загружаю резерв…" else "Загружаю Quattro…"
         Thread {
             try {
-                val imported = SubscriptionImporter.load(source)
+                val (imported, importedGroups) = SubscriptionImporter.loadProfile(source)
                 runOnUiThread {
                     if (imported.isEmpty()) {
                         status.text = "Не найдено поддерживаемых VLESS-серверов"
@@ -1411,10 +1411,12 @@ class MainActivity : Activity() {
                         freeNodes = imported
                         prefs.edit().putString("free_subscription_url", source).apply()
                         saveNodes("free_nodes", freeNodes)
+                        saveProxyGroups("free_proxy_groups", importedGroups)
                     } else {
                         quattroNodes = imported
                         prefs.edit().putString("subscription_url", source).apply()
                         saveNodes("quattro_nodes", quattroNodes)
+                        saveProxyGroups("quattro_proxy_groups", importedGroups)
                     }
                     activeFree = isFree
                     prefs.edit().putBoolean("active_free_mode", activeFree).apply()
@@ -1429,6 +1431,34 @@ class MainActivity : Activity() {
                 runOnUiThread { status.text = "Ошибка импорта: ${e.message}" }
             }
         }.start()
+    }
+
+    private fun saveProxyGroups(key: String, groups: List<ImportedProxyGroup>) {
+        val array = JSONArray()
+        groups.forEach { group ->
+            array.put(JSONObject()
+                .put("name", group.name)
+                .put("type", group.type)
+                .put("members", JSONArray(group.members))
+                .put("testUrl", group.testUrl ?: JSONObject.NULL))
+        }
+        prefs.edit().putString(key, array.toString()).apply()
+    }
+
+    private fun restoreProxyGroups(key: String): List<ImportedProxyGroup> {
+        val raw = prefs.getString(key, null) ?: return emptyList()
+        return runCatching {
+            val array = JSONArray(raw)
+            (0 until array.length()).map { i ->
+                val item = array.getJSONObject(i)
+                ImportedProxyGroup(
+                    item.getString("name"),
+                    item.optString("type", "select"),
+                    (0 until item.optJSONArray("members").length()).map { item.getJSONArray("members").getString(it) },
+                    item.optString("testUrl").takeIf { it.isNotBlank() && it != "null" }
+                )
+            }
+        }.getOrDefault(emptyList())
     }
 
     private fun saveNodes(key: String, nodes: List<ImportedNode>) {
