@@ -595,6 +595,7 @@ class MainActivity : Activity() {
             setOnClickListener { action() }
         }
         val serverPage = page("Прокси")
+        lateinit var serverRows: LinearLayout
         val serverDelays = mutableMapOf<String, Long>()
         var testingAllServers = false
         var refreshServerPage: () -> Unit = {}
@@ -780,7 +781,7 @@ class MainActivity : Activity() {
             addView(groupTabs)
         }
         serverPage.addView(groupScroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)).apply { bottomMargin = dp(8) })
-        val serverRows = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        serverRows = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         serverPage.addView(serverRows)
         fun updateServerPage() {
             serverRows.removeAllViews()
