@@ -28,6 +28,7 @@ import android.os.Handler
 import android.os.Looper
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.FrameLayout
 import android.widget.Spinner
@@ -576,170 +577,224 @@ class MainActivity : Activity() {
                 val connected = status.text.toString().contains("Подключено")
                 if (!connected) {
                     serverRows.addView(TextView(this).apply {
-                        text = if (quattroNodes.isEmpty()) {
-                            "Сначала добавьте подписку во вкладке «Профили»."
-                        } else {
-                            "Подключите подписку, чтобы загрузить актуальные серверы и группы."
-                        }
+                        text = if (quattroNodes.isEmpty()) "Сначала добавьте подписку во вкладке «Профили»."
+                        else "Подключите подписку, чтобы увидеть группы и серверы."
                         textSize = 14f
                         setTextColor(Color.LTGRAY)
                         setPadding(dp(4), dp(18), dp(4), dp(18))
                     })
-                    serverRows.addView(actionButton("Обновить список") { updateServerPage() })
                     return
                 }
-                serverState.text = "ПОДПИСКА · загрузка серверов…"
+
+                serverState.text = "Загружаю группы подписки…"
                 Thread({
                     val result = runCatching { FlClashXEngine.getProxyGroups() }
                     runOnUiThread {
                         if (activeMode != "quattro") return@runOnUiThread
                         val data = result.getOrElse {
-                            serverState.text = "Не удалось загрузить список"
+                            serverState.text = "Не удалось загрузить серверы"
                             serverRows.removeAllViews()
                             serverRows.addView(TextView(this).apply {
-                                text = it.message ?: "Ошибка получения серверов"
+                                text = it.message ?: "Ошибка ядра"
                                 setTextColor(Color.LTGRAY)
                             })
                             serverRows.addView(actionButton("Повторить") { updateServerPage() })
                             return@runOnUiThread
                         }
+
                         val proxyMap = data.optJSONObject("proxies") ?: JSONObject()
-                        val groupNames = data.optJSONArray("all") ?: JSONArray()
-                        val availableGroups = mutableListOf<Pair<String, JSONArray>>()
-                        for (i in 0 until groupNames.length()) {
-                            val groupName = groupNames.optString(i)
-                            val group = proxyMap.optJSONObject(groupName) ?: continue
+                        val names = data.optJSONArray("all") ?: JSONArray()
+                        val groups = mutableListOf<Pair<String, JSONObject>>()
+                        for (i in 0 until names.length()) {
+                            val name = names.optString(i)
+                            val group = proxyMap.optJSONObject(name) ?: continue
                             if (group.optBoolean("hidden", false)) continue
                             val members = group.optJSONArray("all") ?: continue
-                            if (members.length() > 0) availableGroups.add(groupName to members)
+                            if (members.length() == 0) continue
+                            if (query.isNotBlank()) {
+                                val matches = (0 until members.length()).any { n ->
+                                    val item = members.optJSONObject(n)
+                                    val memberName = item?.optString("name").orEmpty()
+                                        .ifBlank { members.optString(n) }
+                                    val type = item?.optString("type").orEmpty()
+                                    val description = item?.optString("serverDescription").orEmpty()
+                                    listOf(memberName, type, description).any { it.contains(query, true) }
+                                }
+                                if (!matches && !name.contains(query, true)) continue
+                            }
+                            groups.add(name to group)
                         }
-                        val group = availableGroups.firstOrNull { it.first == "GLOBAL" }
-                            ?: availableGroups.firstOrNull()
+
                         serverRows.removeAllViews()
-                        if (group == null) {
-                            serverState.text = "Серверы не найдены"
+                        if (groups.isEmpty()) {
+                            serverState.text = "Группы и серверы не найдены"
                             serverRows.addView(TextView(this).apply {
-                                text = "В подписке нет доступных групп выбора серверов."
+                                text = if (query.isBlank()) "В подписке нет доступных групп." else "Ничего не найдено"
                                 setTextColor(Color.LTGRAY)
-                                setPadding(0, dp(18), 0, dp(18))
+                                setPadding(dp(4), dp(20), dp(4), dp(20))
                             })
                             return@runOnUiThread
                         }
-                        val groupLabel = TextView(this).apply {
-                            text = "Группа: ${group.first}"
-                            textSize = 15f
-                            typeface = android.graphics.Typeface.DEFAULT_BOLD
-                            setTextColor(Color.WHITE)
-                            setPadding(dp(4), dp(12), dp(4), dp(8))
+
+                        val savedGroup = prefs.getString("subscription_current_group", null)
+                        var selectedGroupIndex = groups.indexOfFirst { it.first == savedGroup }
+                            .takeIf { it >= 0 } ?: 0
+
+                        val tabsScroll = HorizontalScrollView(this).apply {
+                            isHorizontalScrollBarEnabled = false
+                            clipToPadding = false
+                            setPadding(dp(12), dp(5), dp(12), dp(12))
                         }
-                        serverRows.addView(groupLabel)
-                        val groupPicker = Spinner(this)
-                        val groupAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item,
-                            availableGroups.map { it.first })
-                        groupPicker.adapter = groupAdapter
-                        val initialGroupIndex = availableGroups.indexOfFirst { it.first == group.first }.coerceAtLeast(0)
-                        groupPicker.setSelection(initialGroupIndex)
-                        serverRows.addView(groupPicker, LinearLayout.LayoutParams(
-                            ViewGroup.LayoutParams.MATCH_PARENT, dp(48)
+                        val tabs = LinearLayout(this).apply {
+                            orientation = LinearLayout.HORIZONTAL
+                            gravity = android.view.Gravity.CENTER_VERTICAL
+                        }
+                        tabsScroll.addView(tabs)
+                        serverRows.addView(tabsScroll, LinearLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT, dp(54)
                         ))
-                        val membersHost = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-                        serverRows.addView(membersHost)
-                        fun renderMembers(selectedGroupIndex: Int) {
-                            membersHost.removeAllViews()
-                            val selectedGroup = availableGroups.getOrNull(selectedGroupIndex) ?: return
-                            val groupObject = proxyMap.optJSONObject(selectedGroup.first) ?: return
-                            val current = groupObject.optString("now")
-                            val memberNames = (0 until selectedGroup.second.length()).mapNotNull { index ->
-                                val value = selectedGroup.second.opt(index)
-                                when (value) {
-                                    is String -> value
-                                    is JSONObject -> value.optString("name").takeIf { it.isNotBlank() }
-                                    else -> null
+
+                        val cardsHost = LinearLayout(this).apply {
+                            orientation = LinearLayout.VERTICAL
+                            setPadding(dp(12), dp(2), dp(12), dp(12))
+                        }
+                        serverRows.addView(cardsHost)
+
+                        fun renderGroup(index: Int) {
+                            selectedGroupIndex = index.coerceIn(0, groups.lastIndex)
+                            val (groupName, groupObject) = groups[selectedGroupIndex]
+                            prefs.edit().putString("subscription_current_group", groupName).apply()
+                            tabs.removeAllViews()
+                            groups.forEachIndexed { tabIndex, entry ->
+                                val active = tabIndex == selectedGroupIndex
+                                val chip = TextView(this).apply {
+                                    text = entry.first
+                                    textSize = 13f
+                                    maxLines = 1
+                                    gravity = android.view.Gravity.CENTER
+                                    setPadding(dp(16), dp(9), dp(16), dp(9))
+                                    setTextColor(if (active) Color.WHITE else Color.LTGRAY)
+                                    background = GradientDrawable().apply {
+                                        setColor(if (active) Color.rgb(48, 65, 52) else Color.rgb(35, 36, 40))
+                                        cornerRadius = dp(30).toFloat()
+                                        if (active) setStroke(dp(1), Color.rgb(54, 225, 92))
+                                    }
+                                    setOnClickListener { renderGroup(tabIndex) }
                                 }
-                            }.filter { it.isNotBlank() && it.lowercase().contains(query) }
-                            if (memberNames.isEmpty()) {
-                                membersHost.addView(TextView(this).apply {
-                                    text = if (query.isBlank()) "В этой группе нет серверов" else "Ничего не найдено"
+                                tabs.addView(chip, LinearLayout.LayoutParams(
+                                    ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)
+                                ).apply { rightMargin = dp(8) })
+                            }
+
+                            cardsHost.removeAllViews()
+                            val members = groupObject.optJSONArray("all") ?: JSONArray()
+                            val current = groupObject.optString("now")
+                            val fixed = groupObject.optString("fixed")
+                            val selected = fixed.ifBlank { current }
+                            val filtered = (0 until members.length()).mapNotNull { n ->
+                                val item = members.optJSONObject(n)
+                                val name = item?.optString("name").orEmpty().ifBlank {
+                                    members.optString(n)
+                                }
+                                if (name.isBlank() || !name.contains(query, true)) null
+                                else Triple(name, item?.optString("type").orEmpty(),
+                                    item?.optString("serverDescription").orEmpty())
+                            }
+                            if (filtered.isEmpty()) {
+                                cardsHost.addView(TextView(this).apply {
+                                    text = "В этой группе нет серверов"
                                     setTextColor(Color.LTGRAY)
-                                    setPadding(0, dp(16), 0, dp(16))
+                                    setPadding(0, dp(20), 0, dp(20))
                                 })
                                 return
                             }
-                            memberNames.forEach { memberName ->
-                                val isCurrent = memberName == current
-                                val tile = LinearLayout(this).apply {
-                                    orientation = LinearLayout.VERTICAL
-                                    setPadding(dp(15), dp(13), dp(15), dp(13))
-                                    background = GradientDrawable().apply {
-                                        setColor(if (isCurrent) Color.rgb(8, 35, 17) else Color.rgb(30, 31, 35))
-                                        cornerRadius = dp(17).toFloat()
-                                        setStroke(dp(1), if (isCurrent) Color.rgb(42, 235, 78) else Color.rgb(65, 45, 50))
-                                    }
-                                    addView(TextView(this@MainActivity).apply {
-                                        text = (if (isCurrent) "✓  " else "") + memberName
-                                        textSize = 15f
-                                        maxLines = 2
-                                        typeface = android.graphics.Typeface.DEFAULT_BOLD
-                                        setTextColor(Color.WHITE)
-                                    })
-                                    addView(TextView(this@MainActivity).apply {
-                                        text = if (isCurrent) "ТЕКУЩИЙ СЕРВЕР" else "Нажмите, чтобы выбрать"
-                                        textSize = 10f
-                                        setTextColor(if (isCurrent) Color.rgb(55, 245, 90) else Color.LTGRAY)
-                                        setPadding(0, dp(6), 0, 0)
-                                    })
-                                    setOnClickListener {
-                                        serverState.text = "Переключаю сервер…"
-                                        Thread({
-                                            val changed = runCatching {
-                                                FlClashXEngine.selectProxy(selectedGroup.first, memberName)
-                                            }
-                                            runOnUiThread {
-                                                val message = changed.getOrElse { it.message ?: "Ошибка выбора сервера" }
-                                                if (message.isBlank()) {
-                                                    serverCardTitle.text = memberName
-                                                    serverCardSubtitle.text = "ПОДПИСКА · ${selectedGroup.first}"
-                                                    serverState.text = "Выбран сервер: $memberName"
-                                                    updateServerPage()
-                                                } else {
-                                                    serverState.text = message
-                                                    Toast.makeText(this@MainActivity, message, Toast.LENGTH_LONG).show()
+
+                            filtered.chunked(2).forEach { pair ->
+                                val row = LinearLayout(this).apply {
+                                    orientation = LinearLayout.HORIZONTAL
+                                }
+                                pair.forEach { (nodeName, nodeType, description) ->
+                                    val inUse = nodeName == selected
+                                    val card = LinearLayout(this).apply {
+                                        orientation = LinearLayout.VERTICAL
+                                        gravity = android.view.Gravity.CENTER_VERTICAL
+                                        setPadding(dp(12), dp(10), dp(12), dp(9))
+                                        background = GradientDrawable().apply {
+                                            setColor(if (inUse) Color.rgb(23, 43, 29) else Color.rgb(35, 36, 40))
+                                            cornerRadius = dp(16).toFloat()
+                                            setStroke(dp(1), if (inUse) Color.rgb(57, 220, 94) else Color.rgb(57, 58, 63))
+                                        }
+                                        setOnClickListener {
+                                            serverState.text = "Переключаю: $nodeName"
+                                            Thread({
+                                                val changed = runCatching {
+                                                    FlClashXEngine.selectProxy(groupName, nodeName)
                                                 }
+                                                runOnUiThread {
+                                                    val message = changed.getOrElse { it.message ?: "Ошибка выбора" }
+                                                    if (message.isBlank()) {
+                                                        serverCardTitle.text = nodeName
+                                                        serverCardSubtitle.text = "ПОДПИСКА · $groupName"
+                                                        serverState.text = "Выбран: $nodeName"
+                                                        updateServerPage()
+                                                    } else {
+                                                        serverState.text = message
+                                                        Toast.makeText(this@MainActivity, message, Toast.LENGTH_LONG).show()
+                                                    }
+                                                }
+                                            }, "GilrTano-select-proxy").start()
+                                        }
+                                        addView(TextView(this@MainActivity).apply {
+                                            text = nodeName
+                                            textSize = 14f
+                                            maxLines = 2
+                                            ellipsize = android.text.TextUtils.TruncateAt.END
+                                            typeface = android.graphics.Typeface.DEFAULT_BOLD
+                                            setTextColor(Color.WHITE)
+                                        })
+                                        addView(TextView(this@MainActivity).apply {
+                                            text = description.ifBlank { nodeType }
+                                            textSize = 11f
+                                            maxLines = 1
+                                            ellipsize = android.text.TextUtils.TruncateAt.END
+                                            setTextColor(Color.rgb(173, 176, 185))
+                                            setPadding(0, dp(5), 0, 0)
+                                        })
+                                        val delay = TextView(this@MainActivity).apply {
+                                            text = "ϟ  Проверить задержку"
+                                            textSize = 10f
+                                            setTextColor(Color.rgb(169, 184, 255))
+                                            setPadding(0, dp(7), 0, 0)
+                                            setOnClickListener {
+                                                text = "Проверяю…"
+                                                Thread({
+                                                    val ping = runCatching {
+                                                        FlClashXEngine.testProxyDelay(nodeName)
+                                                    }.getOrDefault(-1)
+                                                    runOnUiThread {
+                                                        text = if (ping > 0) "$ping ms" else "Timeout"
+                                                        setTextColor(if (ping > 0) Color.rgb(75, 220, 112) else Color.rgb(235, 110, 100))
+                                                    }
+                                                }, "GilrTano-proxy-delay").start()
                                             }
-                                        }, "GilrTano-select-subscription-server").start()
+                                        }
+                                        addView(delay)
                                     }
+                                    row.addView(card, LinearLayout.LayoutParams(0, dp(112), 1f).apply {
+                                        rightMargin = dp(4)
+                                        leftMargin = dp(4)
+                                        bottomMargin = dp(8)
+                                    })
                                 }
-                                membersHost.addView(tile, LinearLayout.LayoutParams(
-                                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-                                ).apply { bottomMargin = dp(8) })
-                                val pingButton = TextView(this).apply {
-                                    text = "Проверить Ping"
-                                    textSize = 12f
-                                    setTextColor(Color.rgb(169, 184, 255))
-                                    gravity = android.view.Gravity.END
-                                    setPadding(dp(8), dp(4), dp(8), dp(10))
-                                    setOnClickListener {
-                                        text = "Проверяю…"
-                                        Thread({
-                                            val ping = runCatching { FlClashXEngine.testProxyDelay(memberName) }.getOrDefault(-1)
-                                            runOnUiThread { text = if (ping > 0) "Ping: $ping мс" else "Ping: недоступен" }
-                                        }, "GilrTano-proxy-ping").start()
-                                    }
-                                }
-                                membersHost.addView(pingButton)
+                                if (pair.size == 1) row.addView(View(this), LinearLayout.LayoutParams(0, dp(112), 1f))
+                                cardsHost.addView(row)
                             }
+                            serverState.text = "$groupName · ${filtered.size} серверов"
                         }
-                        groupPicker.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
-                            override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) {
-                                groupLabel.text = "Группа: ${availableGroups.getOrNull(position)?.first.orEmpty()}"
-                                renderMembers(position)
-                            }
-                            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
-                        }
-                        serverState.text = "Найдено групп: ${availableGroups.size} · серверы подписки"
-                        renderMembers(initialGroupIndex)
+
+                        renderGroup(selectedGroupIndex)
                     }
-                }, "GilrTano-load-subscription-servers").start()
+                }, "GilrTano-load-flclashx-groups").start()
                 return
             }
 
