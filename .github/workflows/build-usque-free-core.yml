@@ -29,6 +29,13 @@ jobs:
           ref: v0.3.4
           path: Usque
 
+      - name: Checkout FlClashX v0.5.7
+        uses: actions/checkout@v4
+        with:
+          repository: pluralplay/FlClashX
+          ref: v0.5.7
+          path: FlClashX
+
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
@@ -77,6 +84,89 @@ jobs:
           test -s "$LIB"
           file "$LIB"
           llvm-readelf -h "$LIB" | grep -E 'Class:.*ELF64|Machine:.*AArch64'
+
+      # The app's Subscription engine is a real compile-time dependency.
+      # Build the exact FlClashX AAR instead of silently removing that engine.
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.47.6'
+          cache: true
+
+      - name: Install Flutter dependencies
+        working-directory: FlClashX
+        run: flutter pub get
+
+      - name: Setup Go for FlClashX core
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.27.1'
+          cache: true
+          cache-dependency-path: FlClashX/core/go.sum
+
+      - name: Download FlClashX core dependencies
+        working-directory: FlClashX/core
+        run: |
+          for attempt in 1 2 3 4 5; do
+            if go mod download; then exit 0; fi
+            echo "Go dependency download failed (attempt $attempt/5); retrying..."
+            sleep $((attempt * 10))
+          done
+          echo "Unable to download Go dependencies after five attempts" >&2
+          exit 1
+
+      - name: Setup Android NDK for FlClashX
+        uses: nttld/setup-ndk@v1
+        id: flclash-ndk
+        with:
+          ndk-version: r28c
+          link-to-sdk: true
+
+      - name: Prepare FlClashX Android build
+        working-directory: FlClashX/android
+        run: |
+          {
+            echo "flutter.sdk=$FLUTTER_ROOT"
+            echo "sdk.dir=$ANDROID_HOME"
+          } > local.properties
+          wrapper="$FLUTTER_ROOT/bin/cache/artifacts/gradle_wrapper"
+          test -d "$wrapper" || flutter precache
+          cp -R "$wrapper/." .
+          chmod +x gradlew
+
+      - name: Build FlClashX gomobile core (ARM64)
+        working-directory: FlClashX/android
+        env:
+          ANDROID_NDK_HOME: ${{ steps.flclash-ndk.outputs.ndk-path }}
+        run: |
+          for attempt in 1 2 3 4; do
+            if ./gradlew :core:bindCore :core:assembleDebug \\
+              -Ptarget-platform=android-arm64 \\
+              -x :app:compileFlutterBuildDebug \\
+              -x :app:copyFlutterAssetsDebug \\
+              --no-daemon --stacktrace; then
+              exit 0
+            fi
+            echo "FlClashX core build failed (attempt $attempt/4); retrying."
+            sleep $((attempt * 20))
+          done
+          exit 1
+
+      - name: Stage and verify FlClashX AAR
+        run: |
+          mkdir -p app/libs app/src/main/assets/licenses
+          AAR="$(find FlClashX -type f -path '*/gomobile/core.aar' -print -quit)"
+          if [ -z "$AAR" ]; then
+            echo "FlClashX build produced no gomobile/core.aar"
+            find FlClashX -type f | grep -E '(build|gomobile|\\.aar$)' | sort | tail -150 || true
+            exit 1
+          fi
+          cp "$AAR" app/libs/flclashx-core.aar
+          cp FlClashX/LICENSE app/src/main/assets/licenses/FLCLASHX-GPL-3.0.txt
+          unzip -l app/libs/flclashx-core.aar | grep -E 'jni/arm64-v8a/libgojni.so'
+          unzip -p app/libs/flclashx-core.aar classes.jar > /tmp/flclashx-classes.jar
+          jar tf /tmp/flclashx-classes.jar | grep -E 'com/follow/clashx/core/mobile/Mobile.class'
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
