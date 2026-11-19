@@ -98,12 +98,12 @@ internal object FlClashXEngine {
             initialized.countDown()
         }
         check(initialized.await(90, TimeUnit.SECONDS)) {
-            "FlClashX не завершил инициализацию за 90 секунд"
+            "Ядро подписки не завершило инициализацию за 90 секунд"
         }
-        check(initError == null) { "FlClashX: ${initError ?: "ошибка инициализации"}" }
+        check(initError == null) { "Ошибка запуска подписки: ${initError ?: "ошибка инициализации"}" }
 
         val pfd = service.Builder()
-            .setSession("GilrTano VPN · FlClashX")
+            .setSession("GilrTano VPN")
             .setMtu(TUN_MTU)
             .addAddress(IPV4_ADDRESS, IPV4_PREFIX)
             .addDnsServer(DNS)
@@ -137,7 +137,7 @@ internal object FlClashXEngine {
 
         if (!started) {
             runCatching { ParcelFileDescriptor.adoptFd(fd).close() }
-            error("FlClashX отклонил TUN-дескриптор")
+            error("Ядро подписки отклонило VPN-интерфейс")
         }
         tunStarted = true
         Log.i(TAG, "FlClashX v0.5.7 TUN started; GeoIP/GeoSite configured in ${configFile.absolutePath}")
