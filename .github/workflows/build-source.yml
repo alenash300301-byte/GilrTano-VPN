@@ -77,6 +77,16 @@ jobs:
           jar cf ../classes.jar .
           cd ..
           rm -rf classes
+          # TeapodCore and Mihomo both ship a gomobile library named libgojni.so.
+          # Keep both native cores by giving Mihomo its own soname; Core.load()
+          # explicitly loads this renamed library before touching Mobile.
+          if [ -f jni/arm64-v8a/libgojni.so ]; then
+            mv jni/arm64-v8a/libgojni.so jni/arm64-v8a/libmihomo.so
+          else
+            echo "Mihomo gomobile library not found"
+            find . -maxdepth 4 -type f | sort
+            exit 1
+          fi
           zip -q -r "$RUNNER_TEMP/mihomo-core-fixed.aar" .
           mv "$RUNNER_TEMP/mihomo-core-fixed.aar" "$GITHUB_WORKSPACE/app/libs/mihomo-core.aar"
           unzip -tq "$GITHUB_WORKSPACE/app/libs/mihomo-core.aar"
