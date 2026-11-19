@@ -594,6 +594,9 @@ class MainActivity : Activity() {
         val serverDelays = mutableMapOf<String, Long>()
         var testingAllServers = false
         var refreshServerPage: () -> Unit = {}
+        var oneColumnView = false
+        var groupExpanded = true
+        var sortByDelay = false
         lateinit var testAllButton: Button
         var testAllAnimator: ObjectAnimator? = null
         testAllButton = actionButton("⟳") {
@@ -628,6 +631,16 @@ class MainActivity : Activity() {
         }
         // FlClashX-style compact toolbar: page title on the left, scan-all icon on the right.
         serverPage.removeViewAt(0)
+        fun toolbarIcon(glyph: String, description: String, action: () -> Unit) =
+            actionButton(glyph, action).apply {
+                textSize = 21f
+                contentDescription = description
+                minWidth = dp(42)
+                minHeight = dp(44)
+                background = GradientDrawable().apply {
+                    setColor(Color.rgb(37, 38, 43)); cornerRadius = dp(22).toFloat()
+                }
+            }
         val proxyToolbar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = android.view.Gravity.CENTER_VERTICAL
@@ -637,9 +650,33 @@ class MainActivity : Activity() {
                 typeface = android.graphics.Typeface.DEFAULT_BOLD
                 setTextColor(Color.WHITE)
             }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-            addView(testAllButton, LinearLayout.LayoutParams(dp(46), dp(46)).apply {
-                leftMargin = dp(8)
+            addView(toolbarIcon("⌕", "Поиск серверов") {
+                proxySearch.visibility = if (proxySearch.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+                if (proxySearch.visibility == View.VISIBLE) proxySearch.requestFocus()
             })
+            addView(toolbarIcon("▦", "Сменить вид списка") {
+                oneColumnView = !oneColumnView
+                refreshServerPage()
+            }, LinearLayout.LayoutParams(dp(44), dp(44)).apply { leftMargin = dp(6) })
+            addView(testAllButton, LinearLayout.LayoutParams(dp(44), dp(44)).apply { leftMargin = dp(6) })
+            addView(toolbarIcon("⇅", "Сортировать по задержке") {
+                sortByDelay = !sortByDelay
+                refreshServerPage()
+            }, LinearLayout.LayoutParams(dp(44), dp(44)).apply { leftMargin = dp(6) })
+            addView(toolbarIcon("⋮", "Дополнительные действия") {
+                val items = arrayOf(
+                    if (groupExpanded) "Свернуть группу" else "Развернуть группу",
+                    if (sortByDelay) "Исходный порядок" else "Сортировать по пингу",
+                    if (oneColumnView) "Сетка" else "Список"
+                )
+                AlertDialog.Builder(this@MainActivity).setItems(items) { _, which ->
+                    when (which) {
+                        0 -> { groupExpanded = !groupExpanded; refreshServerPage() }
+                        1 -> { sortByDelay = !sortByDelay; refreshServerPage() }
+                        2 -> { oneColumnView = !oneColumnView; refreshServerPage() }
+                    }
+                }.show()
+            }, LinearLayout.LayoutParams(dp(44), dp(44)).apply { leftMargin = dp(6) })
         }
         serverPage.addView(proxyToolbar, 0, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, dp(58)
@@ -655,6 +692,7 @@ class MainActivity : Activity() {
             }
             setPadding(dp(16), dp(10), dp(16), dp(10))
         }
+        proxySearch.visibility = View.GONE
         serverPage.addView(proxySearch, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(50)).apply { bottomMargin = dp(12) })
         val serverRows = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         serverPage.addView(serverRows)
@@ -662,13 +700,16 @@ class MainActivity : Activity() {
             serverState.text = "Режим: " + if (autoMode) "AUTO · Quattro с бесплатным резервом" else if (activeFree) "FREE" else "Подписка"
             serverRows.removeAllViews()
             val query = proxySearch.text.toString().trim().lowercase()
-            val nodes = activeNodes.mapIndexed { index, node -> index to node }.filter { it.second.name.lowercase().contains(query) }
+            val nodesUnsorted = activeNodes.mapIndexed { index, node -> index to node }.filter { it.second.name.lowercase().contains(query) }
+            val nodes = if (sortByDelay) nodesUnsorted.sortedBy { serverDelays[it.second.uri]?.takeIf { value -> value > 0L } ?: Long.MAX_VALUE } else nodesUnsorted
+            serverRows.visibility = if (groupExpanded) View.VISIBLE else View.GONE
+            if (!groupExpanded) return
             if (nodes.isEmpty()) {
                 serverRows.addView(TextView(this).apply {
                     text = if (activeNodes.isEmpty()) "Нет серверов. Добавьте профиль во вкладке «Профили»." else "Ничего не найдено"
                     setTextColor(Color.LTGRAY); setPadding(0, dp(18), 0, dp(18))
                 })
-            } else nodes.chunked(2).forEach { pair ->
+            } else nodes.chunked(if (oneColumnView) 1 else 2).forEach { pair ->
                 val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
                 pair.forEach { (index, node) ->
                     val selected = index == servers.selectedItemPosition
