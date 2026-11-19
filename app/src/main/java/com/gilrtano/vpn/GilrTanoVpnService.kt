@@ -397,7 +397,7 @@ class GilrTanoVpnService : VpnService() {
      * interface sends app traffic back over the device's ordinary network.
      */
     private fun pauseTunnel() {
-        if (stopping || paused || tun == null) return
+        if (stopping || paused || (tun == null && mihomoRuntime == null)) return
         paused = true
         broadcastStatus("Приостанавливаю VPN…")
         Thread({
