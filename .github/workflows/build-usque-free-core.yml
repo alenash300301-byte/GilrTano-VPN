@@ -141,11 +141,7 @@ jobs:
           ANDROID_NDK_HOME: ${{ steps.flclash-ndk.outputs.ndk-path }}
         run: |
           for attempt in 1 2 3 4; do
-            if ./gradlew :core:bindCore :core:assembleDebug \\
-              -Ptarget-platform=android-arm64 \\
-              -x :app:compileFlutterBuildDebug \\
-              -x :app:copyFlutterAssetsDebug \\
-              --no-daemon --stacktrace; then
+            if ./gradlew :core:bindCore :core:assembleDebug -Ptarget-platform=android-arm64 -x :app:compileFlutterBuildDebug -x :app:copyFlutterAssetsDebug --no-daemon --stacktrace; then
               exit 0
             fi
             echo "FlClashX core build failed (attempt $attempt/4); retrying."
