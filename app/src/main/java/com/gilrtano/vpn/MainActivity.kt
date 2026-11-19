@@ -593,7 +593,8 @@ class MainActivity : Activity() {
         serverPage.addView(serverState)
         val serverDelays = mutableMapOf<String, Long>()
         var testingAllServers = false
-        val testAllButton = actionButton("↻  ПРОВЕРИТЬ ВСЕ СЕРВЕРЫ") { testAllServers(serverDelays, { testingAllServers }, { testingAllServers = it; testAllButton.text = if (it) "ПРОВЕРКА… " else "↻  ПРОВЕРИТЬ ВСЕ СЕРВЕРЫ"; testAllButton.isEnabled = !it }, { updateServerPage() }) }
+        lateinit var testAllButton: Button
+        testAllButton = actionButton("↻  ПРОВЕРИТЬ ВСЕ СЕРВЕРЫ") { testAllServers(serverDelays, { testingAllServers }, { testingAllServers = it; testAllButton.text = if (it) "ПРОВЕРКА… " else "↻  ПРОВЕРИТЬ ВСЕ СЕРВЕРЫ"; testAllButton.isEnabled = !it }, { updateServerPage() }) }
         serverPage.addView(testAllButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(52)).apply { bottomMargin = dp(10) })
         val proxySearch = EditText(this).apply {
             hint = "Поиск серверов"
