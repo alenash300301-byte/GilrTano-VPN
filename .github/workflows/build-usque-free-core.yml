@@ -29,6 +29,12 @@ jobs:
           ref: v0.3.4
           path: Usque
 
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@master
         with:
@@ -71,6 +77,21 @@ jobs:
           test -s "$LIB"
           file "$LIB"
           llvm-readelf -h "$LIB" | grep -E 'Class:.*ELF64|Machine:.*AArch64'
+
+      - name: Package Usque into GilrTano APK
+        run: |
+          mkdir -p app/src/main/jniLibs/arm64-v8a
+          cp Usque/target/aarch64-linux-android/release/libusque_android.so app/src/main/jniLibs/arm64-v8a/
+          chmod +x gradlew
+          ./gradlew --no-daemon :app:assembleDebug
+
+      - name: Upload GilrTano FREE integration APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: GilrTano-FREE-Usque-Integration-ARM64-Debug
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Upload Usque native engine
         uses: actions/upload-artifact@v4
