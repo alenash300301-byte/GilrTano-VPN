@@ -571,7 +571,180 @@ class MainActivity : Activity() {
             serverState.text = "Режим: " + modeDisplayName()
             serverRows.removeAllViews()
             val query = proxySearch.text.toString().trim().lowercase()
-            val nodes = activeNodes.mapIndexed { index, node -> index to node }.filter { it.second.name.lowercase().contains(query) }
+
+            if (activeMode == "quattro") {
+                val connected = status.text.toString().contains("Подключено")
+                if (!connected) {
+                    serverRows.addView(TextView(this).apply {
+                        text = if (quattroNodes.isEmpty()) {
+                            "Сначала добавьте подписку во вкладке «Профили»."
+                        } else {
+                            "Подключите подписку, чтобы загрузить актуальные серверы и группы."
+                        }
+                        textSize = 14f
+                        setTextColor(Color.LTGRAY)
+                        setPadding(dp(4), dp(18), dp(4), dp(18))
+                    })
+                    serverRows.addView(actionButton("Обновить список") { updateServerPage() })
+                    return
+                }
+                serverState.text = "ПОДПИСКА · загрузка серверов…"
+                Thread({
+                    val result = runCatching { FlClashXEngine.getProxyGroups() }
+                    runOnUiThread {
+                        if (activeMode != "quattro") return@runOnUiThread
+                        val data = result.getOrElse {
+                            serverState.text = "Не удалось загрузить список"
+                            serverRows.removeAllViews()
+                            serverRows.addView(TextView(this).apply {
+                                text = it.message ?: "Ошибка получения серверов"
+                                setTextColor(Color.LTGRAY)
+                            })
+                            serverRows.addView(actionButton("Повторить") { updateServerPage() })
+                            return@runOnUiThread
+                        }
+                        val proxyMap = data.optJSONObject("proxies") ?: JSONObject()
+                        val groupNames = data.optJSONArray("all") ?: JSONArray()
+                        val availableGroups = mutableListOf<Pair<String, JSONArray>>()
+                        for (i in 0 until groupNames.length()) {
+                            val groupName = groupNames.optString(i)
+                            val group = proxyMap.optJSONObject(groupName) ?: continue
+                            if (group.optBoolean("hidden", false)) continue
+                            val members = group.optJSONArray("all") ?: continue
+                            if (members.length() > 0) availableGroups.add(groupName to members)
+                        }
+                        val group = availableGroups.firstOrNull { it.first == "GLOBAL" }
+                            ?: availableGroups.firstOrNull()
+                        serverRows.removeAllViews()
+                        if (group == null) {
+                            serverState.text = "Серверы не найдены"
+                            serverRows.addView(TextView(this).apply {
+                                text = "В подписке нет доступных групп выбора серверов."
+                                setTextColor(Color.LTGRAY)
+                                setPadding(0, dp(18), 0, dp(18))
+                            })
+                            return@runOnUiThread
+                        }
+                        val groupLabel = TextView(this).apply {
+                            text = "Группа: ${group.first}"
+                            textSize = 15f
+                            typeface = android.graphics.Typeface.DEFAULT_BOLD
+                            setTextColor(Color.WHITE)
+                            setPadding(dp(4), dp(12), dp(4), dp(8))
+                        }
+                        serverRows.addView(groupLabel)
+                        val groupPicker = Spinner(this)
+                        val groupAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item,
+                            availableGroups.map { it.first })
+                        groupPicker.adapter = groupAdapter
+                        val initialGroupIndex = availableGroups.indexOfFirst { it.first == group.first }.coerceAtLeast(0)
+                        groupPicker.setSelection(initialGroupIndex)
+                        serverRows.addView(groupPicker, LinearLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT, dp(48)
+                        ))
+                        val membersHost = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+                        serverRows.addView(membersHost)
+                        fun renderMembers(selectedGroupIndex: Int) {
+                            membersHost.removeAllViews()
+                            val selectedGroup = availableGroups.getOrNull(selectedGroupIndex) ?: return
+                            val groupObject = proxyMap.optJSONObject(selectedGroup.first) ?: return
+                            val current = groupObject.optString("now")
+                            val memberNames = (0 until selectedGroup.second.length()).mapNotNull { index ->
+                                val value = selectedGroup.second.opt(index)
+                                when (value) {
+                                    is String -> value
+                                    is JSONObject -> value.optString("name").takeIf { it.isNotBlank() }
+                                    else -> null
+                                }
+                            }.filter { it.isNotBlank() && it.lowercase().contains(query) }
+                            if (memberNames.isEmpty()) {
+                                membersHost.addView(TextView(this).apply {
+                                    text = if (query.isBlank()) "В этой группе нет серверов" else "Ничего не найдено"
+                                    setTextColor(Color.LTGRAY)
+                                    setPadding(0, dp(16), 0, dp(16))
+                                })
+                                return
+                            }
+                            memberNames.forEach { memberName ->
+                                val isCurrent = memberName == current
+                                val tile = LinearLayout(this).apply {
+                                    orientation = LinearLayout.VERTICAL
+                                    setPadding(dp(15), dp(13), dp(15), dp(13))
+                                    background = GradientDrawable().apply {
+                                        setColor(if (isCurrent) Color.rgb(8, 35, 17) else Color.rgb(30, 31, 35))
+                                        cornerRadius = dp(17).toFloat()
+                                        setStroke(dp(1), if (isCurrent) Color.rgb(42, 235, 78) else Color.rgb(65, 45, 50))
+                                    }
+                                    addView(TextView(this@MainActivity).apply {
+                                        text = (if (isCurrent) "✓  " else "") + memberName
+                                        textSize = 15f
+                                        maxLines = 2
+                                        typeface = android.graphics.Typeface.DEFAULT_BOLD
+                                        setTextColor(Color.WHITE)
+                                    })
+                                    addView(TextView(this@MainActivity).apply {
+                                        text = if (isCurrent) "ТЕКУЩИЙ СЕРВЕР" else "Нажмите, чтобы выбрать"
+                                        textSize = 10f
+                                        setTextColor(if (isCurrent) Color.rgb(55, 245, 90) else Color.LTGRAY)
+                                        setPadding(0, dp(6), 0, 0)
+                                    })
+                                    setOnClickListener {
+                                        serverState.text = "Переключаю сервер…"
+                                        Thread({
+                                            val changed = runCatching {
+                                                FlClashXEngine.selectProxy(selectedGroup.first, memberName)
+                                            }
+                                            runOnUiThread {
+                                                val message = changed.getOrElse { it.message ?: "Ошибка выбора сервера" }
+                                                if (message.isBlank()) {
+                                                    serverCardTitle.text = memberName
+                                                    serverCardSubtitle.text = "ПОДПИСКА · ${selectedGroup.first}"
+                                                    serverState.text = "Выбран сервер: $memberName"
+                                                    updateServerPage()
+                                                } else {
+                                                    serverState.text = message
+                                                    Toast.makeText(this@MainActivity, message, Toast.LENGTH_LONG).show()
+                                                }
+                                            }
+                                        }, "GilrTano-select-subscription-server").start()
+                                    }
+                                }
+                                membersHost.addView(tile, LinearLayout.LayoutParams(
+                                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+                                ).apply { bottomMargin = dp(8) })
+                                val pingButton = TextView(this).apply {
+                                    text = "Проверить Ping"
+                                    textSize = 12f
+                                    setTextColor(Color.rgb(169, 184, 255))
+                                    gravity = android.view.Gravity.END
+                                    setPadding(dp(8), dp(4), dp(8), dp(10))
+                                    setOnClickListener {
+                                        text = "Проверяю…"
+                                        Thread({
+                                            val ping = runCatching { FlClashXEngine.testProxyDelay(memberName) }.getOrDefault(-1)
+                                            runOnUiThread { text = if (ping > 0) "Ping: $ping мс" else "Ping: недоступен" }
+                                        }, "GilrTano-proxy-ping").start()
+                                    }
+                                }
+                                membersHost.addView(pingButton)
+                            }
+                        }
+                        groupPicker.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+                            override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) {
+                                groupLabel.text = "Группа: ${availableGroups.getOrNull(position)?.first.orEmpty()}"
+                                renderMembers(position)
+                            }
+                            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
+                        }
+                        serverState.text = "Найдено групп: ${availableGroups.size} · серверы подписки"
+                        renderMembers(initialGroupIndex)
+                    }
+                }, "GilrTano-load-subscription-servers").start()
+                return
+            }
+
+            val nodes = activeNodes.mapIndexed { index, node -> index to node }
+                .filter { it.second.name.lowercase().contains(query) }
             if (nodes.isEmpty()) {
                 serverRows.addView(TextView(this).apply {
                     text = if (activeNodes.isEmpty()) "Нет серверов. Добавьте профиль во вкладке «Профили»." else "Ничего не найдено"
