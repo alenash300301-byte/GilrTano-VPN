@@ -708,17 +708,22 @@ class GilrTanoVpnService : VpnService() {
 
     @Suppress("unused")
     fun bindSocketToUnderlyingGeneration(descriptor: Int, expectedGeneration: Long, requireVpnProtection: Boolean): Int {
-        if (descriptor < 0 || expectedGeneration != usqueNetworkGeneration) return 1
-        val network = usqueGenerationNetworks[expectedGeneration] ?: lastUnderlyingNetwork ?: return 1
+        // Match Usque's BOUND=0, STALE=1, REJECTED=2 contract. Protect the
+        // original socket before duplicating it, then bind only the exact generation.
+        if (descriptor < 0 || expectedGeneration < 0L) return 2
+        if (expectedGeneration != usqueNetworkGeneration) return 1
+        val network = usqueGenerationNetworks[expectedGeneration] ?: return 1
+        if (requireVpnProtection && !runCatching { protect(descriptor) }.getOrDefault(false)) return 2
+        if (expectedGeneration != usqueNetworkGeneration) return 1
         return try {
             ParcelFileDescriptor.fromFd(descriptor).use { duplicate ->
-                if (requireVpnProtection && !protect(duplicate.fd)) return -1
+                if (expectedGeneration != usqueNetworkGeneration) return 1
                 network.bindSocket(duplicate.fileDescriptor)
+                if (expectedGeneration == usqueNetworkGeneration) 0 else 1
             }
-            0
         } catch (error: Exception) {
             Log.w(TAG, "Usque socket binding failed", error)
-            -1
+            if (expectedGeneration != usqueNetworkGeneration) 1 else 2
         }
     }
 
