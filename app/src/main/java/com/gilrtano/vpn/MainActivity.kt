@@ -682,7 +682,7 @@ class MainActivity : Activity() {
                                 val row = serverRows.getChildAt(rowIndex) as? LinearLayout ?: return@firstOrNull false
                                 (0 until row.childCount).any { col ->
                                     val tile = row.getChildAt(col) as? LinearLayout ?: return@any false
-                                    tile.getTag(R.id.proxy_node_uri) == node.uri
+                                    tile.getTag() == node.uri
                                 }
                             } }
                             if (target != null) serverRows.getChildAt(target).requestFocus()
@@ -834,7 +834,7 @@ class MainActivity : Activity() {
                         orientation = LinearLayout.VERTICAL
                         gravity = android.view.Gravity.CENTER_VERTICAL
                         setPadding(dp(if (proxyCardSize == "loose") 17 else 13), dp(if (proxyCardSize == "compact" || proxyCardSize == "oneline") 9 else 13), dp(10), dp(if (proxyCardSize == "compact" || proxyCardSize == "oneline") 9 else 13))
-                        setTag(R.id.proxy_node_uri, node.uri)
+                        setTag(node.uri)
                         background = GradientDrawable().apply {
                             setColor(if (selected) Color.rgb(8, 35, 17) else Color.rgb(34, 35, 39))
                             cornerRadius = dp(20).toFloat()
