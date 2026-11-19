@@ -83,7 +83,7 @@ jobs:
           for f in "$SRC"/*.kt; do
             n=$(basename "$f")
             case "$n" in
-              MainActivity.kt|AndroidEngineMethodHandler.kt|AndroidUiPluginRegistration.kt|AndroidRecentsVisibility.kt|AndroidShortcutController.kt|UsqueApplication.kt|TrackedPreferencesContext.kt|TrackedPreferencesMessenger.kt|TrackedPreferencesPlugin.kt|VpnControlClient.kt|VpnPermissionRequestQueue.kt|OnboardingPermissionCoordinator.kt|ProtonVerificationWindow.kt|TvInputHost.kt|UsqueTileService.kt) continue ;;
+              MainActivity.kt|AndroidEngineMethodHandler.kt|AndroidUiPluginRegistration.kt|AndroidRecentsVisibility.kt|AndroidShortcutController.kt|UsqueApplication.kt|TrackedPreferencesContext.kt|TrackedPreferencesMessenger.kt|TrackedPreferencesPlugin.kt|VpnControlClient.kt|VpnPermissionRequestQueue.kt|OnboardingPermissionCoordinator.kt|ProtonVerificationWindow.kt|TvInputHost.kt) continue ;;
             esac
             cp "$f" "$DST/$n"
           done
@@ -98,6 +98,8 @@ jobs:
           done
           # Use GilrTano's own notification icon; the upstream notification asset is not required.
           sed -i 's/R.drawable.ic_stat_usque/R.drawable.gilrtano_icon/g' "$DST/VpnNotificationController.kt"
+          # Resolve upstream resource references directly to the host app namespace.
+          sed -i 's/R\\.string\\./com.gilrtano.vpn.R.string./g; s/R\\.drawable\\./com.gilrtano.vpn.R.drawable./g' "$DST"/*.kt
 
       - name: Setup Java
         uses: actions/setup-java@v4
