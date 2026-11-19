@@ -48,6 +48,8 @@ android {
 }
 
 dependencies {
-    implementation("androidx.core:core-ktx:1.16.0")\n    implementation("androidx.annotation:annotation:1.9.1")\n    implementation("org.yaml:snakeyaml:2.4")
+    implementation("androidx.core:core-ktx:1.16.0")
+    implementation("androidx.annotation:annotation:1.9.1")
+    implementation("org.yaml:snakeyaml:2.4")
     implementation(files("libs/flclashx-core.aar"))
 }
