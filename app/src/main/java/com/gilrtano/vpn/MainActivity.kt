@@ -625,10 +625,24 @@ class MainActivity : Activity() {
             setTextColor(Color.WHITE)
             elevation = dp(4).toFloat()
         }
-        serverPage.addView(testAllButton, LinearLayout.LayoutParams(dp(48), dp(44)).apply {
-            gravity = android.view.Gravity.END
-            bottomMargin = dp(8)
-        })
+        // FlClashX-style compact toolbar: page title on the left, scan-all icon on the right.
+        serverPage.removeViewAt(0)
+        val proxyToolbar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            addView(TextView(this@MainActivity).apply {
+                text = "Прокси"
+                textSize = 30f
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                setTextColor(Color.WHITE)
+            }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            addView(testAllButton, LinearLayout.LayoutParams(dp(46), dp(46)).apply {
+                leftMargin = dp(8)
+            })
+        }
+        serverPage.addView(proxyToolbar, 0, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, dp(58)
+        ).apply { bottomMargin = dp(8) })
         val proxySearch = EditText(this).apply {
             hint = "Поиск серверов"
             isSingleLine = true
