@@ -158,7 +158,7 @@ class MihomoRuntime(private val service: VpnService) {
         }
 
         val config = linkedMapOf<String, Any>(
-            "mixed-port" to 0,
+            "mixed-port" to 10808,
             "allow-lan" to false,
             "mode" to "rule",
             "log-level" to "info",
