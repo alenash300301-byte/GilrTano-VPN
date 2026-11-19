@@ -37,6 +37,8 @@ import android.text.SpannableString
 import android.text.Spanned
 import android.text.style.ForegroundColorSpan
 import android.net.Uri
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.InetSocketAddress
@@ -83,6 +85,11 @@ class MainActivity : Activity() {
     private var pendingAutomatic = false
     private val requestCode = 4101
     private val docxRequestCode = 4102
+    private val documentRequestCode = 4104
+    private val qrLauncher = registerForActivityResult(ScanContract()) { result ->
+        val value = result.contents?.trim().orEmpty()
+        if (value.isNotBlank()) importFrom(value, false)
+    }
 
     private val prefs by lazy { getPreferences(MODE_PRIVATE) }
     private val activeNodes: List<ImportedNode>
@@ -665,81 +672,46 @@ class MainActivity : Activity() {
         })
 
         val serverModes = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        serverModes.addView(actionButton("АВТО") { switchToAuto(); updateServerPage() },
-            LinearLayout.LayoutParams(0, dp(48), 1f))
-        serverModes.addView(actionButton("QUATTRO") { switchMode(false); updateServerPage() },
+        serverModes.addView(actionButton("ПОДПИСКА") { switchMode(false); updateServerPage() },
             LinearLayout.LayoutParams(0, dp(48), 1f))
         serverModes.addView(actionButton("FREE") { switchMode(true); updateServerPage() },
             LinearLayout.LayoutParams(0, dp(48), 1f))
         serverPage.addView(serverModes)
         serverPage.addView(actionButton("Проверить пинг") { measureSelectedPing() })
         serverPage.addView(actionButton("Найти лучший бесплатный сервер") { refreshFreeServersAndFindBest() })
-        // First-class profiles tab backed by the existing Quattro/YAML/DOCX import logic.
         val profilesPage = page("Профили")
-        val profileActions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        profileActions.addView(actionButton("↻ Обновить") {
-            val url = prefs.getString("subscription_url", "").orEmpty()
-            if (url.isNotBlank()) importFrom(url, false)
-            else Toast.makeText(this@MainActivity, "Сначала добавьте ссылку Quattro", Toast.LENGTH_LONG).show()
-        }, LinearLayout.LayoutParams(0, dp(46), 1f).apply { rightMargin = dp(5) })
-        profileActions.addView(actionButton("＋ Добавить") {
-            val field = EditText(this@MainActivity).apply {
-                hint = "Ссылка Quattro или Clash YAML"
-                setText(prefs.getString("subscription_url", ""))
-                setSingleLine(true)
+        fun importRow(title: String, subtitle: String, symbol: String, action: () -> Unit) {
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                setPadding(dp(12), dp(18), dp(10), dp(18))
+                background = GradientDrawable().apply { setColor(Color.BLACK); cornerRadius = dp(18).toFloat(); setStroke(dp(1), Color.rgb(32, 32, 32)) }
+                isClickable = true; isFocusable = true; setOnClickListener { action() }
             }
-            AlertDialog.Builder(this@MainActivity).setTitle("Добавить профиль").setView(field)
-                .setNegativeButton("Отмена", null)
-                .setPositiveButton("Импортировать") { _, _ ->
-                    val value = field.text.toString().trim()
-                    prefs.edit().putString("subscription_url", value).apply()
-                    importFrom(value, false)
-                }.show()
-        }, LinearLayout.LayoutParams(0, dp(46), 1f).apply { leftMargin = dp(5) })
-        profilesPage.addView(profileActions)
-        val profileCard = card()
-        profileCard.background = GradientDrawable().apply {
-            setColor(Color.rgb(31, 32, 36)); cornerRadius = dp(24).toFloat()
-            setStroke(dp(1), Color.rgb(62, 65, 76))
+            row.addView(TextView(this).apply { text = symbol; textSize = 31f; gravity = android.view.Gravity.CENTER; setTextColor(Color.WHITE); background = GradientDrawable().apply { setColor(Color.rgb(37,37,37)); cornerRadius = dp(18).toFloat() } }, LinearLayout.LayoutParams(dp(76), dp(76)).apply { rightMargin = dp(18) })
+            val labels = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = android.view.Gravity.CENTER_VERTICAL }
+            labels.addView(TextView(this).apply { text = title; textSize = 20f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE) })
+            labels.addView(TextView(this).apply { text = subtitle; textSize = 15f; setTextColor(Color.LTGRAY); setPadding(0, dp(5), 0, 0) })
+            row.addView(labels, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            row.addView(TextView(this).apply { text = "›"; textSize = 34f; setTextColor(Color.WHITE) }, LinearLayout.LayoutParams(dp(28), ViewGroup.LayoutParams.WRAP_CONTENT))
+            profilesPage.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(1) })
+            profilesPage.addView(View(this).apply { setBackgroundColor(Color.rgb(28,28,28)) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)))
         }
-        val profileTitle = TextView(this).apply {
-            text = "🔥 Quattro VPN"; textSize = 18f
-            typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE)
+        importRow("Ссылка на подписку", "Вставить URL подписки", "🔗") {
+            val field = EditText(this@MainActivity).apply { hint = "https://…"; setSingleLine(true); setText(prefs.getString("subscription_url", "")) }
+            AlertDialog.Builder(this@MainActivity).setTitle("Ссылка на подписку").setView(field).setNegativeButton("Отмена", null).setPositiveButton("Добавить") { _, _ ->
+                val value = field.text.toString().trim(); prefs.edit().putString("subscription_url", value).apply(); importFrom(value, false)
+            }.show()
         }
-        val profileUsage = TextView(this).apply { textSize = 13f; setTextColor(Color.LTGRAY); setPadding(0, dp(8), 0, 0) }
-        val profileState = TextView(this).apply { textSize = 12f; setTextColor(Color.rgb(169, 184, 255)); setPadding(0, dp(5), 0, 0) }
-        profileCard.addView(profileTitle); profileCard.addView(profileUsage); profileCard.addView(profileState)
-        profilesPage.addView(profileCard, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-            topMargin = dp(18); bottomMargin = dp(14)
-        })
-        fun refreshProfileCard() {
-            profileUsage.text = "Серверов загружено: ${quattroNodes.size}"
-            profileState.text = if (quattroNodes.isNotEmpty()) "✓ Профиль доступен · ${if (activeFree) "сейчас выбран FREE" else "Quattro"}" else "Профиль ещё не импортирован"
+        importRow("Сканировать QR-код", "Открыть камеру телефона и считать код", "▣") {
+            val options = ScanOptions().apply { setPrompt("Наведите камеру на QR-код"); setBeepEnabled(false); setOrientationLocked(false); setDesiredBarcodeFormats(ScanOptions.QR_CODE) }
+            qrLauncher.launch(options)
         }
-        refreshProfileCard()
-        profilesPage.addView(actionButton("Импортировать Quattro") {
-            val value = prefs.getString("subscription_url", "").orEmpty()
-            if (value.isNotBlank()) importFrom(value, false)
-            else Toast.makeText(this@MainActivity, "Добавьте ссылку через кнопку «Добавить»", Toast.LENGTH_LONG).show()
-        })
-        profilesPage.addView(actionButton("Импортировать Clash YAML") {
-            val value = prefs.getString("subscription_url", "").orEmpty()
-            if (value.isNotBlank()) importFrom(value, false)
-            else Toast.makeText(this@MainActivity, "Добавьте ссылку YAML через кнопку «Добавить»", Toast.LENGTH_LONG).show()
-        })
-        profilesPage.addView(actionButton("Выбрать DOCX Quattro") {
-            val pick = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-                addCategory(Intent.CATEGORY_OPENABLE)
-                type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            }
-            startActivityForResult(pick, docxRequestCode)
-        })
-        profilesPage.addView(actionButton("Импортировать бесплатный резерв") {
-            val value = prefs.getString("free_subscription_url", "").orEmpty()
-            if (value.isNotBlank()) importFrom(value, true)
-            else Toast.makeText(this@MainActivity, "Ссылка бесплатного резерва не задана", Toast.LENGTH_LONG).show()
-        })
-        profilesPage.addView(actionButton("Обновить список профилей") { refreshProfileCard(); updateServerPage() })
+        importRow("Документ", "Выбрать файл из памяти телефона", "▤") {
+            val pick = Intent(Intent.ACTION_OPEN_DOCUMENT).apply { addCategory(Intent.CATEGORY_OPENABLE); type = "*/*"; putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("text/plain", "application/yaml", "text/yaml", "application/x-yaml", "application/octet-stream", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")) }
+            startActivityForResult(pick, documentRequestCode)
+        }
+        profilesPage.addView(actionButton("Обновить подписку") { val value = prefs.getString("subscription_url", "").orEmpty(); if (value.isNotBlank()) importFrom(value, false) else Toast.makeText(this@MainActivity, "Сначала добавьте ссылку на подписку", Toast.LENGTH_LONG).show() })
         val settingsPage = page("Настройки")
         settingsPage.addView(actionButton("Проверить обновления") { checkForAppUpdate() })
         settingsPage.addView(TextView(this).apply {
@@ -839,7 +811,8 @@ class MainActivity : Activity() {
             minHeight = dp(174)
         }
         activeMode = prefs.getString("connection_mode", "auto") ?: "auto"
-        autoMode = activeMode == "auto"
+        autoMode = false
+        activeMode = if (activeFree) "free" else "subscription"
         activeFree = prefs.getBoolean("active_free_mode", false)
         refreshMode()
         updatePowerOrb(false)
@@ -1600,29 +1573,28 @@ class MainActivity : Activity() {
             pendingConfig = null
             connectButton.isEnabled = true
             status.text = "Разрешение VPN не предоставлено"
-        } else if (requestCode == docxRequestCode && resultCode == RESULT_OK) {
+        } else if ((requestCode == documentRequestCode || requestCode == docxRequestCode) && resultCode == RESULT_OK) {
             val uri = data?.data ?: return
-            status.text = "Читаю DOCX локально…"
+            status.text = "Читаю документ…"
             Thread {
                 try {
-                    val yaml = DocxTextExtractor.read(this, uri)
-                    val imported = SubscriptionImporter.parse(yaml)
+                    val mime = contentResolver.getType(uri).orEmpty()
+                    val raw = if (mime.contains("wordprocessingml") || uri.toString().substringBefore('?').endsWith(".docx", true)) {
+                        DocxTextExtractor.read(this, uri)
+                    } else {
+                        contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() } ?: error("Не удалось открыть файл")
+                    }
+                    val imported = SubscriptionImporter.parse(raw)
                     runOnUiThread {
-                        if (imported.isEmpty()) {
-                            status.text = "В DOCX не найдены поддерживаемые VLESS-профили"
-                        } else {
-                            quattroNodes = imported
-                            saveNodes("quattro_nodes", quattroNodes)
-                            activeFree = false
-                            prefs.edit().putBoolean("active_free_mode", false).apply()
-                            refreshMode()
-                            status.text = "Quattro сохранён: ${imported.size} серверов. Импортировать снова не нужно."
-                            measureSelectedPing()
+                        if (imported.isEmpty()) status.text = "В документе не найдены поддерживаемые VPN-профили"
+                        else {
+                            quattroNodes = imported; saveNodes("quattro_nodes", quattroNodes)
+                            activeFree = false; autoMode = false; activeMode = "subscription"
+                            prefs.edit().putBoolean("active_free_mode", false).putString("connection_mode", "subscription").apply()
+                            refreshMode(); status.text = "Добавлено профилей: ${imported.size}"; measureSelectedPing()
                         }
                     }
-                } catch (e: Exception) {
-                    runOnUiThread { status.text = "Ошибка чтения DOCX: ${e.message}" }
-                }
+                } catch (e: Exception) { runOnUiThread { status.text = "Ошибка чтения документа: ${e.message}" } }
             }.start()
         }
     }
