@@ -858,7 +858,7 @@ class MainActivity : Activity() {
                         leftMargin = dp(3); rightMargin = dp(3); topMargin = dp(4); bottomMargin = dp(4)
                     })
                 }
-                if (pair.size == 1) row.addView(View(this), LinearLayout.LayoutParams(0, dp(116), 1f))
+                if (pair.size == 1) row.addView(View(this), LinearLayout.LayoutParams(0, dp(if (compactCards) 88 else 116), 1f))
                 serverRows.addView(row)
             }
         }
@@ -1508,7 +1508,7 @@ class MainActivity : Activity() {
                 ImportedProxyGroup(
                     item.getString("name"),
                     item.optString("type", "select"),
-                    (0 until item.optJSONArray("members").length()).map { item.getJSONArray("members").getString(it) },
+                    (0 until (item.optJSONArray("members")?.length() ?: 0)).map { item.getJSONArray("members").getString(it) },
                     item.optString("testUrl").takeIf { it.isNotBlank() && it != "null" }
                 )
             }
