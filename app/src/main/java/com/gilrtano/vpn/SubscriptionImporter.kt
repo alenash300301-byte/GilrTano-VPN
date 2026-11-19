@@ -11,6 +11,14 @@ import java.net.URLEncoder
 
 data class ImportedNode(val name: String, val uri: String)
 
+data class ImportedProxyGroup(
+    val name: String,
+    val type: String,
+    val members: List<String>,
+    val testUrl: String? = null
+)
+
+
 object SubscriptionImporter {
     private const val MAX_NODES = 600
     private const val MAX_BYTES = 25 * 1024 * 1024
@@ -87,6 +95,23 @@ object SubscriptionImporter {
             "Не удалось загрузить подписку после 3 попыток: ${lastError?.message ?: "соединение закрыто"}",
             lastError
         )
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    fun parseProxyGroups(raw: String): List<ImportedProxyGroup> {
+        val text = raw.trim()
+        if (!text.contains("proxy-groups:")) return emptyList()
+        val yaml = Yaml(SafeConstructor(LoaderOptions()))
+        val root = yaml.load<Any?>(text) as? Map<String, Any?> ?: return emptyList()
+        val groups = root["proxy-groups"] as? List<*> ?: return emptyList()
+        return groups.mapNotNull { item ->
+            val group = item as? Map<String, Any?> ?: return@mapNotNull null
+            val name = group["name"]?.toString()?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val type = group["type"]?.toString()?.lowercase() ?: "select"
+            val members = (group["proxies"] as? List<*>)?.mapNotNull { it?.toString() }?.distinct().orEmpty()
+            if (members.isEmpty()) return@mapNotNull null
+            ImportedProxyGroup(name, type, members, group["url"]?.toString())
+        }.take(200)
     }
 
     fun parse(raw: String): List<ImportedNode> {
