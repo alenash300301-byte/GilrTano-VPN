@@ -52,6 +52,21 @@ jobs:
           ./scripts/build-native-aar.sh
           test -s app/libs/teapod-core-1.7.7.aar
 
+      - name: Build Mihomo Android core
+        run: |
+          git clone https://github.com/pluralplay/FlClashX.git upstream/FlClashX
+          git -C upstream/FlClashX checkout a9bbb66f6aec3e47359819c93976148a1d270e23
+          cd upstream/FlClashX/core
+          gomobile bind \
+            -target=android/arm64 \
+            -androidapi=29 \
+            -javapkg=com.follow.clashx.core \
+            -tags=with_gvisor,cmfa \
+            -ldflags="-w -s -X=github.com/metacubex/mihomo/constant.Version=v1.19.34" \
+            -o "$GITHUB_WORKSPACE/app/libs/mihomo-core.aar" \
+            ./mobile
+          test -s "$GITHUB_WORKSPACE/app/libs/mihomo-core.aar"
+
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
