@@ -6,6 +6,10 @@ on:
     branches: [feature/free-usque-masque]
     paths:
       - '.github/workflows/build-usque-free-core.yml'
+      - 'app/src/main/java/com/gilrtano/vpn/GilrTanoVpnService.kt'
+      - 'app/src/main/java/com/gilrtano/vpn/MainActivity.kt'
+      - 'app/src/main/java/io/github/georgexie2333/usque/NativeEngine.kt'
+      - 'app/build.gradle.kts'
 
 permissions:
   contents: read
