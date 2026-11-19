@@ -1,0 +1,93 @@
+name: Build Usque v0.3.4 Android ARM64 native engine
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [subscription-flclashx-integration]
+    paths:
+      - '.github/workflows/build-usque-native.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: usque-native-arm64-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-usque-arm64:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout GilrTano
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned Usque v0.3.4 source
+        uses: actions/checkout@v4
+        with:
+          repository: GeorgeXie2333/usque-app
+          ref: v0.3.4
+          path: usque-app
+
+      - name: Verify upstream version
+        working-directory: usque-app
+        run: |
+          grep -q '^version = "0.3.4"$' Cargo.toml
+          grep -q '^channel = "1.97.1"$' rust-toolchain.toml
+
+      - name: Set up Rust 1.97.1 for Android ARM64
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.97.1
+          targets: aarch64-linux-android
+
+      - name: Install Android SDK, NDK and CMake
+        run: |
+          echo "ANDROID_HOME=/usr/local/lib/android/sdk" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=/usr/local/lib/android/sdk" >> "$GITHUB_ENV"
+          SDKMANAGER=$(find /usr/local/lib/android/sdk/cmdline-tools -type f -name sdkmanager | head -n1)
+          test -n "$SDKMANAGER"
+          echo "$(dirname "$SDKMANAGER")" >> "$GITHUB_PATH"
+          yes | "$SDKMANAGER" --licenses >/dev/null
+          "$SDKMANAGER" --install "ndk;29.0.14206865" "cmake;3.22.1"
+          echo "ANDROID_NDK_HOME=/usr/local/lib/android/sdk/ndk/29.0.14206865" >> "$GITHUB_ENV"
+
+      - name: Configure Android ARM64 native toolchain
+        run: |
+          NDK="$ANDROID_HOME/ndk/29.0.14206865"
+          TOOLCHAIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64"
+          echo "$TOOLCHAIN/bin" >> "$GITHUB_PATH"
+          echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$TOOLCHAIN/bin/aarch64-linux-android26-clang" >> "$GITHUB_ENV"
+          echo "CC_aarch64_linux_android=$TOOLCHAIN/bin/aarch64-linux-android26-clang" >> "$GITHUB_ENV"
+          echo "CXX_aarch64_linux_android=$TOOLCHAIN/bin/aarch64-linux-android26-clang++" >> "$GITHUB_ENV"
+          echo "AR_aarch64_linux_android=$TOOLCHAIN/bin/llvm-ar" >> "$GITHUB_ENV"
+          echo "LIBCLANG_PATH=$TOOLCHAIN/lib" >> "$GITHUB_ENV"
+          echo "CMAKE_GENERATOR=Ninja" >> "$GITHUB_ENV"
+          echo "CMAKE_MAKE_PROGRAM=$ANDROID_HOME/cmake/3.22.1/bin/ninja" >> "$GITHUB_ENV"
+          echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
+
+      - name: Build upstream Usque Android JNI library
+        working-directory: usque-app
+        run: |
+          cargo build --locked --package usque-android --target aarch64-linux-android --release
+          test -s target/aarch64-linux-android/release/libusque_android.so
+          mkdir -p "$GITHUB_WORKSPACE/usque-output/arm64-v8a"
+          cp target/aarch64-linux-android/release/libusque_android.so "$GITHUB_WORKSPACE/usque-output/arm64-v8a/"
+          cp LICENSE "$GITHUB_WORKSPACE/usque-output/"
+
+      - name: Verify native library architecture and JNI exports
+        run: |
+          SO=usque-output/arm64-v8a/libusque_android.so
+          file "$SO"
+          readelf -h "$SO" | grep -E 'Machine:.*AArch64'
+          readelf -Ws "$SO" | grep -E 'Java_io_github_georgexie2333_usque_NativeEngine|JNI_OnLoad' | head -30 || true
+          sha256sum "$SO" | tee usque-output/SHA256SUMS.txt
+          test -s "$SO"
+
+      - name: Upload Usque ARM64 native build
+        uses: actions/upload-artifact@v4
+        with:
+          name: GilrTano-Usque-v0.3.4-ARM64-Native
+          path: usque-output/
+          if-no-files-found: error
+          retention-days: 14
