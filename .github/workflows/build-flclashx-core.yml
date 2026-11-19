@@ -6,6 +6,7 @@ on:
     branches: [subscription-flclashx-integration]
     paths:
       - '.github/workflows/build-flclashx-core.yml'
+      - 'app/src/main/java/com/gilrtano/vpn/FlClashXEngine.kt'
 
 permissions:
   contents: read
