@@ -817,7 +817,7 @@ class MainActivity : Activity() {
     private fun showServerPicker() {
         val selectedNode = activeNodes.getOrNull(servers.selectedItemPosition)
         if (selectedNode?.yamlConfig != null) {
-            Toast.makeText(this, "Выбор серверов подписки будет подключён через FlClashX отдельно", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Список серверов подписки пока недоступен", Toast.LENGTH_LONG).show()
             return
         }
         val nodes = activeNodes
