@@ -66,6 +66,18 @@ jobs:
             -o "$GITHUB_WORKSPACE/app/libs/mihomo-core.aar" \
             ./mobile
           test -s "$GITHUB_WORKSPACE/app/libs/mihomo-core.aar"
+          # Both gomobile AARs bundle the same global go.Seq runtime classes.
+          # Keep the runtime shipped by TeapodCore and remove the duplicate copy.
+          mkdir -p "$RUNNER_TEMP/mihomo-aar"
+          cd "$RUNNER_TEMP/mihomo-aar"
+          unzip -q "$GITHUB_WORKSPACE/app/libs/mihomo-core.aar"
+          mkdir classes && cd classes
+          unzip -q ../classes.jar
+          rm -rf go
+          jar cf ../classes.jar .
+          cd ..
+          zip -q -r "$GITHUB_WORKSPACE/app/libs/mihomo-core.aar" . -x 'classes/*'
+          zip -q -u "$GITHUB_WORKSPACE/app/libs/mihomo-core.aar" classes.jar
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
