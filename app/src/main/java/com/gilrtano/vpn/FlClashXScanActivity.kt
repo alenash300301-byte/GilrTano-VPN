@@ -48,10 +48,9 @@ class FlClashXScanActivity : Activity() {
         window.navigationBarColor = Color.TRANSPARENT
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         if (Build.VERSION.SDK_INT >= 30) {
+            // Configure edge-to-edge before content, but do not access insetsController
+            // until setContentView has created the DecorView (Android 16 can return null here).
             window.setDecorFitsSystemWindows(false)
-            window.insetsController?.hide(WindowInsets.Type.statusBars())
-            window.insetsController?.systemBarsBehavior =
-                WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         } else {
             @Suppress("DEPRECATION")
             window.decorView.systemUiVisibility = (View.SYSTEM_UI_FLAG_FULLSCREEN
@@ -66,6 +65,16 @@ class FlClashXScanActivity : Activity() {
         overlay = ScanOverlayView(this)
         root.addView(overlay, FrameLayout.LayoutParams(-1, -1))
         setContentView(root)
+        if (Build.VERSION.SDK_INT >= 30) {
+            // DecorView/insets controller is only reliably available after content is installed.
+            window.decorView.post {
+                window.insetsController?.let { controller ->
+                    controller.hide(WindowInsets.Type.statusBars())
+                    controller.systemBarsBehavior =
+                        WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                }
+            }
+        }
         overlay.onClose = { finish() }
         overlay.onGallery = {
             startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
