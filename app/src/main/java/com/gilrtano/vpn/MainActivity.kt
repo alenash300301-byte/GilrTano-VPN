@@ -721,7 +721,8 @@ class MainActivity : Activity() {
                             }
                             selectedGroupIndex = safeIndex
                             val (groupName, groupObject) = groups[selectedGroupIndex]
-                            prefs.edit()                            if (safeIndex != lastRenderedTabsGroupIndex) {
+                            prefs.edit().putString("subscription_current_group", groupName).apply()
+                            if (safeIndex != lastRenderedTabsGroupIndex) {
                                 lastRenderedTabsGroupIndex = safeIndex
                                 tabs.removeAllViews()
                                 groups.forEachIndexed { tabIndex, entry ->
@@ -744,7 +745,6 @@ class MainActivity : Activity() {
                                         ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)
                                     ).apply { rightMargin = dp(8) })
                                 }
-                            }apply { rightMargin = dp(8) })
                             }
 
                             cardsHost.removeAllViews()
