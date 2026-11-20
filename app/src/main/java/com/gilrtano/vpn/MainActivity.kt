@@ -575,25 +575,38 @@ class MainActivity : Activity() {
         }
         val serverPage = page("Прокси")
         val serverState = TextView(this).apply { textSize = 13f; setTextColor(Color.LTGRAY) }
-        serverPage.addView(serverState)
-        val proxySearch = EditText(this).apply {
-            hint = "Поиск серверов"
-            isSingleLine = true
-            setTextColor(Color.WHITE)
-            setHintTextColor(Color.GRAY)
+        var checkingAllProxyServers = false
+        var runAllProxyChecks: () -> Unit = {}
+        val testAllButton = Button(this).apply {
+            text = "⟳"
+            textSize = 25f
+            isAllCaps = false
+            contentDescription = "Проверить пинг всех серверов"
+            setTextColor(Color.rgb(75, 230, 112))
             background = GradientDrawable().apply {
-                setColor(Color.rgb(30, 31, 35)); cornerRadius = dp(24).toFloat()
-                setStroke(dp(1), Color.rgb(65, 67, 76))
+                setColor(Color.rgb(35, 36, 40))
+                cornerRadius = dp(22).toFloat()
+                setStroke(dp(1), Color.rgb(57, 90, 65))
             }
-            setPadding(dp(16), dp(10), dp(16), dp(10))
+            minWidth = dp(46)
+            minHeight = dp(46)
+            setPadding(0, 0, 0, 0)
+            elevation = dp(3).toFloat()
+            setOnClickListener { runAllProxyChecks() }
         }
-        serverPage.addView(proxySearch, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(50)).apply { bottomMargin = dp(12) })
+        val proxyToolbar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            addView(serverState, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            addView(testAllButton, LinearLayout.LayoutParams(dp(46), dp(46)))
+        }
+        serverPage.addView(proxyToolbar)
         val serverRows = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         serverPage.addView(serverRows)
         fun updateServerPage() {
             serverState.text = "Режим: " + modeDisplayName()
             serverRows.removeAllViews()
-            val query = proxySearch.text.toString().trim().lowercase()
+            val query = ""
 
             if (activeMode == "quattro") {
                 val connected = status.text.toString().contains("Подключено")
@@ -844,23 +857,22 @@ class MainActivity : Activity() {
                                             setPadding(0, dp(5), 0, 0)
                                         })
                                         val delay = TextView(this@MainActivity).apply {
-                                            text = "ϟ  Проверить задержку"
-                                            textSize = 10f
-                                            setTextColor(Color.rgb(169, 184, 255))
-                                            setPadding(0, dp(7), 0, 0)
-                                            setOnClickListener {
-                                                text = "Проверяю…"
-                                                Thread({
-                                                    val ping = runCatching {
-                                                        FlClashXEngine.testProxyDelay(nodeName)
-                                                    }.getOrDefault(-1)
-                                                    runOnUiThread {
-                                                        if (ping > 0) prefs.edit().putInt("proxy_delay_" + nodeName, ping).apply()
-                                                        text = if (ping > 0) "$ping ms" else "Timeout"
-                                                        setTextColor(if (ping > 0) Color.rgb(75, 220, 112) else Color.rgb(235, 110, 100))
-                                                    }
-                                                }, "GilrTano-proxy-delay").start()
+                                            val delayKey = "proxy_delay_" + nodeName
+                                            val savedDelay = if (prefs.contains(delayKey)) prefs.getInt(delayKey, -1) else null
+                                            text = when {
+                                                savedDelay == null -> "ϟ  Пинг не проверен"
+                                                savedDelay > 0 -> "ϟ  ${savedDelay} мс"
+                                                else -> "ϟ  Нет ответа"
                                             }
+                                            textSize = 10f
+                                            setTextColor(
+                                                when {
+                                                    savedDelay == null -> Color.rgb(169, 184, 255)
+                                                    savedDelay > 0 -> Color.rgb(75, 220, 112)
+                                                    else -> Color.rgb(235, 110, 100)
+                                                }
+                                            )
+                                            setPadding(0, dp(7), 0, 0)
                                         }
                                         addView(delay)
                                     }
@@ -933,11 +945,87 @@ class MainActivity : Activity() {
                 serverRows.addView(row)
             }
         }
-        proxySearch.addTextChangedListener(object : android.text.TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) { updateServerPage() }
-            override fun afterTextChanged(s: android.text.Editable?) {}
-        })
+
+
+        runAllProxyChecks = check@{
+            if (checkingAllProxyServers) return@check
+            if (activeMode != "quattro" || !status.text.toString().contains("Подключено")) {
+                Toast.makeText(this@MainActivity, "Сначала подключи подписку Quattro", Toast.LENGTH_LONG).show()
+                return@check
+            }
+            checkingAllProxyServers = true
+            testAllButton.isEnabled = false
+            testAllButton.animate().cancel()
+            val scanAnimator = ObjectAnimator.ofFloat(testAllButton, View.ROTATION, 0f, 360f).apply {
+                duration = 850L
+                repeatCount = ValueAnimator.INFINITE
+                interpolator = android.view.animation.LinearInterpolator()
+                start()
+            }
+            serverState.text = "Получаю полный список серверов…"
+            Thread({
+                try {
+                    val data = FlClashXEngine.getProxyGroups()
+                    val proxyMap = data.optJSONObject("proxies") ?: JSONObject()
+                    val groupNames = data.optJSONArray("all") ?: JSONArray()
+                    val allServers = linkedSetOf<String>()
+                    for (i in 0 until groupNames.length()) {
+                        val groupName = groupNames.optString(i)
+                        val group = proxyMap.optJSONObject(groupName) ?: continue
+                        val members = group.optJSONArray("all") ?: continue
+                        for (j in 0 until members.length()) {
+                            val member = members.optJSONObject(j)
+                            val memberName = member?.optString("name").orEmpty().ifBlank {
+                                members.optString(j)
+                            }
+                            if (memberName.isBlank()) continue
+                            val nestedGroup = proxyMap.optJSONObject(memberName)?.optJSONArray("all")
+                            if (nestedGroup == null) allServers.add(memberName)
+                        }
+                    }
+                    check(allServers.isNotEmpty()) { "В подписке не найдено серверов для проверки" }
+                    val pool = Executors.newFixedThreadPool(6)
+                    val completion = ExecutorCompletionService<Pair<String, Int>>(pool)
+                    try {
+                        allServers.forEach { nodeName ->
+                            completion.submit(Callable {
+                                nodeName to runCatching {
+                                    FlClashXEngine.testProxyDelay(nodeName)
+                                }.getOrDefault(-1)
+                            })
+                        }
+                        var completed = 0
+                        while (completed < allServers.size) {
+                            val result = completion.take().get()
+                            completed++
+                            runOnUiThread {
+                                prefs.edit().putInt("proxy_delay_" + result.first, result.second).apply()
+                                serverState.text = "Проверка серверов: $completed из ${allServers.size}"
+                            }
+                        }
+                    } finally {
+                        pool.shutdownNow()
+                    }
+                    runOnUiThread {
+                        val working = allServers.count { prefs.getInt("proxy_delay_" + it, -1) > 0 }
+                        serverState.text = "Проверка завершена · работает $working из ${allServers.size}"
+                        checkingAllProxyServers = false
+                        testAllButton.isEnabled = true
+                        scanAnimator.cancel()
+                        testAllButton.rotation = 0f
+                        updateServerPage()
+                    }
+                } catch (error: Exception) {
+                    runOnUiThread {
+                        serverState.text = "Ошибка проверки: ${error.message ?: "неизвестная ошибка"}"
+                        checkingAllProxyServers = false
+                        testAllButton.isEnabled = true
+                        scanAnimator.cancel()
+                        testAllButton.rotation = 0f
+                    }
+                }
+            }, "GilrTano-all-proxy-delay").start()
+        }
 
         val serverModes = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         serverModes.addView(actionButton("ПОДПИСКА") { switchMode("quattro"); updateServerPage() },
