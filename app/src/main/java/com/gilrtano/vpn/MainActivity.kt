@@ -810,7 +810,7 @@ class MainActivity : Activity() {
                             val shownProxies = filtered.take(visibleProxyCardCount)
                             val proxyRecycler = RecyclerView(this).apply {
                                 layoutManager = GridLayoutManager(this@MainActivity, 2)
-                                isNestedScrollingEnabled = false
+                                isNestedScrollingEnabled = true
                                 setHasFixedSize(true)
                                 overScrollMode = View.OVER_SCROLL_NEVER
                                 itemAnimator = null
@@ -923,7 +923,7 @@ class MainActivity : Activity() {
                             }
                             proxyRecycler.adapter = proxyAdapter
                             cardsHost.addView(proxyRecycler, LinearLayout.LayoutParams(
-                                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+                                ViewGroup.LayoutParams.MATCH_PARENT, dp(520)
                             ))
                             val spacing = dp(4)
                             proxyRecycler.addItemDecoration(object : RecyclerView.ItemDecoration() {
