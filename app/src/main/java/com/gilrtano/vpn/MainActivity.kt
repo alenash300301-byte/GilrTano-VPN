@@ -583,6 +583,8 @@ class MainActivity : Activity() {
         var cachedProxyGroups: JSONObject? = null
         var cachedProxyGroupsAt = 0L
         val proxyGroupsCacheTtlMs = 10_000L
+        // Ignore late responses when the user switches tabs/modes or reopens the proxy page.
+        var proxyPageLoadGeneration = 0
         val serverState = TextView(this).apply { textSize = 13f; setTextColor(Color.LTGRAY) }
         var checkingAllProxyServers = false
         var runAllProxyChecks: () -> Unit = {}
@@ -613,6 +615,7 @@ class MainActivity : Activity() {
         val serverRows = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         serverPage.addView(serverRows)
         fun updateServerPage() {
+            val loadGeneration = ++proxyPageLoadGeneration
             serverState.text = "Режим: " + modeDisplayName()
             serverRows.removeAllViews()
             val query = ""
@@ -638,7 +641,7 @@ class MainActivity : Activity() {
                     val result = if (cached != null) Result.success(cached)
                         else runCatching { FlClashXEngine.getProxyGroups() }
                     runOnUiThread {
-                        if (activeMode != "quattro") return@runOnUiThread
+                        if (loadGeneration != proxyPageLoadGeneration || activeMode != "quattro") return@runOnUiThread
                         val data = result.getOrElse {
                             serverState.text = "Не удалось загрузить серверы"
                             serverRows.removeAllViews()
@@ -813,7 +816,9 @@ class MainActivity : Activity() {
                             val shownProxies = filtered.take(visibleProxyCardCount)
                             val proxyRecycler = RecyclerView(this).apply {
                                 layoutManager = GridLayoutManager(this@MainActivity, 2)
-                                isNestedScrollingEnabled = true
+                                // The proxy page is already inside a ScrollView. Let the
+                                // parent own scrolling instead of nesting two competing scrollers.
+                                isNestedScrollingEnabled = false
                                 setHasFixedSize(true)
                                 overScrollMode = View.OVER_SCROLL_NEVER
                                 itemAnimator = null
@@ -926,7 +931,7 @@ class MainActivity : Activity() {
                             }
                             proxyRecycler.adapter = proxyAdapter
                             cardsHost.addView(proxyRecycler, LinearLayout.LayoutParams(
-                                ViewGroup.LayoutParams.MATCH_PARENT, dp(520)
+                                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
                             ))
                             val spacing = dp(4)
                             proxyRecycler.addItemDecoration(object : RecyclerView.ItemDecoration() {
