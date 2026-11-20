@@ -40,6 +40,7 @@ import android.text.SpannableString
 import android.text.Spanned
 import android.text.style.ForegroundColorSpan
 import android.net.Uri
+import com.google.zxing.integration.android.IntentIntegrator
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.InetSocketAddress
@@ -1096,27 +1097,6 @@ class MainActivity : Activity() {
         serverPage.addView(actionButton("Проверить пинг") { measureSelectedPing() })
         // First-class profiles tab backed by the existing Quattro/YAML/DOCX import logic.
         val profilesPage = page("Профили")
-        val profileActions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        profileActions.addView(actionButton("↻ Обновить") {
-            val url = prefs.getString("subscription_url", "").orEmpty()
-            if (url.isNotBlank()) importFrom(url)
-            else Toast.makeText(this@MainActivity, "Сначала добавьте ссылку подписки", Toast.LENGTH_LONG).show()
-        }, LinearLayout.LayoutParams(0, dp(46), 1f).apply { rightMargin = dp(5) })
-        profileActions.addView(actionButton("＋ Добавить") {
-            val field = EditText(this@MainActivity).apply {
-                hint = "Ссылка подписки или Clash YAML"
-                setText(prefs.getString("subscription_url", ""))
-                setSingleLine(true)
-            }
-            AlertDialog.Builder(this@MainActivity).setTitle("Добавить профиль").setView(field)
-                .setNegativeButton("Отмена", null)
-                .setPositiveButton("Импортировать") { _, _ ->
-                    val value = field.text.toString().trim()
-                    prefs.edit().putString("subscription_url", value).apply()
-                    importFrom(value)
-                }.show()
-        }, LinearLayout.LayoutParams(0, dp(46), 1f).apply { leftMargin = dp(5) })
-        profilesPage.addView(profileActions)
         val profileCard = card()
         profileCard.background = GradientDrawable().apply {
             setColor(Color.rgb(31, 32, 36)); cornerRadius = dp(24).toFloat()
@@ -1130,7 +1110,7 @@ class MainActivity : Activity() {
         val profileState = TextView(this).apply { textSize = 12f; setTextColor(Color.rgb(169, 184, 255)); setPadding(0, dp(5), 0, 0) }
         profileCard.addView(profileTitle); profileCard.addView(profileUsage); profileCard.addView(profileState)
         profilesPage.addView(profileCard, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-            topMargin = dp(18); bottomMargin = dp(14)
+            bottomMargin = dp(18)
         })
         fun refreshProfileCard() {
             val serverCount = quattroNodes.sumOf { node ->
@@ -1144,26 +1124,45 @@ class MainActivity : Activity() {
             profileState.text = if (quattroNodes.isNotEmpty()) "✓ Подписка доступна" else "Профиль ещё не импортирован"
         }
         refreshProfileCard()
-        profilesPage.addView(actionButton("Импортировать подписку") {
-            val value = prefs.getString("subscription_url", "").orEmpty()
-            if (value.isNotBlank()) importFrom(value)
-            else Toast.makeText(this@MainActivity, "Добавьте ссылку через кнопку «Добавить»", Toast.LENGTH_LONG).show()
+        profilesPage.addView(actionButton("▦  Сканировать QR-код") {
+            try {
+                IntentIntegrator(this@MainActivity).apply {
+                    setDesiredBarcodeFormats(IntentIntegrator.QR_CODE)
+                    setPrompt("Наведите камеру на QR-код профиля")
+                    setBeepEnabled(false)
+                    setOrientationLocked(false)
+                }.initiateScan()
+            } catch (error: Exception) {
+                Toast.makeText(this@MainActivity, "Не удалось открыть сканер: ${error.message}", Toast.LENGTH_LONG).show()
+            }
         })
-        profilesPage.addView(actionButton("Импортировать Clash YAML") {
-            val value = prefs.getString("subscription_url", "").orEmpty()
-            if (value.isNotBlank()) importFrom(value)
-            else Toast.makeText(this@MainActivity, "Добавьте ссылку YAML через кнопку «Добавить»", Toast.LENGTH_LONG).show()
+        profilesPage.addView(actionButton("↗  Добавить по ссылке") {
+            val field = EditText(this@MainActivity).apply {
+                hint = "Ссылка подписки или профиль"
+                setSingleLine(true)
+                setText(prefs.getString("subscription_url", ""))
+            }
+            AlertDialog.Builder(this@MainActivity).setTitle("Добавить по ссылке").setView(field)
+                .setNegativeButton("Отмена", null)
+                .setPositiveButton("Добавить") { _, _ ->
+                    val value = field.text.toString().trim()
+                    if (value.isNotBlank()) {
+                        prefs.edit().putString("subscription_url", value).apply()
+                        importFrom(value)
+                    } else Toast.makeText(this@MainActivity, "Вставьте ссылку", Toast.LENGTH_SHORT).show()
+                }.show()
         })
-        profilesPage.addView(actionButton("Выбрать DOCX подписки") {
+        profilesPage.addView(actionButton("▤  Импортировать документ") {
             val pick = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                 addCategory(Intent.CATEGORY_OPENABLE)
-                type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                type = "*/*"
+                putExtra(Intent.EXTRA_MIME_TYPES, arrayOf(
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    "text/plain", "application/yaml", "text/yaml", "application/octet-stream"
+                ))
             }
             startActivityForResult(pick, docxRequestCode)
         })
-        profilesPage.addView(actionButton("Импортировать FREE YAML по ссылке") { showPortalImportDialog() })
-        profilesPage.addView(actionButton("Выбрать файл FREE YAML") { pickPortalYaml() })
-        profilesPage.addView(actionButton("Обновить список профилей") { refreshProfileCard(); updateServerPage() })
         val settingsPage = page("Настройки")
         settingsPage.addView(actionButton("Проверить обновления") { checkForAppUpdate() })
         settingsPage.addView(TextView(this).apply {
