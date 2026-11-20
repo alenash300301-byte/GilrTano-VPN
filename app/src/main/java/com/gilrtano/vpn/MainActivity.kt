@@ -695,7 +695,7 @@ class MainActivity : Activity() {
                         }
                         serverRows.addView(cardsHost)
                         // Build a small first batch so large subscriptions do not block the UI thread.
-                        var visibleProxyCardCount = 40
+                        var visibleProxyCardCount = 24
                         var lastRenderedGroupIndex = -1
 
                         fun renderGroup(index: Int) {
@@ -895,8 +895,8 @@ class MainActivity : Activity() {
                             }
                             if (filtered.size > visibleProxyCardCount) {
                                 val remaining = filtered.size - visibleProxyCardCount
-                                cardsHost.addView(actionButton("Показать ещё 40 серверов · осталось $remaining") {
-                                    visibleProxyCardCount = (visibleProxyCardCount + 40).coerceAtMost(filtered.size)
+                                cardsHost.addView(actionButton("Показать ещё 24 сервера · осталось $remaining") {
+                                    visibleProxyCardCount = (visibleProxyCardCount + 24).coerceAtMost(filtered.size)
                                     renderGroup(selectedGroupIndex)
                                 }, LinearLayout.LayoutParams(
                                     ViewGroup.LayoutParams.MATCH_PARENT, dp(48)
