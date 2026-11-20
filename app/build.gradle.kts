@@ -50,6 +50,7 @@ android {
 dependencies {
     implementation("androidx.core:core-ktx:1.16.0")
     implementation("androidx.annotation:annotation:1.9.1")
+    implementation("androidx.recyclerview:recyclerview:1.4.0")
     implementation("org.yaml:snakeyaml:2.4")
     implementation(files("libs/flclashx-core.aar"))
 }
