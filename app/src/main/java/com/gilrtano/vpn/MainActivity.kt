@@ -41,6 +41,7 @@ import android.text.Spanned
 import android.text.style.ForegroundColorSpan
 import android.net.Uri
 import com.google.zxing.integration.android.IntentIntegrator
+import io.github.georgexie2333.usque.UsqueVpnService
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.InetSocketAddress
