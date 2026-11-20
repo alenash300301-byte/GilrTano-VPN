@@ -694,9 +694,17 @@ class MainActivity : Activity() {
                             setPadding(dp(12), dp(2), dp(12), dp(12))
                         }
                         serverRows.addView(cardsHost)
+                        // Build a small first batch so large subscriptions do not block the UI thread.
+                        var visibleProxyCardCount = 40
+                        var lastRenderedGroupIndex = -1
 
                         fun renderGroup(index: Int) {
-                            selectedGroupIndex = index.coerceIn(0, groups.lastIndex)
+                            val safeIndex = index.coerceIn(0, groups.lastIndex)
+                            if (safeIndex != lastRenderedGroupIndex) {
+                                visibleProxyCardCount = 40
+                                lastRenderedGroupIndex = safeIndex
+                            }
+                            selectedGroupIndex = safeIndex
                             val (groupName, groupObject) = groups[selectedGroupIndex]
                             prefs.edit().putString("subscription_current_group", groupName).apply()
                             tabs.removeAllViews()
@@ -782,7 +790,7 @@ class MainActivity : Activity() {
                                 return
                             }
 
-                            filtered.chunked(2).forEach { pair ->
+                            filtered.take(visibleProxyCardCount).chunked(2).forEach { pair ->
                                 val row = LinearLayout(this).apply {
                                     orientation = LinearLayout.HORIZONTAL
                                 }
@@ -885,7 +893,19 @@ class MainActivity : Activity() {
                                 if (pair.size == 1) row.addView(View(this), LinearLayout.LayoutParams(0, dp(124), 1f))
                                 cardsHost.addView(row)
                             }
-                            serverState.text = "$groupName · ${filtered.size} серверов"
+                            if (filtered.size > visibleProxyCardCount) {
+                                val remaining = filtered.size - visibleProxyCardCount
+                                cardsHost.addView(actionButton("Показать ещё 40 серверов · осталось $remaining") {
+                                    visibleProxyCardCount = (visibleProxyCardCount + 40).coerceAtMost(filtered.size)
+                                    renderGroup(selectedGroupIndex)
+                                }, LinearLayout.LayoutParams(
+                                    ViewGroup.LayoutParams.MATCH_PARENT, dp(48)
+                                ).apply {
+                                    topMargin = dp(6)
+                                    bottomMargin = dp(12)
+                                })
+                            }
+                            serverState.text = "$groupName · показано ${minOf(visibleProxyCardCount, filtered.size)} из ${filtered.size}"
                         }
 
                         renderGroup(selectedGroupIndex)
