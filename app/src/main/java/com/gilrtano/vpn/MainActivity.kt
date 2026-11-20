@@ -34,6 +34,8 @@ import android.widget.FrameLayout
 import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
+import androidx.recyclerview.widget.RecyclerView
+import androidx.recyclerview.widget.GridLayoutManager
 import android.text.SpannableString
 import android.text.Spanned
 import android.text.style.ForegroundColorSpan
@@ -753,10 +755,7 @@ class MainActivity : Activity() {
                             val current = groupObject.optString("now")
                             val fixed = groupObject.optString("fixed")
                             val groupType = groupObject.optString("type")
-                            // Mihomo's computed groups choose their active member automatically;
-                            // Selector groups allow a direct manual choice.
                             val normalizedGroupType = groupType.lowercase().replace("-", "")
-                            // FlClashX v0.5.7 marks only URLTest and Fallback as computed-selected.
                             val computedSelection = normalizedGroupType == "urltest" ||
                                 normalizedGroupType == "fallback"
                             val allowsManualSelection = normalizedGroupType == "select" ||
@@ -808,113 +807,131 @@ class MainActivity : Activity() {
                                 return
                             }
 
-                            filtered.take(visibleProxyCardCount).chunked(2).forEach { pair ->
-                                val row = LinearLayout(this).apply {
-                                    orientation = LinearLayout.HORIZONTAL
-                                }
-                                pair.forEach { (nodeName, nodeType, description) ->
-                                    val inUse = nodeName == current
-                                    val isPreferred = computedSelection && nodeName == fixed
-                                    val card = LinearLayout(this).apply {
+                            val shownProxies = filtered.take(visibleProxyCardCount)
+                            val proxyRecycler = RecyclerView(this).apply {
+                                layoutManager = GridLayoutManager(this@MainActivity, 2)
+                                isNestedScrollingEnabled = false
+                                setHasFixedSize(true)
+                                overScrollMode = View.OVER_SCROLL_NEVER
+                                itemAnimator = null
+                            }
+                            val proxyAdapter = object : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
+                                override fun getItemCount(): Int = shownProxies.size
+
+                                override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
+                                    val card = LinearLayout(this@MainActivity).apply {
                                         orientation = LinearLayout.VERTICAL
                                         gravity = android.view.Gravity.CENTER_VERTICAL
                                         setPadding(dp(12), dp(10), dp(12), dp(9))
                                         background = GradientDrawable().apply {
-                                            setColor(if (inUse) Color.rgb(23, 43, 29) else Color.rgb(35, 36, 40))
+                                            setColor(Color.rgb(35, 36, 40))
                                             cornerRadius = dp(16).toFloat()
-                                            setStroke(dp(1), if (inUse) Color.rgb(57, 220, 94) else Color.rgb(57, 58, 63))
+                                            setStroke(dp(1), Color.rgb(57, 58, 63))
                                         }
-                                        setOnClickListener {
-                                            if (!allowsManualSelection) {
-                                                Toast.makeText(
-                                                    this@MainActivity,
-                                                    "Эта группа управляет выбором автоматически",
-                                                    Toast.LENGTH_SHORT
-                                                ).show()
-                                                return@setOnClickListener
-                                            }
-                                            val requestedNode = if (computedSelection && isPreferred) "" else nodeName
-                                            serverState.text = if (requestedNode.isBlank()) "Сбрасываю предпочтение…" else "Переключаю: $nodeName"
-                                            Thread({
-                                                val changed = runCatching {
-                                                    FlClashXEngine.selectProxy(groupName, requestedNode)
-                                                }
-                                                runOnUiThread {
-                                                    if (changed.isSuccess) {
-                                                        cachedProxyGroups = null
-                                                        cachedProxyGroupsAt = 0L
-                                                    }
-                                                    val message = changed.getOrElse { it.message ?: "Ошибка выбора" }
-                                                    if (message.isBlank()) {
-                                                        serverCardTitle.text = nodeName
-                                                        serverCardSubtitle.text = "ПОДПИСКА · $groupName"
-                                                        serverState.text = "Выбран: $nodeName"
-                                                        updateServerPage()
-                                                    } else {
-                                                        serverState.text = message
-                                                        Toast.makeText(this@MainActivity, message, Toast.LENGTH_LONG).show()
-                                                    }
-                                                }
-                                            }, "GilrTano-select-proxy").start()
-                                        }
-                                        if (isPreferred || inUse) {
-                                            addView(TextView(this@MainActivity).apply {
-                                                text = when {
-                                                    isPreferred && inUse -> "★  ПРЕДПОЧТИТЕЛЬНЫЙ · АКТИВЕН"
-                                                    isPreferred -> "★  ПРЕДПОЧТИТЕЛЬНЫЙ"
-                                                    else -> "●  СЕЙЧАС ИСПОЛЬЗУЕТСЯ"
-                                                }
-                                                textSize = 9f
-                                                typeface = android.graphics.Typeface.DEFAULT_BOLD
-                                                setTextColor(if (isPreferred) Color.rgb(255, 204, 92) else Color.rgb(90, 225, 125))
-                                                maxLines = 1
-                                            })
-                                        }
-                                        addView(TextView(this@MainActivity).apply {
-                                            text = nodeName
-                                            textSize = 14f
-                                            maxLines = 2
-                                            ellipsize = android.text.TextUtils.TruncateAt.END
-                                            typeface = android.graphics.Typeface.DEFAULT_BOLD
-                                            setTextColor(Color.WHITE)
-                                        })
-                                        addView(TextView(this@MainActivity).apply {
-                                            text = description.ifBlank { nodeType }
-                                            textSize = 11f
-                                            maxLines = 1
-                                            ellipsize = android.text.TextUtils.TruncateAt.END
-                                            setTextColor(Color.rgb(173, 176, 185))
-                                            setPadding(0, dp(5), 0, 0)
-                                        })
-                                        val delay = TextView(this@MainActivity).apply {
-                                            val delayKey = "proxy_delay_" + nodeName
-                                            val savedDelay = if (prefs.contains(delayKey)) prefs.getInt(delayKey, -1) else null
-                                            text = when {
-                                                savedDelay == null -> "ϟ  Пинг не проверен"
-                                                savedDelay > 0 -> "ϟ  ${savedDelay} мс"
-                                                else -> "ϟ  Нет ответа"
-                                            }
-                                            textSize = 10f
-                                            setTextColor(
-                                                when {
-                                                    savedDelay == null -> Color.rgb(169, 184, 255)
-                                                    savedDelay > 0 -> Color.rgb(75, 220, 112)
-                                                    else -> Color.rgb(235, 110, 100)
-                                                }
-                                            )
-                                            setPadding(0, dp(7), 0, 0)
-                                        }
-                                        addView(delay)
                                     }
-                                    row.addView(card, LinearLayout.LayoutParams(0, dp(124), 1f).apply {
-                                        rightMargin = dp(4)
-                                        leftMargin = dp(4)
-                                        bottomMargin = dp(8)
-                                    })
+                                    return object : RecyclerView.ViewHolder(card) {}
                                 }
-                                if (pair.size == 1) row.addView(View(this), LinearLayout.LayoutParams(0, dp(124), 1f))
-                                cardsHost.addView(row)
+
+                                override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
+                                    val (nodeName, nodeType, description) = shownProxies[position]
+                                    val inUse = nodeName == current
+                                    val isPreferred = computedSelection && nodeName == fixed
+                                    val card = holder.itemView as LinearLayout
+                                    card.removeAllViews()
+                                    card.background = GradientDrawable().apply {
+                                        setColor(if (inUse) Color.rgb(23, 43, 29) else Color.rgb(35, 36, 40))
+                                        cornerRadius = dp(16).toFloat()
+                                        setStroke(dp(1), if (inUse) Color.rgb(57, 220, 94) else Color.rgb(57, 58, 63))
+                                    }
+                                    if (isPreferred || inUse) {
+                                        card.addView(TextView(this@MainActivity).apply {
+                                            text = when {
+                                                isPreferred && inUse -> "★  ПРЕДПОЧТИТЕЛЬНЫЙ · АКТИВЕН"
+                                                isPreferred -> "★  ПРЕДПОЧТИТЕЛЬНЫЙ"
+                                                else -> "●  СЕЙЧАС ИСПОЛЬЗУЕТСЯ"
+                                            }
+                                            textSize = 9f
+                                            typeface = android.graphics.Typeface.DEFAULT_BOLD
+                                            setTextColor(if (isPreferred) Color.rgb(255, 204, 92) else Color.rgb(90, 225, 125))
+                                            maxLines = 1
+                                        })
+                                    }
+                                    card.addView(TextView(this@MainActivity).apply {
+                                        text = nodeName
+                                        textSize = 14f
+                                        maxLines = 2
+                                        ellipsize = android.text.TextUtils.TruncateAt.END
+                                        typeface = android.graphics.Typeface.DEFAULT_BOLD
+                                        setTextColor(Color.WHITE)
+                                    })
+                                    card.addView(TextView(this@MainActivity).apply {
+                                        text = description.ifBlank { nodeType }
+                                        textSize = 11f
+                                        maxLines = 1
+                                        ellipsize = android.text.TextUtils.TruncateAt.END
+                                        setTextColor(Color.rgb(173, 176, 185))
+                                        setPadding(0, dp(5), 0, 0)
+                                    })
+                                    val delayKey = "proxy_delay_" + nodeName
+                                    val savedDelay = if (prefs.contains(delayKey)) prefs.getInt(delayKey, -1) else null
+                                    card.addView(TextView(this@MainActivity).apply {
+                                        text = when {
+                                            savedDelay == null -> "ϟ  Пинг не проверен"
+                                            savedDelay > 0 -> "ϟ  ${savedDelay} мс"
+                                            else -> "ϟ  Нет ответа"
+                                        }
+                                        textSize = 10f
+                                        setTextColor(when {
+                                            savedDelay == null -> Color.rgb(169, 184, 255)
+                                            savedDelay > 0 -> Color.rgb(75, 220, 112)
+                                            else -> Color.rgb(235, 110, 100)
+                                        })
+                                        setPadding(0, dp(7), 0, 0)
+                                    })
+                                    card.setOnClickListener {
+                                        if (!allowsManualSelection) {
+                                            Toast.makeText(this@MainActivity,
+                                                "Эта группа управляет выбором автоматически",
+                                                Toast.LENGTH_SHORT).show()
+                                            return@setOnClickListener
+                                        }
+                                        val requestedNode = if (computedSelection && isPreferred) "" else nodeName
+                                        serverState.text = if (requestedNode.isBlank()) "Сбрасываю предпочтение…" else "Переключаю: $nodeName"
+                                        Thread({
+                                            val changed = runCatching {
+                                                FlClashXEngine.selectProxy(groupName, requestedNode)
+                                            }
+                                            runOnUiThread {
+                                                if (changed.isSuccess) {
+                                                    cachedProxyGroups = null
+                                                    cachedProxyGroupsAt = 0L
+                                                }
+                                                val message = changed.getOrElse { it.message ?: "Ошибка выбора" }
+                                                if (message.isBlank()) {
+                                                    serverCardTitle.text = nodeName
+                                                    serverCardSubtitle.text = "ПОДПИСКА · $groupName"
+                                                    serverState.text = "Выбран: $nodeName"
+                                                    updateServerPage()
+                                                } else {
+                                                    serverState.text = message
+                                                    Toast.makeText(this@MainActivity, message, Toast.LENGTH_LONG).show()
+                                                }
+                                            }
+                                        }, "GilrTano-select-proxy").start()
+                                    }
+                                }
                             }
+                            proxyRecycler.adapter = proxyAdapter
+                            cardsHost.addView(proxyRecycler, LinearLayout.LayoutParams(
+                                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+                            ))
+                            val spacing = dp(4)
+                            proxyRecycler.addItemDecoration(object : RecyclerView.ItemDecoration() {
+                                override fun getItemOffsets(outRect: android.graphics.Rect, view: View,
+                                    parent: RecyclerView, state: RecyclerView.State) {
+                                    outRect.set(spacing, 0, spacing, dp(8))
+                                }
+                            })
                             if (filtered.size > visibleProxyCardCount) {
                                 val remaining = filtered.size - visibleProxyCardCount
                                 cardsHost.addView(actionButton("Показать ещё $proxyCardBatchSize серверов · осталось $remaining") {
