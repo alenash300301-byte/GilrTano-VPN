@@ -51,6 +51,8 @@ dependencies {
     implementation("androidx.core:core-ktx:1.16.0")
     implementation("androidx.annotation:annotation:1.9.1")
     implementation("androidx.recyclerview:recyclerview:1.4.0")
+    implementation("com.journeyapps:zxing-android-embedded:4.3.0")
+    implementation("com.google.zxing:core:3.5.3")
     implementation("org.yaml:snakeyaml:2.4")
     implementation(files("libs/flclashx-core.aar"))
 }
