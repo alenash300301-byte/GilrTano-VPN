@@ -155,6 +155,9 @@ private class ScanOverlayView(context: android.content.Context) : View(context) 
     var onClose: (() -> Unit)? = null
     var onGallery: (() -> Unit)? = null
     var onTorch: (() -> Unit)? = null
+    // Initialize density before any Paint uses dp(): Kotlin initializes properties in declaration order.
+    private val density = resources.displayMetrics.density.coerceAtLeast(1f)
+    private fun dp(v: Float) = v * density
     private val frame = Paint(Paint.ANTI_ALIAS_FLAG)
     private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; textSize = 15f; textAlign = Paint.Align.CENTER; typeface = Typeface.create("sans-serif", Typeface.NORMAL) }
     private val muted = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFD0D0D0.toInt(); textSize = 14f; textAlign = Paint.Align.CENTER }
@@ -162,8 +165,6 @@ private class ScanOverlayView(context: android.content.Context) : View(context) 
     private val border = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = dp(2.5f) }
     private val glow = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = dp(7f); maskFilter = BlurMaskFilter(dp(8f), BlurMaskFilter.Blur.NORMAL) }
     private val button = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xCC17191D.toInt() }
-    private val density = resources.displayMetrics.density
-    private fun dp(v: Float) = v * density
     private var phase = 0f
     private var torchOn = false
     private val runner = object : Runnable {
