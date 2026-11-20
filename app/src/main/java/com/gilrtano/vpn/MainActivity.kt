@@ -1095,8 +1095,7 @@ class MainActivity : Activity() {
         serverModes.addView(actionButton("FREE") { switchMode("portal"); updateServerPage() },
             LinearLayout.LayoutParams(0, dp(48), 1f))
         serverPage.addView(serverModes)
-        // Server-group selection for subscription profiles will be wired to FlClashX, not Meow.
-        serverPage.addView(actionButton("Проверить пинг") { measureSelectedPing() })
+        // All subscription proxy latency checks are launched from the single toolbar control above.
         // First-class profiles tab backed by the existing Quattro/YAML/DOCX import logic.
         val profilesPage = page("Профили")
         val profileCard = card()
