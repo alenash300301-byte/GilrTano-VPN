@@ -85,6 +85,7 @@ class MainActivity : Activity() {
     private val requestCode = 4101
     private val docxRequestCode = 4102
     private val portalRequestCode = 4103
+    private val scanUiRequestCode = 4104
 
     private val prefs by lazy { getPreferences(MODE_PRIVATE) }
     private val activeNodes: List<ImportedNode>
@@ -1127,12 +1128,7 @@ class MainActivity : Activity() {
         refreshProfileCard()
         profilesPage.addView(actionButton("▦  Сканировать QR-код") {
             try {
-                IntentIntegrator(this@MainActivity).apply {
-                    setDesiredBarcodeFormats(IntentIntegrator.QR_CODE)
-                    setPrompt("Наведите камеру на QR-код профиля")
-                    setBeepEnabled(false)
-                    setOrientationLocked(false)
-                }.initiateScan()
+                startActivityForResult(Intent(this@MainActivity, FlClashXScanActivity::class.java), scanUiRequestCode)
             } catch (error: Exception) {
                 Toast.makeText(this@MainActivity, "Не удалось открыть сканер: ${error.message}", Toast.LENGTH_LONG).show()
             }
@@ -2072,6 +2068,33 @@ class MainActivity : Activity() {
     @Deprecated("Deprecated by Android API")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == scanUiRequestCode) {
+            val contents = if (resultCode == RESULT_OK) data?.getStringExtra(FlClashXScanActivity.EXTRA_RESULT)?.trim() else null
+            if (contents.isNullOrBlank()) {
+                Toast.makeText(this, "Сканирование отменено", Toast.LENGTH_SHORT).show()
+                return
+            }
+            if (contents.startsWith("https://", true) || contents.startsWith("http://", true)) {
+                prefs.edit().putString("subscription_url", contents).apply()
+                importFrom(contents)
+            } else {
+                val imported = runCatching { SubscriptionImporter.parse(contents) }.getOrElse {
+                    Toast.makeText(this, "QR-код не содержит поддерживаемый профиль: ${it.message}", Toast.LENGTH_LONG).show()
+                    return
+                }
+                if (imported.isEmpty()) {
+                    Toast.makeText(this, "В QR-коде не найден профиль", Toast.LENGTH_LONG).show()
+                } else {
+                    quattroNodes = imported
+                    saveNodes("quattro_nodes", quattroNodes)
+                    prefs.edit().putBoolean("active_free_mode", false).apply()
+                    refreshMode()
+                    status.text = "Профиль добавлен из QR-кода"
+                    Toast.makeText(this, "Импортировано серверов: ${imported.size}", Toast.LENGTH_LONG).show()
+                }
+            }
+            return
+        }
         val scan = IntentIntegrator.parseActivityResult(requestCode, resultCode, data)
         if (scan != null) {
             val contents = scan.contents?.trim()
