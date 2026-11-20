@@ -574,6 +574,10 @@ class MainActivity : Activity() {
             setOnClickListener { action() }
         }
         val serverPage = page("Прокси")
+        // Reuse the live Mihomo proxy snapshot briefly when the user returns to this page.
+        var cachedProxyGroups: JSONObject? = null
+        var cachedProxyGroupsAt = 0L
+        val proxyGroupsCacheTtlMs = 10_000L
         val serverState = TextView(this).apply { textSize = 13f; setTextColor(Color.LTGRAY) }
         var checkingAllProxyServers = false
         var runAllProxyChecks: () -> Unit = {}
@@ -621,9 +625,13 @@ class MainActivity : Activity() {
                     return
                 }
 
-                serverState.text = "Загружаю группы подписки…"
+                serverState.text = "Открываю список серверов…"
                 Thread({
-                    val result = runCatching { FlClashXEngine.getProxyGroups() }
+                    val cached = cachedProxyGroups?.takeIf {
+                        android.os.SystemClock.elapsedRealtime() - cachedProxyGroupsAt < proxyGroupsCacheTtlMs
+                    }
+                    val result = if (cached != null) Result.success(cached)
+                        else runCatching { FlClashXEngine.getProxyGroups() }
                     runOnUiThread {
                         if (activeMode != "quattro") return@runOnUiThread
                         val data = result.getOrElse {
@@ -635,6 +643,10 @@ class MainActivity : Activity() {
                             })
                             serverRows.addView(actionButton("Повторить") { updateServerPage() })
                             return@runOnUiThread
+                        }
+                        if (cached == null) {
+                            cachedProxyGroups = data
+                            cachedProxyGroupsAt = android.os.SystemClock.elapsedRealtime()
                         }
 
                         val proxyMap = data.optJSONObject("proxies") ?: JSONObject()
@@ -701,7 +713,7 @@ class MainActivity : Activity() {
                         fun renderGroup(index: Int) {
                             val safeIndex = index.coerceIn(0, groups.lastIndex)
                             if (safeIndex != lastRenderedGroupIndex) {
-                                visibleProxyCardCount = 40
+                                visibleProxyCardCount = 24
                                 lastRenderedGroupIndex = safeIndex
                             }
                             selectedGroupIndex = safeIndex
@@ -822,6 +834,10 @@ class MainActivity : Activity() {
                                                     FlClashXEngine.selectProxy(groupName, requestedNode)
                                                 }
                                                 runOnUiThread {
+                                                    if (changed.isSuccess) {
+                                                        cachedProxyGroups = null
+                                                        cachedProxyGroupsAt = 0L
+                                                    }
                                                     val message = changed.getOrElse { it.message ?: "Ошибка выбора" }
                                                     if (message.isBlank()) {
                                                         serverCardTitle.text = nodeName
