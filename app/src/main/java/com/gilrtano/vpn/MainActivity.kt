@@ -913,7 +913,7 @@ class MainActivity : Activity() {
                             }
                             if (filtered.size > visibleProxyCardCount) {
                                 val remaining = filtered.size - visibleProxyCardCount
-                                cardsHost.addView(actionButton("Показать ещё 24 сервера · осталось $remaining") {
+                                cardsHost.addView(actionButton("Показать ещё $proxyCardBatchSize серверов · осталось $remaining") {
                                     visibleProxyCardCount = (visibleProxyCardCount + proxyCardBatchSize).coerceAtMost(filtered.size)
                                     renderGroup(selectedGroupIndex)
                                 }, LinearLayout.LayoutParams(
