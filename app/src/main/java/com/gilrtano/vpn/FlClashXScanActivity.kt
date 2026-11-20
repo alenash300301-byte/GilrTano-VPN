@@ -38,6 +38,8 @@ class FlClashXScanActivity : Activity() {
     private lateinit var camera: DecoratedBarcodeView
     private lateinit var overlay: ScanOverlayView
     private var delivered = false
+    private var torchEnabled = false
+    private val cameraPermissionRequest = 7310
     private val galleryRequest = 7311
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -71,9 +73,8 @@ class FlClashXScanActivity : Activity() {
             }, galleryRequest)
         }
         overlay.onTorch = {
-            runCatching {
-                if (camera.barcodeView.isTorchOn) camera.setTorchOff() else camera.setTorchOn()
-            }
+            torchEnabled = !torchEnabled
+            runCatching { if (torchEnabled) camera.setTorchOn() else camera.setTorchOff() }
         }
         camera.decodeContinuous(object : BarcodeCallback {
             override fun barcodeResult(result: BarcodeResult?) {
@@ -87,7 +88,27 @@ class FlClashXScanActivity : Activity() {
         })
     }
 
-    override fun onResume() { super.onResume(); if (::camera.isInitialized && !delivered) camera.resume() }
+    override fun onResume() {
+        super.onResume()
+        if (!::camera.isInitialized || delivered) return
+        if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+            camera.resume()
+        } else {
+            requestPermissions(arrayOf(Manifest.permission.CAMERA), cameraPermissionRequest)
+        }
+    }
+
+    @Deprecated("Deprecated by Android API")
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == cameraPermissionRequest) {
+            if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) camera.resume()
+            else {
+                Toast.makeText(this, "Для сканирования нужен доступ к камере", Toast.LENGTH_LONG).show()
+                finish()
+            }
+        }
+    }
     override fun onPause() { if (::camera.isInitialized) camera.pause(); super.onPause() }
 
     @Deprecated("Deprecated by Android API")
