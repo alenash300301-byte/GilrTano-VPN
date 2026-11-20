@@ -706,14 +706,16 @@ class MainActivity : Activity() {
                             setPadding(dp(12), dp(2), dp(12), dp(12))
                         }
                         serverRows.addView(cardsHost)
-                        // Build a small first batch so large subscriptions do not block the UI thread.
-                        var visibleProxyCardCount = 24
+                        // Keep the first render deliberately small; larger groups are revealed in short batches.
+                        // This limits synchronous View creation on the UI thread on slower devices.
+                        val proxyCardBatchSize = 8
+                        var visibleProxyCardCount = proxyCardBatchSize
                         var lastRenderedGroupIndex = -1
 
                         fun renderGroup(index: Int) {
                             val safeIndex = index.coerceIn(0, groups.lastIndex)
                             if (safeIndex != lastRenderedGroupIndex) {
-                                visibleProxyCardCount = 24
+                                visibleProxyCardCount = proxyCardBatchSize
                                 lastRenderedGroupIndex = safeIndex
                             }
                             selectedGroupIndex = safeIndex
@@ -912,7 +914,7 @@ class MainActivity : Activity() {
                             if (filtered.size > visibleProxyCardCount) {
                                 val remaining = filtered.size - visibleProxyCardCount
                                 cardsHost.addView(actionButton("Показать ещё 24 сервера · осталось $remaining") {
-                                    visibleProxyCardCount = (visibleProxyCardCount + 24).coerceAtMost(filtered.size)
+                                    visibleProxyCardCount = (visibleProxyCardCount + proxyCardBatchSize).coerceAtMost(filtered.size)
                                     renderGroup(selectedGroupIndex)
                                 }, LinearLayout.LayoutParams(
                                     ViewGroup.LayoutParams.MATCH_PARENT, dp(48)
