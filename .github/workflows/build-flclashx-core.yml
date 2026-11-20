@@ -151,6 +151,73 @@ jobs:
           unzip -p "$AAR" classes.jar > /tmp/flclashx-classes.jar
           jar tf /tmp/flclashx-classes.jar | grep -E 'com/follow/clashx/core/mobile/Mobile.class'
 
+      
+      - name: Checkout pinned Usque v0.3.4
+        uses: actions/checkout@v4
+        with:
+          repository: GeorgeXie2333/usque-app
+          ref: v0.3.4
+          path: usque-app
+
+      - name: Setup Rust 1.97.1 for Android ARM64
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.97.1
+          targets: aarch64-linux-android
+
+      - name: Configure Android NDK for Usque
+        run: |
+          NDK="$ANDROID_HOME/ndk/29.0.14206865"
+          if [ ! -d "$NDK" ]; then
+            SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -n1)
+            yes | "$SDKMANAGER" --licenses >/dev/null
+            "$SDKMANAGER" --install "ndk;29.0.14206865"
+          fi
+          TOOLCHAIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64"
+          echo "$TOOLCHAIN/bin" >> "$GITHUB_PATH"
+          echo "ANDROID_NDK_HOME=$NDK" >> "$GITHUB_ENV"
+          echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$TOOLCHAIN/bin/aarch64-linux-android29-clang" >> "$GITHUB_ENV"
+          echo "CC_aarch64_linux_android=$TOOLCHAIN/bin/aarch64-linux-android29-clang" >> "$GITHUB_ENV"
+          echo "AR_aarch64_linux_android=$TOOLCHAIN/bin/llvm-ar" >> "$GITHUB_ENV"
+          echo "LIBCLANG_PATH=$TOOLCHAIN/lib" >> "$GITHUB_ENV"
+          echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
+
+      - name: Build Usque v0.3.4 Android ARM64 native engine
+        working-directory: usque-app
+        run: |
+          cargo build --locked --package usque-android --target aarch64-linux-android --release
+          SO="target/aarch64-linux-android/release/libusque_android.so"
+          test -s "$SO"
+          readelf -h "$SO" | grep -E 'Machine:.*AArch64'
+          mkdir -p "$GITHUB_WORKSPACE/app/src/main/jniLibs/arm64-v8a"
+          cp "$SO" "$GITHUB_WORKSPACE/app/src/main/jniLibs/arm64-v8a/"
+
+      - name: Stage complete Usque Android runtime v0.3.4
+        run: |
+          SRC=usque-app/apps/usque_gui/android/app/src/main/kotlin/io/github/georgexie2333/usque
+          DST=app/src/main/java/io/github/georgexie2333/usque
+          test -d "$SRC"
+          mkdir -p "$DST"
+          for f in "$SRC"/*.kt; do
+            n=$(basename "$f")
+            case "$n" in
+              MainActivity.kt|AndroidEngineMethodHandler.kt|AndroidUiPluginRegistration.kt|AndroidRecentsVisibility.kt|AndroidShortcutController.kt|UsqueApplication.kt|TrackedPreferencesContext.kt|TrackedPreferencesMessenger.kt|TrackedPreferencesPlugin.kt|VpnControlClient.kt|VpnPermissionRequestQueue.kt|OnboardingPermissionCoordinator.kt|ProtonVerificationWindow.kt|TvInputHost.kt) continue ;;
+            esac
+            cp "$f" "$DST/$n"
+          done
+          cp "$SRC/NativeEngine.kt" "$DST/NativeEngine.kt"
+          mkdir -p app/src/main/res/values
+          test -s app/src/main/res/values/usque_strings.xml
+          for d in usque-app/apps/usque_gui/android/app/src/main/res/drawable-*; do
+            [ -d "$d" ] || continue
+            mkdir -p "app/src/main/res/$(basename "$d")"
+            cp "$d"/* app/src/main/res/$(basename "$d")/ 2>/dev/null || true
+          done
+          sed -i 's/R.drawable.ic_stat_usque/R.drawable.gilrtano_icon/g' "$DST/VpnNotificationController.kt"
+          sed -i 's/R\.string\./com.gilrtano.vpn.R.string./g; s/R\.drawable\./com.gilrtano.vpn.R.drawable./g' "$DST"/*.kt
+          test -s "$DST/UsqueVpnService.kt"
+          test -s "$DST/SecureIdentityStore.kt"
+
       - name: Compile GilrTano ARM64 debug APK against FlClashX
         run: |
           gradle :app:assembleDebug --no-daemon --stacktrace
