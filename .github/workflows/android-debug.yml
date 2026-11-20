@@ -1,13 +1,7 @@
 name: Android debug APK
 
 on:
-  push:
-    branches:
-      - subscription-flclashx-integration
-    paths:
-      - 'app/**'
-      - '*.gradle.kts'
-      - '.github/workflows/android-debug.yml'
+  # Manual fallback only. The canonical build also stages the native FlClashX and Usque engines.
   workflow_dispatch:
 
 permissions:
