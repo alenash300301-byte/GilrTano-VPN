@@ -711,6 +711,7 @@ class MainActivity : Activity() {
                         val proxyCardBatchSize = 8
                         var visibleProxyCardCount = proxyCardBatchSize
                         var lastRenderedGroupIndex = -1
+                        var lastRenderedTabsGroupIndex = -1
 
                         fun renderGroup(index: Int) {
                             val safeIndex = index.coerceIn(0, groups.lastIndex)
@@ -720,27 +721,30 @@ class MainActivity : Activity() {
                             }
                             selectedGroupIndex = safeIndex
                             val (groupName, groupObject) = groups[selectedGroupIndex]
-                            prefs.edit().putString("subscription_current_group", groupName).apply()
-                            tabs.removeAllViews()
-                            groups.forEachIndexed { tabIndex, entry ->
-                                val active = tabIndex == selectedGroupIndex
-                                val chip = TextView(this).apply {
-                                    text = entry.first
-                                    textSize = 13f
-                                    maxLines = 1
-                                    gravity = android.view.Gravity.CENTER
-                                    setPadding(dp(16), dp(9), dp(16), dp(9))
-                                    setTextColor(if (active) Color.WHITE else Color.LTGRAY)
-                                    background = GradientDrawable().apply {
-                                        setColor(if (active) Color.rgb(48, 65, 52) else Color.rgb(35, 36, 40))
-                                        cornerRadius = dp(30).toFloat()
-                                        if (active) setStroke(dp(1), Color.rgb(54, 225, 92))
+                            prefs.edit()                            if (safeIndex != lastRenderedTabsGroupIndex) {
+                                lastRenderedTabsGroupIndex = safeIndex
+                                tabs.removeAllViews()
+                                groups.forEachIndexed { tabIndex, entry ->
+                                    val active = tabIndex == selectedGroupIndex
+                                    val chip = TextView(this).apply {
+                                        text = entry.first
+                                        textSize = 13f
+                                        maxLines = 1
+                                        gravity = android.view.Gravity.CENTER
+                                        setPadding(dp(16), dp(9), dp(16), dp(9))
+                                        setTextColor(if (active) Color.WHITE else Color.LTGRAY)
+                                        background = GradientDrawable().apply {
+                                            setColor(if (active) Color.rgb(48, 65, 52) else Color.rgb(35, 36, 40))
+                                            cornerRadius = dp(30).toFloat()
+                                            if (active) setStroke(dp(1), Color.rgb(54, 225, 92))
+                                        }
+                                        setOnClickListener { renderGroup(tabIndex) }
                                     }
-                                    setOnClickListener { renderGroup(tabIndex) }
+                                    tabs.addView(chip, LinearLayout.LayoutParams(
+                                        ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)
+                                    ).apply { rightMargin = dp(8) })
                                 }
-                                tabs.addView(chip, LinearLayout.LayoutParams(
-                                    ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)
-                                ).apply { rightMargin = dp(8) })
+                            }apply { rightMargin = dp(8) })
                             }
 
                             cardsHost.removeAllViews()
