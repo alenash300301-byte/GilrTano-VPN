@@ -163,7 +163,13 @@ private class ScanOverlayView(context: android.content.Context) : View(context) 
     private val muted = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFD0D0D0.toInt(); textSize = 14f; textAlign = Paint.Align.CENTER }
     private val beam = Paint(Paint.ANTI_ALIAS_FLAG)
     private val border = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = dp(2.5f) }
-    private val glow = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = dp(7f); maskFilter = BlurMaskFilter(dp(8f), BlurMaskFilter.Blur.NORMAL) }
+    // Avoid BlurMaskFilter: it throws IllegalArgumentException on some Android 16 GPU/driver combinations.
+    // A translucent wide stroke provides a compatible glow without native mask-filter allocation.
+    private val glow = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = dp(10f)
+        alpha = 75
+    }
     private val button = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xCC17191D.toInt() }
     private var phase = 0f
     private var torchOn = false
