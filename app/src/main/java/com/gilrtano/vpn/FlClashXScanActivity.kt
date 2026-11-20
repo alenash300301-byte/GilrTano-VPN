@@ -186,7 +186,7 @@ private class ScanOverlayView(context: android.content.Context) : View(context) 
         val trail = RectF(rect.left+dp(2f), max(rect.top,y-rect.height()*.42f), rect.right-dp(2f), y)
         if (trail.height()>0) {
             beam.shader=LinearGradient(0f,trail.top,0f,trail.bottom, intArrayOf(Color.TRANSPARENT,0x3324F5B2,0x5524F5B2),null,Shader.TileMode.CLAMP)
-            canvas.save(); canvas.clipRoundRect(rect,radius,radius); canvas.drawRect(trail,beam)
+            canvas.save(); canvas.clipPath(Path().apply { addRoundRect(rect,radius,radius,Path.Direction.CW) }); canvas.drawRect(trail,beam)
             val grid=Paint(Paint.ANTI_ALIAS_FLAG).apply { color=0x3324F5B2; strokeWidth=dp(1f) }
             var gx=rect.left
             while(gx<rect.right){canvas.drawLine(gx,trail.top,gx,trail.bottom,grid);gx+=side/18f}
