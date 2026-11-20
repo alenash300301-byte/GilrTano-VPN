@@ -2071,6 +2071,34 @@ class MainActivity : Activity() {
     @Deprecated("Deprecated by Android API")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        val scan = IntentIntegrator.parseActivityResult(requestCode, resultCode, data)
+        if (scan != null) {
+            val contents = scan.contents?.trim()
+            if (contents.isNullOrBlank()) {
+                Toast.makeText(this, "Сканирование отменено", Toast.LENGTH_SHORT).show()
+                return
+            }
+            if (contents.startsWith("https://", true) || contents.startsWith("http://", true)) {
+                prefs.edit().putString("subscription_url", contents).apply()
+                importFrom(contents)
+            } else {
+                val imported = runCatching { SubscriptionImporter.parse(contents) }.getOrElse {
+                    Toast.makeText(this, "QR-код не содержит поддерживаемый профиль: ${it.message}", Toast.LENGTH_LONG).show()
+                    return
+                }
+                if (imported.isEmpty()) {
+                    Toast.makeText(this, "В QR-коде не найден профиль", Toast.LENGTH_LONG).show()
+                } else {
+                    quattroNodes = imported
+                    saveNodes("quattro_nodes", quattroNodes)
+                    prefs.edit().putBoolean("active_free_mode", false).apply()
+                    refreshMode()
+                    status.text = "Профиль добавлен из QR-кода"
+                    Toast.makeText(this, "Импортировано серверов: ${imported.size}", Toast.LENGTH_LONG).show()
+                }
+            }
+            return
+        }
         if (requestCode == this.requestCode && resultCode == RESULT_OK) {
             if (pendingUsqueFree) {
                 pendingUsqueFree = false
@@ -2099,32 +2127,37 @@ class MainActivity : Activity() {
             }.start()
         } else if (requestCode == docxRequestCode && resultCode == RESULT_OK) {
             val uri = data?.data ?: return
-            status.text = "Читаю DOCX локально…"
+            status.text = "Импортирую документ…"
             Thread {
                 try {
-                    val yaml = DocxTextExtractor.read(this, uri)
-                    val imported = SubscriptionImporter.parse(yaml)
+                    val mime = contentResolver.getType(uri).orEmpty()
+                    val name = uri.lastPathSegment.orEmpty().lowercase()
+                    val content = if (mime.contains("wordprocessingml") || name.endsWith(".docx")) {
+                        DocxTextExtractor.read(this, uri)
+                    } else {
+                        contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+                            ?: error("Не удалось открыть документ")
+                    }
+                    val imported = SubscriptionImporter.parse(content)
                     runOnUiThread {
                         if (imported.isEmpty()) {
-                            status.text = "В DOCX не найдены поддерживаемые VLESS-профили"
+                            status.text = "В документе не найден поддерживаемый профиль"
+                            Toast.makeText(this, status.text, Toast.LENGTH_LONG).show()
                         } else {
                             quattroNodes = imported
                             saveNodes("quattro_nodes", quattroNodes)
                             prefs.edit().putBoolean("active_free_mode", false).apply()
                             refreshMode()
-                            val serverCount = imported.sumOf { node ->
-                                val yaml = node.yamlConfig
-                                if (yaml.isNullOrBlank()) 1 else {
-                                    val proxySection = yaml.substringAfter("proxies:", "").substringBefore("proxy-groups:")
-                                    proxySection.lineSequence().count { it.trimStart().startsWith("- name:") }
-                                }
-                            }
-                            status.text = "Подписка сохранена: $serverCount серверов. Импортировать снова не нужно."
+                            status.text = "Профиль импортирован: ${imported.size} серверов"
+                            Toast.makeText(this, status.text, Toast.LENGTH_LONG).show()
                             measureSelectedPing()
                         }
                     }
                 } catch (e: Exception) {
-                    runOnUiThread { status.text = "Ошибка чтения DOCX: ${e.message}" }
+                    runOnUiThread {
+                        status.text = "Ошибка импорта документа: ${e.message}"
+                        Toast.makeText(this, status.text, Toast.LENGTH_LONG).show()
+                    }
                 }
             }.start()
         }
