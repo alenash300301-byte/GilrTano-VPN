@@ -1,19 +1,8 @@
 name: Build GilrTano with Usque v0.3.4 native library
 
 on:
+  # Legacy standalone integration path; canonical combined build is build-flclashx-core.yml.
   workflow_dispatch:
-  push:
-    branches: [subscription-flclashx-integration]
-    paths:
-      - '.github/workflows/build-gilrtano-usque.yml'
-      - 'app/src/main/java/io/github/georgexie2333/usque/**'
-      - 'app/src/main/res/values/usque_strings.xml'
-      - 'app/src/main/java/com/gilrtano/vpn/UsqueIdentityStore.kt'
-      - 'app/src/main/java/com/gilrtano/vpn/UsqueFreeEngine.kt'
-      - 'app/src/main/java/com/gilrtano/vpn/MainActivity.kt'
-      - 'app/src/main/AndroidManifest.xml'
-      - 'app/build.gradle.kts'
-      - 'settings.gradle.kts'
 
 permissions:
   actions: read
