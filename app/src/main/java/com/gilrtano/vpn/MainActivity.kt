@@ -116,6 +116,7 @@ class MainActivity : Activity() {
                 if (switched) serverCardSubtitle.text = message.removePrefix("Сервер переключён:").trim()
                 if (!switched) igniteConnectButton()
             } else if (message == "Приостановлено") {
+                if (::tigerEyeGlow.isInitialized) tigerEyeGlow.setConnected(false)
                 status.text = "Ⅱ  Приостановлено"
                 status.setTextColor(Color.LTGRAY)
                 updatePowerOrb(PowerOrbButtonView.State.SUSPENDED)
