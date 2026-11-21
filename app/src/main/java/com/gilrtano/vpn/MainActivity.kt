@@ -432,6 +432,11 @@ class MainActivity : Activity() {
                     addView(portalTab, LinearLayout.LayoutParams(0, dp(44), 1f).apply { leftMargin = dp(4); rightMargin = dp(4) })
                     visibility = View.VISIBLE
                 }
+                // Place the top-level Subscription / FREE switch directly on the home screen,
+                // separately from the removed server header card.
+                addView(modeSelectorRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)).apply {
+                    topMargin = dp(4); bottomMargin = dp(8)
+                })
                 settingsHeader = TextView(this@MainActivity).apply {
                     text = "Настройки и импорт  ›"; textSize = 20f
                     typeface = android.graphics.Typeface.DEFAULT_BOLD
