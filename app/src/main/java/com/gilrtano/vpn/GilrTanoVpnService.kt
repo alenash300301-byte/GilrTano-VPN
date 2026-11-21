@@ -245,6 +245,7 @@ class GilrTanoVpnService : VpnService() {
         }
         dns["enable"] = true
         config["dns"] = dns
+        DnsProfiles.applyToConfig(this, config)
         return Yaml().dump(config)
     }
 
