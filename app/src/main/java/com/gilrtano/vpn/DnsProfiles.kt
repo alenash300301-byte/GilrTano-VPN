@@ -44,6 +44,20 @@ internal object DnsProfiles {
             .edit().putString(KEY_SELECTED, id).apply()
     }
 
+    /** Apply selected resolver to a parsed Clash/Mihomo root map. */
+    fun applyToConfig(context: Context, config: MutableMap<Any?, Any?>) {
+        val profile = selected(context)
+        if (profile.id == "auto") return
+        val dns = LinkedHashMap<Any?, Any?>()
+        (config["dns"] as? Map<*, *>)?.forEach { (key, value) -> dns[key] = value }
+        dns["enable"] = true
+        dns["nameserver"] = listOf(profile.resolver)
+        if (dns["default-nameserver"] == null) {
+            dns["default-nameserver"] = listOf("1.1.1.1", "8.8.8.8")
+        }
+        config["dns"] = dns
+    }
+
     /**
      * Reachability probe for HTTPS DoH endpoints only. HTTP 400/405/415 still
      * proves the HTTPS server answered; it does not prove DNS answers are correct.
