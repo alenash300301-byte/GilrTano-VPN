@@ -373,76 +373,11 @@ class MainActivity : Activity() {
                         }
                     }
                 }
-                // Connection duration is displayed in the lower live-statistics panel.
-                // The timer remains driven by the existing VPN status receiver.
-                // The central glowing orb is the primary connect/disconnect control.
-                // Keep the accessible action button as the click target, but remove its
-                // duplicate pill from the visual layout to match the approved reference.
-                addView(LinearLayout(this@MainActivity).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = android.view.Gravity.CENTER_VERTICAL
-                    background = GradientDrawable(
-                        GradientDrawable.Orientation.LEFT_RIGHT,
-                        intArrayOf(
-                            Color.rgb(72, 12, 18),
-                            Color.rgb(20, 10, 14),
-                            Color.rgb(7, 13, 10),
-                            Color.rgb(10, 48, 20)
-                        )
-                    ).apply {
-                        cornerRadius = dp(24).toFloat()
-                        setStroke(dp(1), Color.rgb(115, 190, 82))
-                    }
-                    // Raised glass-like server card with warm red and cool green edge lighting.
-                    elevation = dp(16).toFloat()
-                    setPadding(dp(16), dp(10), dp(14), dp(10))
-                    setOnClickListener { showServerPicker() }
-                    addView(LinearLayout(this@MainActivity).apply {
-                        orientation = LinearLayout.VERTICAL
-                        serverCardTitle = TextView(this@MainActivity).apply {
-                            text = "Выбранный сервер"; textSize = 16f
-                            setTextColor(Color.WHITE)
-                            setOnLongClickListener {
-                                showMeowGroupsDialog()
-                                true
-                            }
-                        }
-                        serverCardSubtitle = TextView(this@MainActivity).apply {
-                            text = "Выбор сервера"; textSize = 12f
-                            setTextColor(Color.LTGRAY)
-                        }
-                        addView(serverCardTitle)
-                        addView(serverCardSubtitle)
-                    }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-                    addView(TextView(this@MainActivity).apply {
-                        text = "ПОДПИСКА / FREE"
-                        textSize = 10f
-                        typeface = android.graphics.Typeface.DEFAULT_BOLD
-                        gravity = android.view.Gravity.CENTER
-                        setTextColor(Color.rgb(75, 255, 105))
-                        setPadding(dp(10), dp(7), dp(10), dp(7))
-                        background = GradientDrawable().apply {
-                            setColor(Color.rgb(5, 28, 12))
-                            cornerRadius = dp(18).toFloat()
-                            setStroke(dp(1), Color.rgb(45, 225, 78))
-                        }
-                    }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                        leftMargin = dp(8); rightMargin = dp(6)
-                    })
-                    addView(LinearLayout(this@MainActivity).apply {
-                        orientation = LinearLayout.HORIZONTAL
-                        gravity = android.view.Gravity.CENTER_VERTICAL
-                        serverCardPing = TextView(this@MainActivity).apply {
-                            text = ""; textSize = 13f; setTextColor(Color.rgb(0, 230, 55))
-                        }
-                        addView(serverCardPing)
-                        addView(TextView(this@MainActivity).apply {
-                            text = "  ›"; textSize = 27f; setTextColor(Color.WHITE)
-                        })
-                    })
-                }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(70)).apply {
-                    topMargin = dp(8); bottomMargin = dp(14)
-                })
+                // The server header card is intentionally removed from the dashboard.
+                // Keep non-visible backing TextViews initialized for existing status callbacks.
+                serverCardTitle = TextView(this@MainActivity).apply { visibility = View.GONE }
+                serverCardSubtitle = TextView(this@MainActivity).apply { visibility = View.GONE }
+                serverCardPing = TextView(this@MainActivity).apply { visibility = View.GONE }
                 // Secondary live panel, matching FlClashX's modular dashboard-card approach.
                 addView(LinearLayout(this@MainActivity).apply {
                     orientation = LinearLayout.HORIZONTAL
