@@ -3,6 +3,9 @@ package com.gilrtano.vpn
 import android.content.Context
 import java.net.HttpURLConnection
 import java.net.URL
+import org.yaml.snakeyaml.LoaderOptions
+import org.yaml.snakeyaml.Yaml
+import org.yaml.snakeyaml.constructor.SafeConstructor
 
 /**
  * DNS presets supplied by the user. Endpoints are kept explicit so we never
@@ -42,6 +45,17 @@ internal object DnsProfiles {
         require(profiles.any { it.id == id })
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putString(KEY_SELECTED, id).apply()
+    }
+
+    fun applyToYaml(context: Context, rawYaml: String): String {
+        if (selected(context).id == "auto") return rawYaml
+        val yaml = Yaml(SafeConstructor(LoaderOptions()))
+        val loaded = yaml.load<Any?>(rawYaml)
+        require(loaded is MutableMap<*, *>) { "DNS: конфигурация должна быть Clash/Mihomo YAML" }
+        @Suppress("UNCHECKED_CAST")
+        val config = loaded as MutableMap<Any?, Any?>
+        applyToConfig(context, config)
+        return Yaml().dump(config)
     }
 
     /** Apply selected resolver to a parsed Clash/Mihomo root map. */
