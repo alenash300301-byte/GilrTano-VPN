@@ -80,7 +80,7 @@ internal object FlClashXEngine {
         require(rawConfig.isNotBlank()) { "Пустая подписка" }
         val home = File(service.noBackupFilesDir, "flclashx").apply { mkdirs() }
         val configFile = File(home, "config.yaml")
-        configFile.writeText(withRussiaGeoDatabases(rawConfig))
+        configFile.writeText(DnsProfiles.applyToYaml(service, withRussiaGeoDatabases(rawConfig)))
 
         Core.load()
         val initialized = CountDownLatch(1)
