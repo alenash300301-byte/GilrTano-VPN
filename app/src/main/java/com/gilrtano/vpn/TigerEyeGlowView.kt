@@ -5,6 +5,7 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
 import android.graphics.RadialGradient
@@ -13,9 +14,9 @@ import android.view.View
 import android.view.animation.AccelerateDecelerateInterpolator
 
 /**
- * Intensifies the existing emerald eyes on the unchanged full-screen tiger image.
- * Coordinates are normalized to the portrait screenshot composition (CENTER_CROP).
- * This overlay paints only inside the two eye regions; it never replaces the artwork.
+ * Subtle connection-state light confined to the natural almond-shaped eye openings.
+ * The original tiger artwork remains untouched; no drawn rings, ellipses or broad
+ * cheek/eyebrow halos are used.
  */
 class TigerEyeGlowView(context: Context) : View(context) {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -25,7 +26,6 @@ class TigerEyeGlowView(context: Context) : View(context) {
     private var pulse = 0.5f
     private var transition: ValueAnimator? = null
     private var pulseAnimator: ValueAnimator? = null
-    private var flash = 0f
 
     init {
         isClickable = false
@@ -41,20 +41,19 @@ class TigerEyeGlowView(context: Context) : View(context) {
         pulseAnimator?.cancel()
         pulseAnimator = null
 
-        if (value) {
-            // Distinct ignition flash, then a visible but smooth breathing pulse.
-            transition = ValueAnimator.ofFloat(level, 1f).apply {
-                duration = 720L
-                interpolator = AccelerateDecelerateInterpolator()
-                addUpdateListener {
-                    level = it.animatedValue as Float
-                    flash = 1f - (it.animatedFraction)
-                    invalidate()
-                }
-                start()
+        transition = ValueAnimator.ofFloat(level, if (value) 1f else 0f).apply {
+            duration = if (value) 850L else 700L
+            interpolator = AccelerateDecelerateInterpolator()
+            addUpdateListener {
+                level = it.animatedValue as Float
+                invalidate()
             }
-            pulseAnimator = ValueAnimator.ofFloat(0.30f, 1f).apply {
-                duration = 1350L
+            start()
+        }
+
+        if (value) {
+            pulseAnimator = ValueAnimator.ofFloat(0.38f, 0.88f).apply {
+                duration = 1700L
                 repeatCount = ValueAnimator.INFINITE
                 repeatMode = ValueAnimator.REVERSE
                 interpolator = AccelerateDecelerateInterpolator()
@@ -65,16 +64,6 @@ class TigerEyeGlowView(context: Context) : View(context) {
                 start()
             }
         } else {
-            transition = ValueAnimator.ofFloat(level, 0f).apply {
-                duration = 650L
-                interpolator = AccelerateDecelerateInterpolator()
-                addUpdateListener {
-                    level = it.animatedValue as Float
-                    flash = 0f
-                    invalidate()
-                }
-                start()
-            }
             pulse = 0.5f
         }
     }
@@ -83,50 +72,56 @@ class TigerEyeGlowView(context: Context) : View(context) {
         super.onDraw(canvas)
         if (level <= 0.005f || width <= 0 || height <= 0) return
 
-        // Actual eye centers from the supplied on-device screen composition.
-        // The image is full-window CENTER_CROP, so normalized coordinates stay aligned
-        // across display sizes and densities.
         val w = width.toFloat()
         val h = height.toFloat()
-        val eyeY = h * 0.235f
-        val eyeX1 = w * 0.285f
-        val eyeX2 = w * 0.715f
-        val strength = level * (0.78f + 0.22f * pulse)
-        drawEye(canvas, eyeX1, eyeY, w * 0.112f, h * 0.046f, strength)
-        drawEye(canvas, eyeX2, eyeY, w * 0.112f, h * 0.046f, strength)
+        // The mascot image is center-cropped to the whole portrait window.
+        // Coordinates are normalized to the eye positions in the supplied screenshot.
+        val cy = h * 0.235f
+        val rx = w * 0.083f
+        val ry = h * 0.0205f
+        val strength = level * pulse
+        drawEye(canvas, w * 0.285f, cy, rx, ry, strength, true)
+        drawEye(canvas, w * 0.715f, cy, rx, ry, strength, false)
     }
 
-    private fun drawEye(canvas: Canvas, cx: Float, cy: Float, rx: Float, ry: Float, strength: Float) {
-        val save = canvas.save()
-        canvas.translate(cx, cy)
-        canvas.scale(rx, ry)
+    private fun drawEye(
+        canvas: Canvas,
+        cx: Float,
+        cy: Float,
+        rx: Float,
+        ry: Float,
+        strength: Float,
+        left: Boolean
+    ) {
+        val eye = Path().apply {
+            // A tapered upper/lower lid silhouette follows the real eye opening.
+            moveTo(cx - rx, cy)
+            if (left) {
+                cubicTo(cx - rx * 0.62f, cy - ry * 1.05f, cx + rx * 0.40f, cy - ry * 0.92f, cx + rx, cy - ry * 0.08f)
+                cubicTo(cx + rx * 0.50f, cy + ry * 0.93f, cx - rx * 0.48f, cy + ry * 0.90f, cx - rx, cy)
+            } else {
+                cubicTo(cx - rx * 0.40f, cy - ry * 0.92f, cx + rx * 0.62f, cy - ry * 1.05f, cx + rx, cy)
+                cubicTo(cx + rx * 0.48f, cy + ry * 0.90f, cx - rx * 0.50f, cy + ry * 0.93f, cx - rx, cy)
+            }
+            close()
+        }
 
-        // Additive green light brightens the actual iris/eye region rather than
-        // creating a detached halo that can be missed against the artwork.
+        val save = canvas.save()
+        canvas.clipPath(eye)
         paint.xfermode = additive
         paint.shader = RadialGradient(
-            0f, 0f, 1f,
+            cx, cy, rx * 1.10f,
             intArrayOf(
-                Color.argb((205 * strength).toInt(), 105, 255, 125),
-                Color.argb((150 * strength).toInt(), 30, 255, 85),
-                Color.argb((0 * strength).toInt(), 0, 255, 50)
+                Color.argb((78 * strength).toInt(), 110, 255, 135),
+                Color.argb((42 * strength).toInt(), 50, 255, 95),
+                Color.TRANSPARENT
             ),
-            floatArrayOf(0f, 0.56f, 1f),
+            floatArrayOf(0f, 0.55f, 1f),
             Shader.TileMode.CLAMP
         )
-        canvas.drawOval(-1f, -1f, 1f, 1f, paint)
+        canvas.drawRect(cx - rx, cy - ry, cx + rx, cy + ry, paint)
         paint.shader = null
         paint.xfermode = null
-
-        // Narrow luminous iris line and catchlight, aligned over the original green iris.
-        paint.color = Color.argb((190 * strength).toInt(), 150, 255, 165)
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = 0.075f
-        canvas.drawOval(-0.58f, -0.22f, 0.58f, 0.22f, paint)
-        paint.style = Paint.Style.FILL
-        paint.color = Color.argb((210 * strength).toInt(), 225, 255, 220)
-        canvas.drawCircle(0f, -0.04f, 0.055f, paint)
-        paint.color = Color.WHITE
         canvas.restoreToCount(save)
     }
 
