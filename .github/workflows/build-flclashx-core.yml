@@ -9,6 +9,7 @@ on:
       - 'app/src/main/java/com/gilrtano/vpn/FlClashXEngine.kt'
       - 'app/src/main/java/com/gilrtano/vpn/MainActivity.kt'
       - 'app/src/main/java/com/gilrtano/vpn/TigerEyeGlowView.kt'
+      - 'app/src/main/res/drawable-nodpi/tiger_eye_mask.png'
       - 'app/src/main/java/com/gilrtano/vpn/FlClashXScanActivity.kt'
       - 'app/src/main/AndroidManifest.xml'
       - 'app/build.gradle.kts'
