@@ -35,32 +35,34 @@ internal object DnsProfiles {
         Profile("commonnet", "Commonnet · DoT", "tls://dns.commonnet.work", "DoT", "Хост указан пользователем; протокол требует подтверждения"),
     )
 
-    fun selected(context: Context): Profile {
+    enum class Scope(val key: String) { FREE("free_dns_profile"), SUBSCRIPTION("subscription_dns_profile") }
+
+    fun selected(context: Context, scope: Scope = Scope.SUBSCRIPTION): Profile {
         val id = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getString(KEY_SELECTED, "auto")
+            .getString(scope.key, "auto")
         return profiles.firstOrNull { it.id == id } ?: profiles.first()
     }
 
-    fun save(context: Context, id: String) {
+    fun save(context: Context, id: String, scope: Scope = Scope.SUBSCRIPTION) {
         require(profiles.any { it.id == id })
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit().putString(KEY_SELECTED, id).apply()
+            .edit().putString(scope.key, id).apply()
     }
 
-    fun applyToYaml(context: Context, rawYaml: String): String {
-        if (selected(context).id == "auto") return rawYaml
+    fun applyToYaml(context: Context, rawYaml: String, scope: Scope = Scope.SUBSCRIPTION): String {
+        if (selected(context, scope).id == "auto") return rawYaml
         val yaml = Yaml(SafeConstructor(LoaderOptions()))
         val loaded = yaml.load<Any?>(rawYaml)
         require(loaded is MutableMap<*, *>) { "DNS: конфигурация должна быть Clash/Mihomo YAML" }
         @Suppress("UNCHECKED_CAST")
         val config = loaded as MutableMap<Any?, Any?>
-        applyToConfig(context, config)
+        applyToConfig(context, config, scope)
         return Yaml().dump(config)
     }
 
     /** Apply selected resolver to a parsed Clash/Mihomo root map. */
-    fun applyToConfig(context: Context, config: MutableMap<Any?, Any?>) {
-        val profile = selected(context)
+    fun applyToConfig(context: Context, config: MutableMap<Any?, Any?>, scope: Scope = Scope.SUBSCRIPTION) {
+        val profile = selected(context, scope)
         if (profile.id == "auto") return
         val dns = LinkedHashMap<Any?, Any?>()
         (config["dns"] as? Map<*, *>)?.forEach { (key, value) -> dns[key] = value }
@@ -100,5 +102,4 @@ internal object DnsProfiles {
     }
 
     const val PREFS = "gilrtano_dns"
-    const val KEY_SELECTED = "subscription_dns_profile"
 }
