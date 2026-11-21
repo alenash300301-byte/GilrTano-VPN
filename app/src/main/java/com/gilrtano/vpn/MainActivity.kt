@@ -1156,55 +1156,9 @@ class MainActivity : Activity() {
                 }, "GilrTano-DNS-probe").start()
             }
         })
-        settingsPage.addView(TextView(this).apply {
-            text = "DNS для режима FREE"
-            textSize = 19f
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
-            setTextColor(Color.WHITE)
-            setPadding(0, dp(24), 0, dp(8))
-        })
-        settingsPage.addView(TextView(this).apply {
-            text = "Этот DNS применяется только к конфигурации FREE/Meow при следующем подключении. Настройка Quattro хранится отдельно."
-            textSize = 12f
-            setTextColor(Color.LTGRAY)
-            setPadding(0, 0, 0, dp(10))
-        })
-        val freeDnsSpinner = Spinner(this)
-        freeDnsSpinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, dnsLabels)
-        freeDnsSpinner.setSelection(DnsProfiles.profiles.indexOfFirst { it.id == DnsProfiles.selected(this, DnsProfiles.Scope.FREE).id }.coerceAtLeast(0))
-        val freeDnsDetails = TextView(this).apply {
-            textSize = 12f
-            setTextColor(Color.LTGRAY)
-            setPadding(0, dp(8), 0, dp(8))
-        }
-        fun refreshFreeDnsDetails() {
-            val profile = DnsProfiles.profiles.getOrNull(freeDnsSpinner.selectedItemPosition) ?: DnsProfiles.profiles.first()
-            freeDnsDetails.text = if (profile.resolver.isBlank()) profile.note else "${profile.resolver}\n${profile.note}"
-        }
-        freeDnsSpinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) {
-                val profile = DnsProfiles.profiles.getOrNull(position) ?: DnsProfiles.profiles.first()
-                DnsProfiles.save(this@MainActivity, profile.id, DnsProfiles.Scope.FREE)
-                refreshFreeDnsDetails()
-                Toast.makeText(this@MainActivity, "DNS для FREE сохранён", Toast.LENGTH_SHORT).show()
-            }
-            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
-        }
-        settingsPage.addView(freeDnsSpinner, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(52)))
-        settingsPage.addView(freeDnsDetails)
-        refreshFreeDnsDetails()
-        settingsPage.addView(actionButton("Проверить DNS FREE") {
-            val profile = DnsProfiles.profiles.getOrNull(freeDnsSpinner.selectedItemPosition) ?: DnsProfiles.profiles.first()
-            if (profile.id == "auto") {
-                Toast.makeText(this, "FREE использует DNS из исходной конфигурации", Toast.LENGTH_LONG).show()
-            } else {
-                freeDnsDetails.text = "${profile.resolver}\nПроверяю доступность…"
-                Thread({
-                    val result = runCatching { DnsProfiles.probe(profile) }.getOrElse { "Ошибка проверки: ${it.message}" }
-                    runOnUiThread { freeDnsDetails.text = "${profile.resolver}\n$result" }
-                }, "GilrTano-FREE-DNS-probe").start()
-            }
-        })
+        // FREE uses automatic DNS selection from its own tunnel engine.
+        // No manual DNS selector is exposed: the user only presses Connect.
+        DnsProfiles.save(this@MainActivity, "auto", DnsProfiles.Scope.FREE)
         settingsPage.addView(TextView(this).apply {
             text = "Справочники и инструменты из твоего списка"
             textSize = 15f
