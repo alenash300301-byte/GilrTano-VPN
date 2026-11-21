@@ -145,7 +145,22 @@ class FlClashXScanActivity : Activity() {
         val source = RGBLuminanceSource(width, height, pixels)
         val reader = MultiFormatReader()
         reader.setHints(mapOf(DecodeHintType.POSSIBLE_FORMATS to listOf(BarcodeFormat.QR_CODE), DecodeHintType.TRY_HARDER to true))
-        return try { reader.decode(BinaryBitmap(HybridBinarizer(source))).text } finally { reader.reset(); bitmap.recycle() }
+        return try {
+            // First try the ordinary QR polarity, then retry with inverted luminance.
+            // Some subscription portals render cyan/white modules on a dark background.
+            val normal = runCatching {
+                reader.decode(BinaryBitmap(HybridBinarizer(source))).text
+            }.getOrNull()
+            if (!normal.isNullOrBlank()) return normal
+
+            reader.reset()
+            runCatching {
+                reader.decode(BinaryBitmap(HybridBinarizer(source.invert()))).text
+            }.getOrNull()
+        } finally {
+            reader.reset()
+            bitmap.recycle()
+        }
     }
 
     companion object { const val EXTRA_RESULT = "gilrtano.scan.result" }
