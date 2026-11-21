@@ -397,10 +397,6 @@ class MainActivity : Activity() {
                     elevation = dp(16).toFloat()
                     setPadding(dp(16), dp(10), dp(14), dp(10))
                     setOnClickListener { showServerPicker() }
-                    addView(TextView(this@MainActivity).apply {
-                        text = "🌐"; textSize = 25f; setTextColor(Color.WHITE)
-                        setPadding(0, 0, dp(14), 0)
-                    })
                     addView(LinearLayout(this@MainActivity).apply {
                         orientation = LinearLayout.VERTICAL
                         serverCardTitle = TextView(this@MainActivity).apply {
