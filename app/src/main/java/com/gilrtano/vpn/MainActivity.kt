@@ -1107,6 +1107,73 @@ class MainActivity : Activity() {
         val settingsPage = page("Настройки")
         settingsPage.addView(actionButton("Проверить обновления") { checkForAppUpdate() })
         settingsPage.addView(TextView(this).apply {
+            text = "DNS для режима «Подписка»"
+            textSize = 19f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(Color.WHITE)
+            setPadding(0, dp(22), 0, dp(8))
+        })
+        settingsPage.addView(TextView(this).apply {
+            text = "Выбранный DNS будет применяться к Clash/Mihomo-конфигурации при следующем подключении. Portal/FREE не изменяется. «Автоматически» сохраняет DNS из профиля."
+            textSize = 12f
+            setTextColor(Color.LTGRAY)
+            setPadding(0, 0, 0, dp(10))
+        })
+        val dnsSpinner = Spinner(this)
+        val dnsLabels = DnsProfiles.profiles.map { "${it.title} · ${it.protocol}" }
+        dnsSpinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, dnsLabels)
+        dnsSpinner.setSelection(DnsProfiles.profiles.indexOfFirst { it.id == DnsProfiles.selected(this).id }.coerceAtLeast(0))
+        val dnsDetails = TextView(this).apply {
+            textSize = 12f
+            setTextColor(Color.LTGRAY)
+            setPadding(0, dp(8), 0, dp(8))
+        }
+        fun refreshDnsDetails() {
+            val profile = DnsProfiles.profiles.getOrNull(dnsSpinner.selectedItemPosition) ?: DnsProfiles.profiles.first()
+            dnsDetails.text = if (profile.resolver.isBlank()) profile.note else "${profile.resolver}\n${profile.note}"
+        }
+        dnsSpinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) {
+                val profile = DnsProfiles.profiles.getOrNull(position) ?: DnsProfiles.profiles.first()
+                DnsProfiles.save(this@MainActivity, profile.id)
+                refreshDnsDetails()
+                Toast.makeText(this@MainActivity, "DNS сохранён для следующего подключения", Toast.LENGTH_SHORT).show()
+            }
+            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
+        }
+        settingsPage.addView(dnsSpinner, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(52)))
+        settingsPage.addView(dnsDetails)
+        refreshDnsDetails()
+        settingsPage.addView(actionButton("Проверить доступность DNS") {
+            val profile = DnsProfiles.profiles.getOrNull(dnsSpinner.selectedItemPosition) ?: DnsProfiles.profiles.first()
+            if (profile.id == "auto") {
+                Toast.makeText(this, "Автоматический режим не требует проверки endpoint", Toast.LENGTH_LONG).show()
+            } else {
+                dnsDetails.text = "${profile.resolver}\nПроверяю доступность…"
+                Thread({
+                    val result = runCatching { DnsProfiles.probe(profile) }.getOrElse { "Ошибка проверки: ${it.message}" }
+                    runOnUiThread { dnsDetails.text = "${profile.resolver}\n$result" }
+                }, "GilrTano-DNS-probe").start()
+            }
+        })
+        settingsPage.addView(TextView(this).apply {
+            text = "Справочники и инструменты из твоего списка"
+            textSize = 15f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(Color.WHITE)
+            setPadding(0, dp(18), 0, dp(6))
+        })
+        settingsPage.addView(actionButton("Prihs · справочник DNS") { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/vpnsvpns/Prihs"))) })
+        settingsPage.addView(actionButton("UnlockTwitchRu · правила") { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/NoPlagiarism/UnlockTwitchRu"))) })
+        settingsPage.addView(actionButton("HB AI Smart DNS · проект") { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/neiroseti-ai/hb-ai-xbox-dns"))) })
+        settingsPage.addView(actionButton("MagicDNS · сайт сервиса") { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://magicdns.ru"))) })
+        settingsPage.addView(TextView(this).apply {
+            text = "Примечание: проверка HTTPS подтверждает только ответ веб-сервера, а не то, что он корректно разрешает DNS. Для DoT/DoQ автоматическая проверка пока не выполняется. Некоторые хосты из списка предоставлены без указания протокола и требуют подтверждения владельца сервиса."
+            textSize = 11f
+            setTextColor(Color.GRAY)
+            setPadding(0, dp(10), 0, dp(12))
+        })
+        settingsPage.addView(TextView(this).apply {
             text = "Управление профилями, подписками и импортом находится во вкладке «Профили»."
             textSize = 12f; setTextColor(Color.LTGRAY); setPadding(0, dp(18), 0, 0)
         })
