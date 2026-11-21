@@ -39,7 +39,7 @@ internal object UsqueFreeEngine {
 
         // A previous process may have died after reserving the initial-identity
         // operation. Usque rejects a second begin while that journal is pending.
-        val pending = catalog.optJSONObject("initial_identity_operation)
+        val pending = catalog.optJSONObject("initial_identity_operation")
         if (pending != null &&
             pending.optString("profile_id") == profileId &&
             pending.optString("phase") == "pending"
