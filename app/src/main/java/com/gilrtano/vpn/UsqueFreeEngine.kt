@@ -18,9 +18,47 @@ internal object UsqueFreeEngine {
         val configPath = File(context.noBackupFilesDir, "usque_config/profiles-v2.json").absolutePath
         val store = SecureIdentityStore(context)
         var catalog = command(configPath, JSONObject().put("command", "list_profiles"))
-        var profileId = catalog.optString("active_profile_id").takeIf { it.isNotBlank() && it != "null" }
+        var profileId = catalog.optString("active_profile_id")
+            .takeIf { it.isNotBlank() && it != "null" }
             ?: DEFAULT_PROFILE_ID
+
+        // begin_initial_identity is intentionally restricted to the active account.
+        // Selecting a fallback ID locally is not enough: persist the selection first.
+        if (catalog.optString("active_profile_id") != profileId) {
+            catalog = command(
+                configPath,
+                JSONObject()
+                    .put("command", "set_active_profile")
+                    .put("profile_id", profileId),
+            )
+            check(catalog.optString("active_profile_id") == profileId) {
+                "Не удалось активировать профиль FREE для регистрации WARP"
+            }
+        }
         var profile = findProfile(catalog, profileId)
+
+        // A previous process may have died after reserving the initial-identity
+        // operation. Usque rejects a second begin while that journal is pending.
+        val pending = catalog.optJSONObject("initial_identity_operation)
+        if (pending != null &&
+            pending.optString("profile_id") == profileId &&
+            pending.optString("phase") == "pending"
+        ) {
+            command(
+                configPath,
+                JSONObject()
+                    .put("command", "finish_initial_identity")
+                    .put("operation_id", pending.optString("operation_id"))
+                    .put("profile_id", profileId)
+                    .put("phase", "interrupted")
+                    .put("error_code", "INITIAL_IDENTITY_INTERRUPTED"),
+            )
+            catalog = command(configPath, JSONObject().put("command", "list_profiles"))
+            check(catalog.optString("active_profile_id") == profileId) {
+                "Профиль FREE изменился во время восстановления регистрации"
+            }
+            profile = findProfile(catalog, profileId)
+        }
 
         var secret = store.get(profileId, SecureIdentityStore.Record.WARP_SECRET)
         try {
@@ -29,8 +67,9 @@ internal object UsqueFreeEngine {
                 check(secret == null) { "Сохранённый WARP-ключ повреждён. Нужна безопасная переинициализация FREE." }
                 registerInitialIdentity(configPath, profileId, store)
                 catalog = command(configPath, JSONObject().put("command", "list_profiles"))
-                profileId = catalog.optString("active_profile_id").takeIf { it.isNotBlank() && it != "null" }
-                    ?: profileId
+                check(catalog.optString("active_profile_id") == profileId) {
+                    "Профиль FREE изменился после регистрации WARP"
+                }
                 profile = findProfile(catalog, profileId)
                 secret = store.get(profileId, SecureIdentityStore.Record.WARP_SECRET)
                 check(secret != null && NativeEngine.validateWarpSecret(secret) == NativeEngine.OK) {
