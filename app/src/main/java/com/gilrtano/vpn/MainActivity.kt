@@ -77,6 +77,7 @@ class MainActivity : Activity() {
     private lateinit var pingMetric: TextView
     private lateinit var protocolMetric: TextView
     private lateinit var connectButton: PowerOrbButtonView
+    private lateinit var tigerEyeGlow: TigerEyeGlowView
     private var settingsExpanded = false
     private var quattroNodes: List<ImportedNode> = emptyList()
     private var pendingConfig: String? = null
@@ -105,6 +106,7 @@ class MainActivity : Activity() {
                 refreshMode()
                 status.setTextColor(Color.rgb(36, 255, 72))
                 updatePowerOrb(true)
+                if (::tigerEyeGlow.isInitialized) tigerEyeGlow.setConnected(true)
                 if (::connectionTimer.isInitialized) {
                     if (!resumed && !switched) connectionTimer.base = SystemClock.elapsedRealtime()
                     connectionTimer.visibility = View.VISIBLE
@@ -123,6 +125,7 @@ class MainActivity : Activity() {
             } else if (message == "Отключено" || message.startsWith("Ошибка")) {
                 status.setTextColor(Color.LTGRAY)
                 updatePowerOrb(false)
+                if (::tigerEyeGlow.isInitialized) tigerEyeGlow.setConnected(false)
                 if (::connectionTimer.isInitialized) {
                     connectionTimer.stop()
                     connectionTimer.visibility = View.GONE
@@ -1175,6 +1178,8 @@ class MainActivity : Activity() {
                 contentDescription = "Полноэкранный фон GilrTano"
                 importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
             }, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+            tigerEyeGlow = TigerEyeGlowView(this@MainActivity)
+            addView(tigerEyeGlow, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
             addView(root, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         }
         setContentView(screenFrame)
