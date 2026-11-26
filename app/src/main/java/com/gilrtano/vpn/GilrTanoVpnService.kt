@@ -126,7 +126,7 @@ class GilrTanoVpnService : VpnService() {
                 if (engine == ENGINE_SING_BOX) Teapodcore.startBox(config, filesDir.absolutePath, callback)
                 else Teapodcore.startXray(config, callback)
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to start Xray", e)
+                Log.e(TAG, "Failed to start ${if (engine == ENGINE_SING_BOX) "sing-box" else "Xray"}", e)
                 if (!stopping) {
                     if (engine == ENGINE_XRAY && automaticMode && !usingFallback && !fallbackConfig.isNullOrBlank()) {
                         usingFallback = true
@@ -139,7 +139,7 @@ class GilrTanoVpnService : VpnService() {
                     }
                 }
             }
-        }, "GilrTano-Xray-start").start()
+        }, "GilrTano-core-start").start()
     }
 
     @Synchronized private fun establishTun() {
@@ -191,9 +191,12 @@ class GilrTanoVpnService : VpnService() {
                 throw IllegalStateException("Не все обязательные сервисы доступны через VPN")
             }
 
-            val connectedMessage = if (automaticMode) {
-                if (usingFallback) "Quattro · бесплатный резерв" else "Quattro"
-            } else "Xray и TUN работают"
+            val connectedMessage = when {
+                activeEngine == ENGINE_SING_BOX -> "WireGuard · sing-box"
+                automaticMode && usingFallback -> "Quattro · бесплатный резерв"
+                automaticMode -> "Quattro"
+                else -> "Xray и TUN работают"
+            }
             broadcastStatus(if (resuming) "Возобновлено · $connectedMessage" else "Подключено · $connectedMessage")
             resuming = false
             updateNotification("Подключено · защищённый трафик")
@@ -407,7 +410,7 @@ class GilrTanoVpnService : VpnService() {
             if (Build.VERSION.SDK_INT >= 24) stopForeground(STOP_FOREGROUND_REMOVE) else @Suppress("DEPRECATION") stopForeground(true)
             broadcastStatus("Отключено")
             stopSelf()
-        }, "GilrTano-Xray-stop").start()
+        }, "GilrTano-core-stop").start()
     }
 
     private fun broadcastStatus(value: String) {
