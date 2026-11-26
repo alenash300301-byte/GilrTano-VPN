@@ -100,7 +100,7 @@ class MainActivity : Activity() {
             if (message.startsWith("Подключено") || message.startsWith("Возобновлено")) {
                 val resumed = message.startsWith("Возобновлено")
                 if (message.contains("бесплатный резерв")) activeFree = true
-                else if (message.contains("Quattro")) activeFree = false
+                else if (message.contains("подписка")) activeFree = false
                 refreshMode()
                 status.setTextColor(Color.rgb(36, 255, 72))
                 updatePowerOrb(true)
@@ -163,7 +163,7 @@ class MainActivity : Activity() {
         status = TextView(this).apply { text = "Отключено"; textSize = 14f; maxLines = 2; gravity = android.view.Gravity.CENTER; setPadding(dp(18), dp(4), dp(18), dp(4)) }
         pingStatus = TextView(this).apply { text = "Пинг: —"; textSize = 15f }
         primarySource = EditText(this).apply {
-            hint = "Ссылка Quattro, Clash YAML или WireGuard .conf"
+            hint = "Ссылка подписка, Clash YAML или WireGuard .conf"
             minLines = 2
             maxLines = 5
             setText(prefs.getString("subscription_url", ""))
@@ -188,7 +188,7 @@ class MainActivity : Activity() {
         }
 
         quattroTab = Button(this).apply {
-            text = "QUATTRO"
+            text = "ПОДПИСКА"
             setOnClickListener { switchMode(false) }
         }
         freeTab = Button(this).apply {
@@ -201,11 +201,11 @@ class MainActivity : Activity() {
         }
 
         val importPrimary = Button(this).apply {
-            text = "Импортировать Quattro"
+            text = "Импортировать подписка"
             setOnClickListener { importFrom(primarySource.text.toString().trim(), false) }
         }
         val importDocx = Button(this).apply {
-            text = "Выбрать DOCX Quattro"
+            text = "Выбрать DOCX подписка"
             setOnClickListener {
                 val pick = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                     addCategory(Intent.CATEGORY_OPENABLE)
@@ -270,7 +270,7 @@ class MainActivity : Activity() {
                         } else {
                             GilrTanoVpnService.xrayConfigFromVless(node.uri)
                         }
-                        // Automatic Quattro/free failover remains Xray-only. A manually
+                        // Automatic подписка/free failover remains Xray-only. A manually
                         // selected WireGuard profile is started independently through sing-box.
                         val useAutomatic = autoMode && engine == GilrTanoVpnService.ENGINE_XRAY
                         val fallbackConfig = if (useAutomatic) {
@@ -490,7 +490,7 @@ class MainActivity : Activity() {
                         format = "%s"
                     }
                     val protocolValue = TextView(this@MainActivity).apply {
-                        text = "QUATTRO"; textSize = 15f
+                        text = "ПОДПИСКА"; textSize = 15f
                         typeface = android.graphics.Typeface.DEFAULT_BOLD
                         setTextColor(Color.rgb(55, 255, 95))
                         protocolMetric = this
@@ -616,7 +616,7 @@ class MainActivity : Activity() {
         val serverRows = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         serverPage.addView(serverRows)
         fun updateServerPage() {
-            serverState.text = "Режим: " + if (autoMode) "AUTO · Quattro с бесплатным резервом" else if (activeFree) "Бесплатный" else "Quattro"
+            serverState.text = "Режим: " + if (autoMode) "AUTO · подписка с бесплатным резервом" else if (activeFree) "Бесплатный" else "подписка"
             serverRows.removeAllViews()
             val query = proxySearch.text.toString().trim().lowercase()
             val nodes = activeNodes.mapIndexed { index, node -> index to node }.filter { it.second.name.lowercase().contains(query) }
@@ -642,7 +642,7 @@ class MainActivity : Activity() {
                             servers.setSelection(index)
                             prefs.edit().putInt(if (activeFree) "free_selected" else "quattro_selected", index).apply()
                             serverCardTitle.text = node.name
-                            serverCardSubtitle.text = if (activeFree) "Бесплатный" else "Quattro"
+                            serverCardSubtitle.text = if (activeFree) "Бесплатный" else "подписка"
                             serverCardPing.text = ""
                             pingStatus.text = "Пинг: —"
                             updateServerPage()
@@ -679,24 +679,24 @@ class MainActivity : Activity() {
         val serverModes = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         serverModes.addView(actionButton("АВТО") { switchToAuto(); updateServerPage() },
             LinearLayout.LayoutParams(0, dp(48), 1f))
-        serverModes.addView(actionButton("QUATTRO") { switchMode(false); updateServerPage() },
+        serverModes.addView(actionButton("ПОДПИСКА") { switchMode(false); updateServerPage() },
             LinearLayout.LayoutParams(0, dp(48), 1f))
         serverModes.addView(actionButton("FREE") { switchMode(true); updateServerPage() },
             LinearLayout.LayoutParams(0, dp(48), 1f))
         serverPage.addView(serverModes)
         serverPage.addView(actionButton("Проверить пинг") { measureSelectedPing() })
         serverPage.addView(actionButton("Найти лучший бесплатный сервер") { refreshFreeServersAndFindBest() })
-        // First-class profiles tab backed by the existing Quattro/YAML/DOCX import logic.
+        // First-class profiles tab backed by the existing подписка/YAML/DOCX import logic.
         val profilesPage = page("Профили")
         val profileActions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         profileActions.addView(actionButton("↻ Обновить") {
             val url = prefs.getString("subscription_url", "").orEmpty()
             if (url.isNotBlank()) importFrom(url, false)
-            else Toast.makeText(this@MainActivity, "Сначала добавьте ссылку Quattro", Toast.LENGTH_LONG).show()
+            else Toast.makeText(this@MainActivity, "Сначала добавьте ссылку подписка", Toast.LENGTH_LONG).show()
         }, LinearLayout.LayoutParams(0, dp(46), 1f).apply { rightMargin = dp(5) })
         profileActions.addView(actionButton("＋ Добавить") {
             val field = EditText(this@MainActivity).apply {
-                hint = "Ссылка Quattro или Clash YAML"
+                hint = "Ссылка подписка или Clash YAML"
                 setText(prefs.getString("subscription_url", ""))
                 setSingleLine(true)
             }
@@ -715,7 +715,7 @@ class MainActivity : Activity() {
             setStroke(dp(1), Color.rgb(62, 65, 76))
         }
         val profileTitle = TextView(this).apply {
-            text = "🔥 Quattro VPN"; textSize = 18f
+            text = "🔥 подписка VPN"; textSize = 18f
             typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE)
         }
         val profileUsage = TextView(this).apply { textSize = 13f; setTextColor(Color.LTGRAY); setPadding(0, dp(8), 0, 0) }
@@ -726,10 +726,10 @@ class MainActivity : Activity() {
         })
         fun refreshProfileCard() {
             profileUsage.text = "Серверов загружено: ${quattroNodes.size}"
-            profileState.text = if (quattroNodes.isNotEmpty()) "✓ Профиль доступен · ${if (activeFree) "сейчас выбран FREE" else "Quattro"}" else "Профиль ещё не импортирован"
+            profileState.text = if (quattroNodes.isNotEmpty()) "✓ Профиль доступен · ${if (activeFree) "сейчас выбран FREE" else "подписка"}" else "Профиль ещё не импортирован"
         }
         refreshProfileCard()
-        profilesPage.addView(actionButton("Импортировать Quattro") {
+        profilesPage.addView(actionButton("Импортировать подписка") {
             val value = prefs.getString("subscription_url", "").orEmpty()
             if (value.isNotBlank()) importFrom(value, false)
             else Toast.makeText(this@MainActivity, "Добавьте ссылку через кнопку «Добавить»", Toast.LENGTH_LONG).show()
@@ -739,7 +739,7 @@ class MainActivity : Activity() {
             if (value.isNotBlank()) importFrom(value, false)
             else Toast.makeText(this@MainActivity, "Добавьте ссылку YAML через кнопку «Добавить»", Toast.LENGTH_LONG).show()
         })
-        profilesPage.addView(actionButton("Выбрать DOCX Quattro") {
+        profilesPage.addView(actionButton("Выбрать DOCX подписка") {
             val pick = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                 addCategory(Intent.CATEGORY_OPENABLE)
                 type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -879,7 +879,7 @@ class MainActivity : Activity() {
                 val key = if (activeFree) "free_selected" else "quattro_selected"
                 prefs.edit().putInt(key, which).apply()
                 serverCardTitle.text = nodes[which].name
-                serverCardSubtitle.text = if (activeFree) "Бесплатный" else "Quattro"
+                serverCardSubtitle.text = if (activeFree) "Бесплатный" else "подписка"
                 serverCardPing.text = ""
                 pingStatus.text = "Пинг: —"
                 dialog.dismiss()
@@ -1178,7 +1178,7 @@ class MainActivity : Activity() {
         prefs.edit().putString("connection_mode", "auto").apply()
         activeFree = quattroNodes.isEmpty() && freeNodes.isNotEmpty()
         refreshMode()
-        Toast.makeText(this, "Автовыбор включён: Quattro в приоритете, бесплатный резерв", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Автовыбор включён: подписка в приоритете, бесплатный резерв", Toast.LENGTH_SHORT).show()
     }
 
     private fun switchMode(free: Boolean) {
@@ -1190,7 +1190,7 @@ class MainActivity : Activity() {
         if (targetNodes.isEmpty()) {
             Toast.makeText(
                 this,
-                if (free) "Сначала найди бесплатные серверы" else "Сначала импортируй Quattro",
+                if (free) "Сначала найди бесплатные серверы" else "Сначала импортируй подписка",
                 Toast.LENGTH_LONG
             ).show()
             return
@@ -1223,7 +1223,7 @@ class MainActivity : Activity() {
                 .putExtra(GilrTanoVpnService.EXTRA_CONFIG, config)
                 .putExtra(GilrTanoVpnService.EXTRA_ENGINE, engine))
         } else {
-            Toast.makeText(this, if (free) "Выбран бесплатный резерв" else "Выбран Quattro", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, if (free) "Выбран бесплатный резерв" else "Выбран подписка", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -1246,7 +1246,7 @@ class MainActivity : Activity() {
         quattroTab.setTextColor(if (!autoMode && !activeFree) Color.WHITE else Color.LTGRAY)
         freeTab.setTextColor(if (!autoMode && activeFree) Color.WHITE else Color.LTGRAY)
         autoTab.setTextColor(if (autoMode) Color.WHITE else Color.LTGRAY)
-        if (::protocolMetric.isInitialized) protocolMetric.text = if (activeFree) "FREE" else "QUATTRO"
+        if (::protocolMetric.isInitialized) protocolMetric.text = if (activeFree) "FREE" else "ПОДПИСКА"
         primarySource.visibility = if (activeFree) ViewGroup.GONE else ViewGroup.VISIBLE
         freeSource.visibility = if (activeFree) ViewGroup.VISIBLE else ViewGroup.GONE
         findImportButtonsVisibility()
@@ -1278,10 +1278,10 @@ class MainActivity : Activity() {
             if (child is Button) {
                 val label = child.text.toString()
                 val show = settingsExpanded && (
-                    (!activeFree && (label == "Импортировать Quattro" || label == "Выбрать DOCX Quattro")) ||
+                    (!activeFree && (label == "Импортировать подписка" || label == "Выбрать DOCX подписка")) ||
                     (activeFree && label == "Импортировать бесплатные серверы")
                 )
-                if (label.startsWith("Импортировать") || label == "Выбрать DOCX Quattro") {
+                if (label.startsWith("Импортировать") || label == "Выбрать DOCX подписка") {
                     child.visibility = if (show) View.VISIBLE else View.GONE
                 }
             }
@@ -1295,7 +1295,7 @@ class MainActivity : Activity() {
             Toast.makeText(this, "Укажи ссылку или конфигурацию", Toast.LENGTH_LONG).show()
             return
         }
-        status.text = if (isFree) "Загружаю резерв…" else "Загружаю Quattro…"
+        status.text = if (isFree) "Загружаю резерв…" else "Загружаю подписка…"
         Thread {
             try {
                 val imported = SubscriptionImporter.load(source)
@@ -1639,7 +1639,7 @@ class MainActivity : Activity() {
                             activeFree = false
                             prefs.edit().putBoolean("active_free_mode", false).apply()
                             refreshMode()
-                            status.text = "Quattro сохранён: ${imported.size} серверов. Импортировать снова не нужно."
+                            status.text = "подписка сохранён: ${imported.size} серверов. Импортировать снова не нужно."
                             measureSelectedPing()
                         }
                     }
