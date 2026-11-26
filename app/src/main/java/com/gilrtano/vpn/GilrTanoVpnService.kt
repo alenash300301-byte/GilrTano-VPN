@@ -114,7 +114,7 @@ class GilrTanoVpnService : VpnService() {
                             if (engine == ENGINE_XRAY && automaticMode && !usingFallback && !fallbackConfig.isNullOrBlank()) {
                                 usingFallback = true
                                 lastAutomaticSwitchAt = System.currentTimeMillis()
-                                broadcastStatus("Quattro недоступен. Запускаю бесплатный резерв…")
+                                broadcastStatus("подписка недоступен. Запускаю бесплатный резерв…")
                                 switchTunnel(fallbackConfig!!)
                             } else {
                                 broadcastStatus("Ошибка ${if (engine == ENGINE_SING_BOX) "sing-box" else "Xray"}: $message")
@@ -131,7 +131,7 @@ class GilrTanoVpnService : VpnService() {
                     if (engine == ENGINE_XRAY && automaticMode && !usingFallback && !fallbackConfig.isNullOrBlank()) {
                         usingFallback = true
                         lastAutomaticSwitchAt = System.currentTimeMillis()
-                        broadcastStatus("Не удалось запустить Quattro. Пробую бесплатный резерв…")
+                        broadcastStatus("Не удалось запустить подписка. Пробую бесплатный резерв…")
                         switchTunnel(fallbackConfig!!)
                     } else {
                         broadcastStatus("Ошибка запуска: ${e.message}")
@@ -193,8 +193,8 @@ class GilrTanoVpnService : VpnService() {
 
             val connectedMessage = when {
                 activeEngine == ENGINE_SING_BOX -> "WireGuard · sing-box"
-                automaticMode && usingFallback -> "Quattro · бесплатный резерв"
-                automaticMode -> "Quattro"
+                automaticMode && usingFallback -> "подписка · бесплатный резерв"
+                automaticMode -> "подписка"
                 else -> "Xray и TUN работают"
             }
             broadcastStatus(if (resuming) "Возобновлено · $connectedMessage" else "Подключено · $connectedMessage")
@@ -248,19 +248,19 @@ class GilrTanoVpnService : VpnService() {
                             usingFallback = false
                             lastAutomaticSwitchAt = System.currentTimeMillis()
                             consecutiveProbeFailures = 0
-                            broadcastStatus("Проверяю восстановление Quattro…")
+                            broadcastStatus("Проверяю восстановление подписка…")
                             switchTunnel(target)
                         }
                     }
 
-                    // When using the backup, periodically give the preferred Quattro
+                    // When using the backup, periodically give the preferred подписка
                     // profile another chance. A failed trial is automatically rolled back.
                     if (usingFallback && !preferredConfig.isNullOrBlank() &&
                         System.currentTimeMillis() - lastAutomaticSwitchAt >= RECOVERY_INTERVAL_MS &&
                         consecutiveProbeFailures == 0) {
                         lastAutomaticSwitchAt = System.currentTimeMillis()
                         usingFallback = false
-                        broadcastStatus("Проверяю, восстановился ли Quattro…")
+                        broadcastStatus("Проверяю, восстановился ли подписка…")
                         switchTunnel(preferredConfig!!)
                     }
                 } catch (e: InterruptedException) {
