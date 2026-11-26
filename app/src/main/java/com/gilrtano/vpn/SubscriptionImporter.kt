@@ -19,9 +19,10 @@ object SubscriptionImporter {
         val trimmed = source.trim()
         val content = when {
             trimmed.startsWith("vless://") -> trimmed
+            WireGuardConfig.isConf(trimmed) -> trimmed
             trimmed.contains("proxies:") -> trimmed
             trimmed.startsWith("http://") || trimmed.startsWith("https://") -> download(trimmed)
-            else -> error("Ожидается VLESS-ссылка, HTTPS-подписка или Clash YAML с блоком proxies:")
+            else -> error("Ожидается VLESS-ссылка, WireGuard .conf, HTTPS-подписка или Clash YAML с блоком proxies:")
         }
         return parse(content)
     }
@@ -92,6 +93,15 @@ object SubscriptionImporter {
     fun parse(raw: String): List<ImportedNode> {
         val text = raw.trim()
         if (text.startsWith("vless://")) return listOf(ImportedNode("VLESS · сервер", text))
+        if (WireGuardConfig.isStored(text)) {
+            val profile = WireGuardConfig.profileFromStored(text)
+            return listOf(ImportedNode(profile.name, text))
+        }
+        if (WireGuardConfig.isConf(text)) {
+            val stored = WireGuardConfig.storeConf(text)
+            val profile = WireGuardConfig.profileFromStored(stored)
+            return listOf(ImportedNode(profile.name, stored))
+        }
         if (text.contains("proxies:")) return parseClash(text)
 
         val decoded = if (text.contains("://")) text else decodeSubscription(text)

@@ -81,8 +81,10 @@ class MainActivity : Activity() {
     private var pendingFallbackConfig: String? = null
     private var pendingPreferredConfig: String? = null
     private var pendingAutomatic = false
+    private var pendingEngine = GilrTanoVpnService.ENGINE_XRAY
     private val requestCode = 4101
     private val docxRequestCode = 4102
+    private val wireGuardRequestCode = 4103
 
     private val prefs by lazy { getPreferences(MODE_PRIVATE) }
     private val activeNodes: List<ImportedNode>
@@ -99,7 +101,7 @@ class MainActivity : Activity() {
             if (message.startsWith("Подключено") || message.startsWith("Возобновлено")) {
                 val resumed = message.startsWith("Возобновлено")
                 if (message.contains("бесплатный резерв")) activeFree = true
-                else if (message.contains("Quattro")) activeFree = false
+                else if (message.contains("подписка")) activeFree = false
                 refreshMode()
                 status.setTextColor(Color.rgb(36, 255, 72))
                 updatePowerOrb(true)
@@ -162,7 +164,7 @@ class MainActivity : Activity() {
         status = TextView(this).apply { text = "Отключено"; textSize = 14f; maxLines = 2; gravity = android.view.Gravity.CENTER; setPadding(dp(18), dp(4), dp(18), dp(4)) }
         pingStatus = TextView(this).apply { text = "Пинг: —"; textSize = 15f }
         primarySource = EditText(this).apply {
-            hint = "Ссылка Quattro или Clash YAML"
+            hint = "Ссылка подписки, Clash YAML или WireGuard .conf"
             minLines = 2
             maxLines = 5
             setText(prefs.getString("subscription_url", ""))
@@ -187,7 +189,7 @@ class MainActivity : Activity() {
         }
 
         quattroTab = Button(this).apply {
-            text = "QUATTRO"
+            text = "ПОДПИСКА"
             setOnClickListener { switchMode(false) }
         }
         freeTab = Button(this).apply {
@@ -200,11 +202,11 @@ class MainActivity : Activity() {
         }
 
         val importPrimary = Button(this).apply {
-            text = "Импортировать Quattro"
+            text = "Импортировать подписку"
             setOnClickListener { importFrom(primarySource.text.toString().trim(), false) }
         }
         val importDocx = Button(this).apply {
-            text = "Выбрать DOCX Quattro"
+            text = "Выбрать DOCX подписки"
             setOnClickListener {
                 val pick = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                     addCategory(Intent.CATEGORY_OPENABLE)
@@ -262,25 +264,36 @@ class MainActivity : Activity() {
                     Toast.makeText(this@MainActivity, "В этом режиме пока нет серверов", Toast.LENGTH_LONG).show()
                 } else {
                     try {
-                        val config = GilrTanoVpnService.xrayConfigFromVless(node.uri)
-                        val fallbackConfig = if (autoMode) {
+                        val engine = if (WireGuardConfig.isStored(node.uri))
+                            GilrTanoVpnService.ENGINE_SING_BOX else GilrTanoVpnService.ENGINE_XRAY
+                        val config = if (engine == GilrTanoVpnService.ENGINE_SING_BOX) {
+                            WireGuardConfig.toSingBoxJson(WireGuardConfig.profileFromStored(node.uri))
+                        } else {
+                            GilrTanoVpnService.xrayConfigFromVless(node.uri)
+                        }
+                        // Automatic подписка/free failover remains Xray-only. A manually
+                        // selected WireGuard profile is started independently through sing-box.
+                        val useAutomatic = autoMode && engine == GilrTanoVpnService.ENGINE_XRAY
+                        val fallbackConfig = if (useAutomatic) {
                             (if (activeFree) quattroNodes.firstOrNull() else freeNodes.firstOrNull())
                                 ?.let { runCatching { GilrTanoVpnService.xrayConfigFromVless(it.uri) }.getOrNull() }
                         } else null
-                        val preferredConfig = if (autoMode) {
+                        val preferredConfig = if (useAutomatic) {
                             quattroNodes.firstOrNull()?.let { runCatching { GilrTanoVpnService.xrayConfigFromVless(it.uri) }.getOrNull() }
                         } else null
                         pendingConfig = config
                         pendingFallbackConfig = fallbackConfig
                         pendingPreferredConfig = preferredConfig
-                        pendingAutomatic = autoMode
+                        pendingAutomatic = useAutomatic
+                        pendingEngine = engine
                         connectButton.isEnabled = true
                         status.text = "Подключаю: ${node.name}…"
                         val permission = VpnService.prepare(this@MainActivity)
                         if (permission != null) startActivityForResult(permission, requestCode)
-                        else startVpn(config, fallbackConfig, preferredConfig, autoMode)
+                        else startVpn(config, fallbackConfig, preferredConfig, useAutomatic, engine)
                     } catch (e: Exception) {
                         pendingConfig = null
+                        pendingEngine = GilrTanoVpnService.ENGINE_XRAY
                         connectButton.isEnabled = true
                         status.text = "Профиль не поддерживается: ${e.message}"
                     }
@@ -478,7 +491,7 @@ class MainActivity : Activity() {
                         format = "%s"
                     }
                     val protocolValue = TextView(this@MainActivity).apply {
-                        text = "QUATTRO"; textSize = 15f
+                        text = "ПОДПИСКА"; textSize = 15f
                         typeface = android.graphics.Typeface.DEFAULT_BOLD
                         setTextColor(Color.rgb(55, 255, 95))
                         protocolMetric = this
@@ -604,7 +617,7 @@ class MainActivity : Activity() {
         val serverRows = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         serverPage.addView(serverRows)
         fun updateServerPage() {
-            serverState.text = "Режим: " + if (autoMode) "AUTO · Quattro с бесплатным резервом" else if (activeFree) "Бесплатный" else "Quattro"
+            serverState.text = "Режим: " + if (autoMode) "AUTO · Подписка с бесплатным резервом" else if (activeFree) "Бесплатный" else "Подписка"
             serverRows.removeAllViews()
             val query = proxySearch.text.toString().trim().lowercase()
             val nodes = activeNodes.mapIndexed { index, node -> index to node }.filter { it.second.name.lowercase().contains(query) }
@@ -630,7 +643,7 @@ class MainActivity : Activity() {
                             servers.setSelection(index)
                             prefs.edit().putInt(if (activeFree) "free_selected" else "quattro_selected", index).apply()
                             serverCardTitle.text = node.name
-                            serverCardSubtitle.text = if (activeFree) "Бесплатный" else "Quattro"
+                            serverCardSubtitle.text = if (activeFree) "Бесплатный" else "Подписка"
                             serverCardPing.text = ""
                             pingStatus.text = "Пинг: —"
                             updateServerPage()
@@ -667,24 +680,24 @@ class MainActivity : Activity() {
         val serverModes = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         serverModes.addView(actionButton("АВТО") { switchToAuto(); updateServerPage() },
             LinearLayout.LayoutParams(0, dp(48), 1f))
-        serverModes.addView(actionButton("QUATTRO") { switchMode(false); updateServerPage() },
+        serverModes.addView(actionButton("ПОДПИСКА") { switchMode(false); updateServerPage() },
             LinearLayout.LayoutParams(0, dp(48), 1f))
         serverModes.addView(actionButton("FREE") { switchMode(true); updateServerPage() },
             LinearLayout.LayoutParams(0, dp(48), 1f))
         serverPage.addView(serverModes)
         serverPage.addView(actionButton("Проверить пинг") { measureSelectedPing() })
         serverPage.addView(actionButton("Найти лучший бесплатный сервер") { refreshFreeServersAndFindBest() })
-        // First-class profiles tab backed by the existing Quattro/YAML/DOCX import logic.
+        // First-class profiles tab backed by the existing подписка/YAML/DOCX import logic.
         val profilesPage = page("Профили")
         val profileActions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         profileActions.addView(actionButton("↻ Обновить") {
             val url = prefs.getString("subscription_url", "").orEmpty()
             if (url.isNotBlank()) importFrom(url, false)
-            else Toast.makeText(this@MainActivity, "Сначала добавьте ссылку Quattro", Toast.LENGTH_LONG).show()
+            else Toast.makeText(this@MainActivity, "Сначала добавьте ссылку подписка", Toast.LENGTH_LONG).show()
         }, LinearLayout.LayoutParams(0, dp(46), 1f).apply { rightMargin = dp(5) })
         profileActions.addView(actionButton("＋ Добавить") {
             val field = EditText(this@MainActivity).apply {
-                hint = "Ссылка Quattro или Clash YAML"
+                hint = "Ссылка подписки или Clash YAML"
                 setText(prefs.getString("subscription_url", ""))
                 setSingleLine(true)
             }
@@ -703,7 +716,7 @@ class MainActivity : Activity() {
             setStroke(dp(1), Color.rgb(62, 65, 76))
         }
         val profileTitle = TextView(this).apply {
-            text = "🔥 Quattro VPN"; textSize = 18f
+            text = "🔥 Подписка VPN"; textSize = 18f
             typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE)
         }
         val profileUsage = TextView(this).apply { textSize = 13f; setTextColor(Color.LTGRAY); setPadding(0, dp(8), 0, 0) }
@@ -714,10 +727,10 @@ class MainActivity : Activity() {
         })
         fun refreshProfileCard() {
             profileUsage.text = "Серверов загружено: ${quattroNodes.size}"
-            profileState.text = if (quattroNodes.isNotEmpty()) "✓ Профиль доступен · ${if (activeFree) "сейчас выбран FREE" else "Quattro"}" else "Профиль ещё не импортирован"
+            profileState.text = if (quattroNodes.isNotEmpty()) "✓ Профиль доступен · ${if (activeFree) "сейчас выбран FREE" else "Подписка"}" else "Профиль ещё не импортирован"
         }
         refreshProfileCard()
-        profilesPage.addView(actionButton("Импортировать Quattro") {
+        profilesPage.addView(actionButton("Импортировать подписку") {
             val value = prefs.getString("subscription_url", "").orEmpty()
             if (value.isNotBlank()) importFrom(value, false)
             else Toast.makeText(this@MainActivity, "Добавьте ссылку через кнопку «Добавить»", Toast.LENGTH_LONG).show()
@@ -727,12 +740,20 @@ class MainActivity : Activity() {
             if (value.isNotBlank()) importFrom(value, false)
             else Toast.makeText(this@MainActivity, "Добавьте ссылку YAML через кнопку «Добавить»", Toast.LENGTH_LONG).show()
         })
-        profilesPage.addView(actionButton("Выбрать DOCX Quattro") {
+        profilesPage.addView(actionButton("Выбрать DOCX подписки") {
             val pick = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                 addCategory(Intent.CATEGORY_OPENABLE)
                 type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             }
             startActivityForResult(pick, docxRequestCode)
+        })
+        profilesPage.addView(actionButton("Выбрать WireGuard .conf") {
+            val pick = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "*/*"
+                putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("text/plain", "application/octet-stream"))
+            }
+            startActivityForResult(pick, wireGuardRequestCode)
         })
         profilesPage.addView(actionButton("Импортировать бесплатный резерв") {
             val value = prefs.getString("free_subscription_url", "").orEmpty()
@@ -867,7 +888,7 @@ class MainActivity : Activity() {
                 val key = if (activeFree) "free_selected" else "quattro_selected"
                 prefs.edit().putInt(key, which).apply()
                 serverCardTitle.text = nodes[which].name
-                serverCardSubtitle.text = if (activeFree) "Бесплатный" else "Quattro"
+                serverCardSubtitle.text = if (activeFree) "Бесплатный" else "Подписка"
                 serverCardPing.text = ""
                 pingStatus.text = "Пинг: —"
                 dialog.dismiss()
@@ -1166,7 +1187,7 @@ class MainActivity : Activity() {
         prefs.edit().putString("connection_mode", "auto").apply()
         activeFree = quattroNodes.isEmpty() && freeNodes.isNotEmpty()
         refreshMode()
-        Toast.makeText(this, "Автовыбор включён: Quattro в приоритете, бесплатный резерв", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Автовыбор включён: Подписка в приоритете, бесплатный резерв", Toast.LENGTH_SHORT).show()
     }
 
     private fun switchMode(free: Boolean) {
@@ -1178,7 +1199,7 @@ class MainActivity : Activity() {
         if (targetNodes.isEmpty()) {
             Toast.makeText(
                 this,
-                if (free) "Сначала найди бесплатные серверы" else "Сначала импортируй Quattro",
+                if (free) "Сначала найди бесплатные серверы" else "Сначала импортируй подписку",
                 Toast.LENGTH_LONG
             ).show()
             return
@@ -1195,16 +1216,23 @@ class MainActivity : Activity() {
             val index = prefs.getInt(selectedKey, 0).coerceIn(0, targetNodes.lastIndex)
             servers.setSelection(index)
             val node = targetNodes[index]
-            val config = runCatching { GilrTanoVpnService.xrayConfigFromVless(node.uri) }.getOrElse {
+            val engine = if (WireGuardConfig.isStored(node.uri))
+                GilrTanoVpnService.ENGINE_SING_BOX else GilrTanoVpnService.ENGINE_XRAY
+            val config = runCatching {
+                if (engine == GilrTanoVpnService.ENGINE_SING_BOX)
+                    WireGuardConfig.toSingBoxJson(WireGuardConfig.profileFromStored(node.uri))
+                else GilrTanoVpnService.xrayConfigFromVless(node.uri)
+            }.getOrElse {
                 Toast.makeText(this, "Не удалось подготовить сервер: ${it.message}", Toast.LENGTH_LONG).show()
                 return
             }
-            status.text = "Переключаю на ${if (free) "бесплатный сервер" else "Quattro"}…"
+            status.text = "Переключаю на ${if (free) "бесплатный сервер" else "сервер подписки"}…"
             startService(Intent(this, GilrTanoVpnService::class.java)
                 .setAction(GilrTanoVpnService.ACTION_SWITCH)
-                .putExtra(GilrTanoVpnService.EXTRA_CONFIG, config))
+                .putExtra(GilrTanoVpnService.EXTRA_CONFIG, config)
+                .putExtra(GilrTanoVpnService.EXTRA_ENGINE, engine))
         } else {
-            Toast.makeText(this, if (free) "Выбран бесплатный резерв" else "Выбран Quattro", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, if (free) "Выбран бесплатный резерв" else "Выбрана подписка", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -1227,7 +1255,7 @@ class MainActivity : Activity() {
         quattroTab.setTextColor(if (!autoMode && !activeFree) Color.WHITE else Color.LTGRAY)
         freeTab.setTextColor(if (!autoMode && activeFree) Color.WHITE else Color.LTGRAY)
         autoTab.setTextColor(if (autoMode) Color.WHITE else Color.LTGRAY)
-        if (::protocolMetric.isInitialized) protocolMetric.text = if (activeFree) "FREE" else "QUATTRO"
+        if (::protocolMetric.isInitialized) protocolMetric.text = if (activeFree) "FREE" else "ПОДПИСКА"
         primarySource.visibility = if (activeFree) ViewGroup.GONE else ViewGroup.VISIBLE
         freeSource.visibility = if (activeFree) ViewGroup.VISIBLE else ViewGroup.GONE
         findImportButtonsVisibility()
@@ -1259,10 +1287,10 @@ class MainActivity : Activity() {
             if (child is Button) {
                 val label = child.text.toString()
                 val show = settingsExpanded && (
-                    (!activeFree && (label == "Импортировать Quattro" || label == "Выбрать DOCX Quattro")) ||
+                    (!activeFree && (label == "Импортировать подписку" || label == "Выбрать DOCX подписки")) ||
                     (activeFree && label == "Импортировать бесплатные серверы")
                 )
-                if (label.startsWith("Импортировать") || label == "Выбрать DOCX Quattro") {
+                if (label.startsWith("Импортировать") || label == "Выбрать DOCX подписки") {
                     child.visibility = if (show) View.VISIBLE else View.GONE
                 }
             }
@@ -1276,13 +1304,13 @@ class MainActivity : Activity() {
             Toast.makeText(this, "Укажи ссылку или конфигурацию", Toast.LENGTH_LONG).show()
             return
         }
-        status.text = if (isFree) "Загружаю резерв…" else "Загружаю Quattro…"
+        status.text = if (isFree) "Загружаю резерв…" else "Загружаю подписку…"
         Thread {
             try {
                 val imported = SubscriptionImporter.load(source)
                 runOnUiThread {
                     if (imported.isEmpty()) {
-                        status.text = "Не найдено поддерживаемых VLESS-серверов"
+                        status.text = "Не найдено поддерживаемых серверов"
                         return@runOnUiThread
                     }
                     if (isFree) {
@@ -1571,12 +1599,14 @@ class MainActivity : Activity() {
         config: String,
         fallbackConfig: String? = null,
         preferredConfig: String? = null,
-        automatic: Boolean = false
+        automatic: Boolean = false,
+        engine: String = GilrTanoVpnService.ENGINE_XRAY
     ) {
         connectButton.isEnabled = true
         val intent = Intent(this, GilrTanoVpnService::class.java)
             .setAction(GilrTanoVpnService.ACTION_START)
             .putExtra(GilrTanoVpnService.EXTRA_CONFIG, config)
+            .putExtra(GilrTanoVpnService.EXTRA_ENGINE, engine)
             .putExtra(GilrTanoVpnService.EXTRA_AUTO, automatic)
         fallbackConfig?.let { intent.putExtra(GilrTanoVpnService.EXTRA_FALLBACK_CONFIG, it) }
         preferredConfig?.let { intent.putExtra(GilrTanoVpnService.EXTRA_PREFERRED_CONFIG, it) }
@@ -1590,16 +1620,43 @@ class MainActivity : Activity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == this.requestCode && resultCode == RESULT_OK) {
             pendingConfig?.let {
-                startVpn(it, pendingFallbackConfig, pendingPreferredConfig, pendingAutomatic)
+                startVpn(it, pendingFallbackConfig, pendingPreferredConfig, pendingAutomatic, pendingEngine)
                 pendingConfig = null
                 pendingFallbackConfig = null
                 pendingPreferredConfig = null
                 pendingAutomatic = false
+                pendingEngine = GilrTanoVpnService.ENGINE_XRAY
             } ?: run { status.text = "Подключение отменено" }
         } else if (requestCode == this.requestCode) {
             pendingConfig = null
+            pendingEngine = GilrTanoVpnService.ENGINE_XRAY
             connectButton.isEnabled = true
             status.text = "Разрешение VPN не предоставлено"
+        } else if (requestCode == wireGuardRequestCode && resultCode == RESULT_OK) {
+            val uri = data?.data ?: return
+            status.text = "Читаю WireGuard .conf…"
+            Thread {
+                try {
+                    val raw = contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+                        ?: error("Не удалось открыть выбранный файл")
+                    val imported = SubscriptionImporter.parse(raw)
+                    require(imported.size == 1 && WireGuardConfig.isStored(imported.single().uri)) {
+                        "Выбранный файл не является поддерживаемым WireGuard .conf"
+                    }
+                    runOnUiThread {
+                        quattroNodes = quattroNodes.filterNot { it.uri == imported.single().uri } + imported
+                        saveNodes("quattro_nodes", quattroNodes)
+                        activeFree = false
+                        autoMode = false
+                        prefs.edit().putBoolean("active_free_mode", false).putString("connection_mode", "quattro").apply()
+                        refreshMode()
+                        status.text = "WireGuard-профиль добавлен в Подписку"
+                        updateServerPage()
+                    }
+                } catch (e: Exception) {
+                    runOnUiThread { status.text = "Ошибка импорта WireGuard: ${e.message}" }
+                }
+            }.start()
         } else if (requestCode == docxRequestCode && resultCode == RESULT_OK) {
             val uri = data?.data ?: return
             status.text = "Читаю DOCX локально…"
@@ -1616,7 +1673,7 @@ class MainActivity : Activity() {
                             activeFree = false
                             prefs.edit().putBoolean("active_free_mode", false).apply()
                             refreshMode()
-                            status.text = "Quattro сохранён: ${imported.size} серверов. Импортировать снова не нужно."
+                            status.text = "Подписка сохранена: ${imported.size} серверов. Импортировать снова не нужно."
                             measureSelectedPing()
                         }
                     }

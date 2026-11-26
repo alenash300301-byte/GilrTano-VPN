@@ -26,6 +26,7 @@ class GilrTanoVpnService : VpnService() {
     // ready across reconnects instead of repeating native initialization.
     @Volatile private var coreInitialized = false
     @Volatile private var activeConfig: String? = null
+    @Volatile private var activeEngine: String = ENGINE_XRAY
     @Volatile private var fallbackConfig: String? = null
     @Volatile private var preferredConfig: String? = null
     @Volatile private var automaticMode = false
@@ -46,21 +47,23 @@ class GilrTanoVpnService : VpnService() {
                     stopSelf()
                 } else if (intent.action == ACTION_SWITCH) {
                     automaticMode = false
-                    switchTunnel(config)
+                    val engine = intent.getStringExtra(EXTRA_ENGINE) ?: ENGINE_XRAY
+                    switchTunnel(config, engine)
                 } else {
+                    activeEngine = intent.getStringExtra(EXTRA_ENGINE) ?: ENGINE_XRAY
                     automaticMode = intent.getBooleanExtra(EXTRA_AUTO, false)
                     fallbackConfig = intent.getStringExtra(EXTRA_FALLBACK_CONFIG)
                     preferredConfig = intent.getStringExtra(EXTRA_PREFERRED_CONFIG)
                     usingFallback = false
                     consecutiveProbeFailures = 0
-                    startTunnel(config)
+                    startTunnel(config, activeEngine)
                 }
             }
         }
         return START_NOT_STICKY
     }
 
-    private fun switchTunnel(config: String) {
+    private fun switchTunnel(config: String, engine: String = ENGINE_XRAY) {
         paused = false
         resuming = false
         stopping = true
@@ -69,21 +72,24 @@ class GilrTanoVpnService : VpnService() {
             synchronized(this) {
                 runCatching { Teapodcore.stopTun2Socks() }
                 runCatching { Teapodcore.stopXray() }
+                runCatching { Teapodcore.stopBox() }
                 runCatching { tun?.close() }
                 tun = null
             }
             stopping = false
-            startTunnel(config)
-        }, "GilrTano-Xray-switch").start()
+            activeEngine = engine
+            startTunnel(config, engine)
+        }, "GilrTano-core-switch").start()
     }
 
-    private fun startTunnel(config: String) {
+    private fun startTunnel(config: String, engine: String = ENGINE_XRAY) {
         stopping = false
         paused = false
         resuming = false
         activeConfig = config
+        activeEngine = engine
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, notification("Запуск Xray…"))
+        startForeground(NOTIFICATION_ID, notification(if (engine == ENGINE_SING_BOX) "Запуск sing-box…" else "Запуск Xray…"))
         // Native core initialization/start can block; never run it on Android's service main thread.
         Thread({
             try {
@@ -100,30 +106,32 @@ class GilrTanoVpnService : VpnService() {
                     }
                 }
                 if (stopping) return@Thread
-                Teapodcore.startXray(config, object : XrayCallback {
+                val callback = object : XrayCallback {
                     override fun onStatus(status: Long, message: String) {
-                        Log.i(TAG, "Xray status=$status $message")
+                        Log.i(TAG, "${if (engine == ENGINE_SING_BOX) "sing-box" else "Xray"} status=$status $message")
                         if (status == 0L && !stopping) establishTun()
                         else if (status < 0L && !stopping) {
-                            if (automaticMode && !usingFallback && !fallbackConfig.isNullOrBlank()) {
+                            if (engine == ENGINE_XRAY && automaticMode && !usingFallback && !fallbackConfig.isNullOrBlank()) {
                                 usingFallback = true
                                 lastAutomaticSwitchAt = System.currentTimeMillis()
-                                broadcastStatus("Quattro недоступен. Запускаю бесплатный резерв…")
+                                broadcastStatus("подписка недоступен. Запускаю бесплатный резерв…")
                                 switchTunnel(fallbackConfig!!)
                             } else {
-                                broadcastStatus("Ошибка Xray: $message")
+                                broadcastStatus("Ошибка ${if (engine == ENGINE_SING_BOX) "sing-box" else "Xray"}: $message")
                                 stopTunnel()
                             }
                         }
                     }
-                })
+                }
+                if (engine == ENGINE_SING_BOX) Teapodcore.startBox(config, filesDir.absolutePath, callback)
+                else Teapodcore.startXray(config, callback)
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to start Xray", e)
+                Log.e(TAG, "Failed to start ${if (engine == ENGINE_SING_BOX) "sing-box" else "Xray"}", e)
                 if (!stopping) {
-                    if (automaticMode && !usingFallback && !fallbackConfig.isNullOrBlank()) {
+                    if (engine == ENGINE_XRAY && automaticMode && !usingFallback && !fallbackConfig.isNullOrBlank()) {
                         usingFallback = true
                         lastAutomaticSwitchAt = System.currentTimeMillis()
-                        broadcastStatus("Не удалось запустить Quattro. Пробую бесплатный резерв…")
+                        broadcastStatus("Не удалось запустить подписка. Пробую бесплатный резерв…")
                         switchTunnel(fallbackConfig!!)
                     } else {
                         broadcastStatus("Ошибка запуска: ${e.message}")
@@ -131,7 +139,7 @@ class GilrTanoVpnService : VpnService() {
                     }
                 }
             }
-        }, "GilrTano-Xray-start").start()
+        }, "GilrTano-core-start").start()
     }
 
     @Synchronized private fun establishTun() {
@@ -151,7 +159,7 @@ class GilrTanoVpnService : VpnService() {
             // hanging on a broken QUIC path; ICMP is not needed here.
             val error = Teapodcore.startTun2Socks(
                 pfd.fd.toLong(), 1280L, SOCKS_PORT.toLong(),
-                "", "", false, true, null
+                "", "", false, engineForCurrentTunnelBlocksQuic(), null
             )
             if (error.isNotEmpty()) throw IllegalStateException("tun2socks: $error")
 
@@ -183,9 +191,12 @@ class GilrTanoVpnService : VpnService() {
                 throw IllegalStateException("Не все обязательные сервисы доступны через VPN")
             }
 
-            val connectedMessage = if (automaticMode) {
-                if (usingFallback) "Quattro · бесплатный резерв" else "Quattro"
-            } else "Xray и TUN работают"
+            val connectedMessage = when {
+                activeEngine == ENGINE_SING_BOX -> "WireGuard · sing-box"
+                automaticMode && usingFallback -> "подписка · бесплатный резерв"
+                automaticMode -> "подписка"
+                else -> "Xray и TUN работают"
+            }
             broadcastStatus(if (resuming) "Возобновлено · $connectedMessage" else "Подключено · $connectedMessage")
             resuming = false
             updateNotification("Подключено · защищённый трафик")
@@ -237,19 +248,19 @@ class GilrTanoVpnService : VpnService() {
                             usingFallback = false
                             lastAutomaticSwitchAt = System.currentTimeMillis()
                             consecutiveProbeFailures = 0
-                            broadcastStatus("Проверяю восстановление Quattro…")
+                            broadcastStatus("Проверяю восстановление подписка…")
                             switchTunnel(target)
                         }
                     }
 
-                    // When using the backup, periodically give the preferred Quattro
+                    // When using the backup, periodically give the preferred подписка
                     // profile another chance. A failed trial is automatically rolled back.
                     if (usingFallback && !preferredConfig.isNullOrBlank() &&
                         System.currentTimeMillis() - lastAutomaticSwitchAt >= RECOVERY_INTERVAL_MS &&
                         consecutiveProbeFailures == 0) {
                         lastAutomaticSwitchAt = System.currentTimeMillis()
                         usingFallback = false
-                        broadcastStatus("Проверяю, восстановился ли Quattro…")
+                        broadcastStatus("Проверяю, восстановился ли подписка…")
                         switchTunnel(preferredConfig!!)
                     }
                 } catch (e: InterruptedException) {
@@ -392,13 +403,14 @@ class GilrTanoVpnService : VpnService() {
             synchronized(this) {
                 runCatching { Teapodcore.stopTun2Socks() }
                 runCatching { Teapodcore.stopXray() }
+                runCatching { Teapodcore.stopBox() }
                 runCatching { tun?.close() }
                 tun = null
             }
             if (Build.VERSION.SDK_INT >= 24) stopForeground(STOP_FOREGROUND_REMOVE) else @Suppress("DEPRECATION") stopForeground(true)
             broadcastStatus("Отключено")
             stopSelf()
-        }, "GilrTano-Xray-stop").start()
+        }, "GilrTano-core-stop").start()
     }
 
     private fun broadcastStatus(value: String) {
@@ -468,6 +480,9 @@ class GilrTanoVpnService : VpnService() {
         const val ACTION_RESUME = "com.gilrtano.vpn.RESUME"
         const val ACTION_STATUS = "com.gilrtano.vpn.STATUS"
         const val EXTRA_CONFIG = "xray_config"
+        const val EXTRA_ENGINE = "vpn_engine"
+        const val ENGINE_XRAY = "xray"
+        const val ENGINE_SING_BOX = "sing-box"
         const val EXTRA_STATUS = "status"
         const val EXTRA_AUTO = "automatic_mode"
         const val EXTRA_FALLBACK_CONFIG = "fallback_config"
