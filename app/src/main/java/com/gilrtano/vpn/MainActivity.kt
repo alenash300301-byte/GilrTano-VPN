@@ -41,6 +41,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.net.InetSocketAddress
 import java.net.Socket
+import java.io.File
+import usqueandroid.Usqueandroid
 import java.util.concurrent.Callable
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -81,6 +83,8 @@ class MainActivity : Activity() {
     private var pendingFallbackConfig: String? = null
     private var pendingPreferredConfig: String? = null
     private var pendingAutomatic = false
+    private var pendingUsqueStart = false
+    private val usqueConfigFile by lazy { File(filesDir, "usque/config.json").apply { parentFile?.mkdirs() } }
     private val requestCode = 4101
     private val docxRequestCode = 4102
 
@@ -256,6 +260,10 @@ class MainActivity : Activity() {
                         refreshFreeServersAndFindBest(autoConnectWhenReady = true)
                         return@setOnClickListener
                     }
+                }
+                if (activeFree) {
+                    connectUsqueFree()
+                    return@setOnClickListener
                 }
                 val node = activeNodes.getOrNull(servers.selectedItemPosition)
                 if (node == null) {
@@ -1589,7 +1597,10 @@ class MainActivity : Activity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == this.requestCode && resultCode == RESULT_OK) {
-            pendingConfig?.let {
+            if (pendingUsqueStart) {
+                pendingUsqueStart = false
+                startUsqueVpn()
+            } else pendingConfig?.let {
                 startVpn(it, pendingFallbackConfig, pendingPreferredConfig, pendingAutomatic)
                 pendingConfig = null
                 pendingFallbackConfig = null
