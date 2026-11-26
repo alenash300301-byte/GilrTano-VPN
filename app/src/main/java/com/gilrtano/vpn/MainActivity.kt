@@ -1198,7 +1198,9 @@ class MainActivity : Activity() {
         refreshMode()
         updateServerCard(wasConnected)
 
-        if (wasConnected) {
+        if (wasConnected && free) {
+            connectUsqueFree()
+        } else if (wasConnected) {
             val selectedKey = if (free) "free_selected" else "quattro_selected"
             val index = prefs.getInt(selectedKey, 0).coerceIn(0, targetNodes.lastIndex)
             servers.setSelection(index)
