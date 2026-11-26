@@ -289,9 +289,10 @@ class MainActivity : Activity() {
                         status.text = "Подключаю: ${node.name}…"
                         val permission = VpnService.prepare(this@MainActivity)
                         if (permission != null) startActivityForResult(permission, requestCode)
-                        else startVpn(config, fallbackConfig, preferredConfig, autoMode)
+                        else startVpn(config, fallbackConfig, preferredConfig, useAutomatic, engine)
                     } catch (e: Exception) {
                         pendingConfig = null
+                        pendingEngine = GilrTanoVpnService.ENGINE_XRAY
                         connectButton.isEnabled = true
                         status.text = "Профиль не поддерживается: ${e.message}"
                     }
