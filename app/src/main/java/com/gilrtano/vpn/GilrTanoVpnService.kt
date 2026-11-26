@@ -138,6 +138,9 @@ class GilrTanoVpnService : VpnService() {
         broadcastStatus("Переключаю сервер…")
         Thread({
             synchronized(this) {
+                if (usqueActive) runCatching { Usqueandroid.stopTunnel() }
+                usqueActive = false
+                if (usqueTunFd >= 0) { runCatching { Os.close(fileDescriptorFromInt(usqueTunFd)) }; usqueTunFd = -1 }
                 runCatching { Teapodcore.stopTun2Socks() }
                 runCatching { Teapodcore.stopXray() }
                 runCatching { tun?.close() }
