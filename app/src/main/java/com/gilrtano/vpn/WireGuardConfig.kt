@@ -27,8 +27,10 @@ internal object WireGuardConfig {
 
     fun isStored(value: String): Boolean = value.startsWith(PREFIX, ignoreCase = true)
 
+    fun isConf(value: String): Boolean = Regex("(?im)^\\s*\\[Interface]\\s*$").containsMatchIn(value)
+
     fun storeConf(text: String): String {
-        val profile = parse(text)
+        parse(text) // Validate before storing the private configuration.
         val encoded = Base64.encodeToString(
             text.trim().toByteArray(Charsets.UTF_8),
             Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
