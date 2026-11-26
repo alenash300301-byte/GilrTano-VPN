@@ -1206,14 +1206,21 @@ class MainActivity : Activity() {
             val index = prefs.getInt(selectedKey, 0).coerceIn(0, targetNodes.lastIndex)
             servers.setSelection(index)
             val node = targetNodes[index]
-            val config = runCatching { GilrTanoVpnService.xrayConfigFromVless(node.uri) }.getOrElse {
+            val engine = if (WireGuardConfig.isStored(node.uri))
+                GilrTanoVpnService.ENGINE_SING_BOX else GilrTanoVpnService.ENGINE_XRAY
+            val config = runCatching {
+                if (engine == GilrTanoVpnService.ENGINE_SING_BOX)
+                    WireGuardConfig.toSingBoxJson(WireGuardConfig.profileFromStored(node.uri))
+                else GilrTanoVpnService.xrayConfigFromVless(node.uri)
+            }.getOrElse {
                 Toast.makeText(this, "Не удалось подготовить сервер: ${it.message}", Toast.LENGTH_LONG).show()
                 return
             }
-            status.text = "Переключаю на ${if (free) "бесплатный сервер" else "Quattro"}…"
+            status.text = "Переключаю на ${if (free) "бесплатный сервер" else "сервер подписки"}…"
             startService(Intent(this, GilrTanoVpnService::class.java)
                 .setAction(GilrTanoVpnService.ACTION_SWITCH)
-                .putExtra(GilrTanoVpnService.EXTRA_CONFIG, config))
+                .putExtra(GilrTanoVpnService.EXTRA_CONFIG, config)
+                .putExtra(GilrTanoVpnService.EXTRA_ENGINE, engine))
         } else {
             Toast.makeText(this, if (free) "Выбран бесплатный резерв" else "Выбран Quattro", Toast.LENGTH_SHORT).show()
         }
@@ -1293,7 +1300,7 @@ class MainActivity : Activity() {
                 val imported = SubscriptionImporter.load(source)
                 runOnUiThread {
                     if (imported.isEmpty()) {
-                        status.text = "Не найдено поддерживаемых VLESS-серверов"
+                        status.text = "Не найдено поддерживаемых серверов"
                         return@runOnUiThread
                     }
                     if (isFree) {
