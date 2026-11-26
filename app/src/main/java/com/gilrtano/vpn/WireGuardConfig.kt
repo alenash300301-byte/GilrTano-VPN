@@ -46,12 +46,14 @@ internal object WireGuardConfig {
     fun parse(text: String): Profile {
         val sections = linkedMapOf<String, MutableMap<String, String>>()
         var current: MutableMap<String, String>? = null
+        val sectionCounts = mutableMapOf<String, Int>()
         text.lineSequence().forEach { raw ->
             val line = raw.substringBefore('#').substringBefore(';').trim()
             if (line.isEmpty()) return@forEach
             if (line.startsWith("[") && line.endsWith("]")) {
                 val name = line.substring(1, line.length - 1).trim().lowercase()
                 require(name == "interface" || name == "peer") { "Неподдерживаемая секция [$name]" }
+                sectionCounts[name] = (sectionCounts[name] ?: 0) + 1
                 current = sections.getOrPut(name) { linkedMapOf() }
                 return@forEach
             }
@@ -69,8 +71,8 @@ internal object WireGuardConfig {
 
         val iface = sections["interface"] ?: error("В файле отсутствует [Interface]")
         val peer = sections["peer"] ?: error("В файле отсутствует [Peer]")
-        require(sections.keys.count { it == "interface" } == 1) { "Поддерживается одна секция [Interface]" }
-        require(sections.keys.count { it == "peer" } == 1) { "Поддерживается один [Peer]" }
+        require(sectionCounts["interface"] == 1) { "Поддерживается одна секция [Interface]" }
+        require(sectionCounts["peer"] == 1) { "Поддерживается один [Peer]" }
         val privateKey = required(iface, "privatekey", "PrivateKey")
         val publicKey = required(peer, "publickey", "PublicKey")
         validateKey(privateKey, "PrivateKey")
