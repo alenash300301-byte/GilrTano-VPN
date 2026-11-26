@@ -84,6 +84,7 @@ class MainActivity : Activity() {
     private var pendingEngine = GilrTanoVpnService.ENGINE_XRAY
     private val requestCode = 4101
     private val docxRequestCode = 4102
+    private val wireGuardRequestCode = 4103
 
     private val prefs by lazy { getPreferences(MODE_PRIVATE) }
     private val activeNodes: List<ImportedNode>
@@ -745,6 +746,14 @@ class MainActivity : Activity() {
                 type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             }
             startActivityForResult(pick, docxRequestCode)
+        })
+        profilesPage.addView(actionButton("Выбрать WireGuard .conf") {
+            val pick = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "*/*"
+                putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("text/plain", "application/octet-stream"))
+            }
+            startActivityForResult(pick, wireGuardRequestCode)
         })
         profilesPage.addView(actionButton("Импортировать бесплатный резерв") {
             val value = prefs.getString("free_subscription_url", "").orEmpty()
@@ -1623,6 +1632,31 @@ class MainActivity : Activity() {
             pendingEngine = GilrTanoVpnService.ENGINE_XRAY
             connectButton.isEnabled = true
             status.text = "Разрешение VPN не предоставлено"
+        } else if (requestCode == wireGuardRequestCode && resultCode == RESULT_OK) {
+            val uri = data?.data ?: return
+            status.text = "Читаю WireGuard .conf…"
+            Thread {
+                try {
+                    val raw = contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+                        ?: error("Не удалось открыть выбранный файл")
+                    val imported = SubscriptionImporter.parse(raw)
+                    require(imported.size == 1 && WireGuardConfig.isStored(imported.single().uri)) {
+                        "Выбранный файл не является поддерживаемым WireGuard .conf"
+                    }
+                    runOnUiThread {
+                        quattroNodes = quattroNodes.filterNot { it.uri == imported.single().uri } + imported
+                        saveNodes("quattro_nodes", quattroNodes)
+                        activeFree = false
+                        autoMode = false
+                        prefs.edit().putBoolean("active_free_mode", false).putString("connection_mode", "quattro").apply()
+                        refreshMode()
+                        status.text = "WireGuard-профиль добавлен в Подписку"
+                        updateServerPage()
+                    }
+                } catch (e: Exception) {
+                    runOnUiThread { status.text = "Ошибка импорта WireGuard: ${e.message}" }
+                }
+            }.start()
         } else if (requestCode == docxRequestCode && resultCode == RESULT_OK) {
             val uri = data?.data ?: return
             status.text = "Читаю DOCX локально…"
