@@ -57,6 +57,23 @@ jobs:
         with:
           gradle-version: '8.13'
 
+      - name: Fetch pinned Usque Android native bridge
+        shell: bash
+        run: |
+          set -euo pipefail
+          USQUE_COMMIT=d41a0e771b4474924ed7e8933600c8d61616e273
+          BASE="https://raw.githubusercontent.com/garthnet/usque-android-app/$USQUE_COMMIT"
+          mkdir -p app/libs app/src/main/jniLibs/arm64-v8a
+          curl --fail --location --retry 3 "$BASE/app/libs/usque-classes.jar" -o app/libs/usque-classes.jar
+          curl --fail --location --retry 3 "$BASE/app/libs/usque.aar" -o app/libs/usque.aar
+          curl --fail --location --retry 3 "$BASE/app/src/main/jniLibs/arm64-v8a/libgojni.so" -o app/src/main/jniLibs/arm64-v8a/libgojni.so
+          test "$(stat -c%s app/libs/usque-classes.jar)" = 13089
+          test "$(stat -c%s app/libs/usque.aar)" = 7866306
+          test "$(stat -c%s app/src/main/jniLibs/arm64-v8a/libgojni.so)" = 10821448
+          test "$(git hash-object app/libs/usque-classes.jar)" = de0b9584e976e53815b2d8d08d499856f2fdeed4
+          test "$(git hash-object app/libs/usque.aar)" = 74e068024329c8cd251b9deea2a3b0fa1076f7b2
+          test "$(git hash-object app/src/main/jniLibs/arm64-v8a/libgojni.so)" = 6bac01f23b0355eca7ddf7a84c4ac063b60974f9
+
       - name: Build APK
         run: gradle --no-daemon assembleDebug
 
