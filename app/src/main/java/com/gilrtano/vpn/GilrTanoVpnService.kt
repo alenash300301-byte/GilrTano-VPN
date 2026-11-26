@@ -15,6 +15,10 @@ import teapodcore.XrayCallback
 import org.json.JSONObject
 import java.net.Socket
 import javax.net.ssl.SSLSocketFactory
+import usqueandroid.Usqueandroid
+import usqueandroid.VpnStateCallback
+import android.system.Os
+import java.io.FileDescriptor
 
 class GilrTanoVpnService : VpnService() {
     private var tun: ParcelFileDescriptor? = null
@@ -33,9 +37,12 @@ class GilrTanoVpnService : VpnService() {
     @Volatile private var consecutiveProbeFailures = 0
     @Volatile private var lastAutomaticSwitchAt = 0L
     @Volatile private var usingFallback = false
+    @Volatile private var usqueActive = false
+    @Volatile private var usqueTunFd: Int = -1
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
+            ACTION_START_USQUE -> startUsqueTunnel(intent.getStringExtra(EXTRA_USQUE_CONFIG) ?: "")
             ACTION_STOP -> stopTunnel()
             ACTION_PAUSE -> pauseTunnel()
             ACTION_RESUME -> resumeTunnel()
@@ -60,6 +67,70 @@ class GilrTanoVpnService : VpnService() {
         return START_NOT_STICKY
     }
 
+
+    private fun startUsqueTunnel(configPath: String) {
+        if (configPath.isBlank()) { broadcastStatus("Нет файла регистрации WARP"); return }
+        stopping = false; paused = false; resuming = false
+        automaticMode = false
+        createNotificationChannel()
+        startForeground(NOTIFICATION_ID, notification("Запуск WARP / MASQUE…"))
+        Thread({
+            try {
+                synchronized(this) {
+                    runCatching { Teapodcore.stopTun2Socks() }
+                    runCatching { Teapodcore.stopXray() }
+                    runCatching { tun?.close() }
+                    tun = null
+                    if (usqueActive) runCatching { Usqueandroid.stopTunnel() }
+                    if (usqueTunFd >= 0) { runCatching { Os.close(fileDescriptorFromInt(usqueTunFd)) }; usqueTunFd = -1 }
+                    usqueActive = false
+                }
+                if (!runCatching { Usqueandroid.isRegistered(configPath) }.getOrDefault(false)) {
+                    throw IllegalStateException("WARP registration is missing or invalid")
+                }
+                Usqueandroid.resetConnectionOptions()
+                val ipv4 = runCatching { Usqueandroid.getAssignedIPv4(configPath) }.getOrDefault("").ifBlank { "172.16.0.2" }
+                val builder = Builder().setSession("GilrTano VPN · WARP").setMtu(1280)
+                    .addAddress(ipv4, 32).addRoute("0.0.0.0", 0)
+                    .addDnsServer("1.1.1.1").addDnsServer("1.0.0.1")
+                    .addDisallowedApplication(packageName)
+                val ipv6 = runCatching { Usqueandroid.getAssignedIPv6(configPath) }.getOrDefault("")
+                if (ipv6.isNotBlank()) runCatching {
+                    builder.addAddress(ipv6, 128).addRoute("::", 0)
+                    builder.addDnsServer("2606:4700:4700::1111")
+                }
+                val pfd = builder.establish() ?: error("Android не выдал TUN-интерфейс")
+                val fd = pfd.detachFd()
+                usqueTunFd = fd
+                usqueActive = true
+                val error = Usqueandroid.startTunnelWithFd(configPath, fd.toLong(), object : VpnStateCallback {
+                    override fun onConnected() {
+                        if (!stopping) { broadcastStatus("Подключено · WARP / MASQUE"); updateNotification("WARP / MASQUE подключён") }
+                    }
+                    override fun onDisconnected(reason: String?) {
+                        if (!stopping) { broadcastStatus("WARP отключён: ${reason.orEmpty()}"); stopTunnel() }
+                    }
+                    override fun onError(message: String?) {
+                        if (!stopping) { broadcastStatus("Ошибка WARP: ${message.orEmpty()}"); stopTunnel() }
+                    }
+                })
+                if (!error.isNullOrBlank()) error("Usque: $error")
+            } catch (e: Exception) {
+                Log.e(TAG, "Usque start failed", e)
+                broadcastStatus("Ошибка запуска WARP: ${e.message}")
+                stopTunnel()
+            }
+        }, "GilrTano-Usque-start").start()
+    }
+
+    private fun fileDescriptorFromInt(value: Int): FileDescriptor {
+        val descriptor = FileDescriptor()
+        val field = FileDescriptor::class.java.getDeclaredField("descriptor")
+        field.isAccessible = true
+        field.setInt(descriptor, value)
+        return descriptor
+    }
+
     private fun switchTunnel(config: String) {
         paused = false
         resuming = false
@@ -67,6 +138,9 @@ class GilrTanoVpnService : VpnService() {
         broadcastStatus("Переключаю сервер…")
         Thread({
             synchronized(this) {
+                if (usqueActive) runCatching { Usqueandroid.stopTunnel() }
+                usqueActive = false
+                if (usqueTunFd >= 0) { runCatching { Os.close(fileDescriptorFromInt(usqueTunFd)) }; usqueTunFd = -1 }
                 runCatching { Teapodcore.stopTun2Socks() }
                 runCatching { Teapodcore.stopXray() }
                 runCatching { tun?.close() }
@@ -462,6 +536,8 @@ class GilrTanoVpnService : VpnService() {
 
     companion object {
         const val ACTION_START = "com.gilrtano.vpn.START"
+        const val ACTION_START_USQUE = "com.gilrtano.vpn.START_USQUE"
+        const val EXTRA_USQUE_CONFIG = "usque_config_path"
         const val ACTION_SWITCH = "com.gilrtano.vpn.SWITCH"
         const val ACTION_STOP = "com.gilrtano.vpn.STOP"
         const val ACTION_PAUSE = "com.gilrtano.vpn.PAUSE"
