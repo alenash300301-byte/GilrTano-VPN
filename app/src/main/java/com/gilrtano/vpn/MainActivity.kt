@@ -81,6 +81,7 @@ class MainActivity : Activity() {
     private var pendingFallbackConfig: String? = null
     private var pendingPreferredConfig: String? = null
     private var pendingAutomatic = false
+    private var pendingEngine = GilrTanoVpnService.ENGINE_XRAY
     private val requestCode = 4101
     private val docxRequestCode = 4102
 
@@ -162,7 +163,7 @@ class MainActivity : Activity() {
         status = TextView(this).apply { text = "Отключено"; textSize = 14f; maxLines = 2; gravity = android.view.Gravity.CENTER; setPadding(dp(18), dp(4), dp(18), dp(4)) }
         pingStatus = TextView(this).apply { text = "Пинг: —"; textSize = 15f }
         primarySource = EditText(this).apply {
-            hint = "Ссылка Quattro или Clash YAML"
+            hint = "Ссылка Quattro, Clash YAML или WireGuard .conf"
             minLines = 2
             maxLines = 5
             setText(prefs.getString("subscription_url", ""))
@@ -262,18 +263,28 @@ class MainActivity : Activity() {
                     Toast.makeText(this@MainActivity, "В этом режиме пока нет серверов", Toast.LENGTH_LONG).show()
                 } else {
                     try {
-                        val config = GilrTanoVpnService.xrayConfigFromVless(node.uri)
-                        val fallbackConfig = if (autoMode) {
+                        val engine = if (WireGuardConfig.isStored(node.uri))
+                            GilrTanoVpnService.ENGINE_SING_BOX else GilrTanoVpnService.ENGINE_XRAY
+                        val config = if (engine == GilrTanoVpnService.ENGINE_SING_BOX) {
+                            WireGuardConfig.toSingBoxJson(WireGuardConfig.profileFromStored(node.uri))
+                        } else {
+                            GilrTanoVpnService.xrayConfigFromVless(node.uri)
+                        }
+                        // Automatic Quattro/free failover remains Xray-only. A manually
+                        // selected WireGuard profile is started independently through sing-box.
+                        val useAutomatic = autoMode && engine == GilrTanoVpnService.ENGINE_XRAY
+                        val fallbackConfig = if (useAutomatic) {
                             (if (activeFree) quattroNodes.firstOrNull() else freeNodes.firstOrNull())
                                 ?.let { runCatching { GilrTanoVpnService.xrayConfigFromVless(it.uri) }.getOrNull() }
                         } else null
-                        val preferredConfig = if (autoMode) {
+                        val preferredConfig = if (useAutomatic) {
                             quattroNodes.firstOrNull()?.let { runCatching { GilrTanoVpnService.xrayConfigFromVless(it.uri) }.getOrNull() }
                         } else null
                         pendingConfig = config
                         pendingFallbackConfig = fallbackConfig
                         pendingPreferredConfig = preferredConfig
-                        pendingAutomatic = autoMode
+                        pendingAutomatic = useAutomatic
+                        pendingEngine = engine
                         connectButton.isEnabled = true
                         status.text = "Подключаю: ${node.name}…"
                         val permission = VpnService.prepare(this@MainActivity)
@@ -1571,12 +1582,14 @@ class MainActivity : Activity() {
         config: String,
         fallbackConfig: String? = null,
         preferredConfig: String? = null,
-        automatic: Boolean = false
+        automatic: Boolean = false,
+        engine: String = GilrTanoVpnService.ENGINE_XRAY
     ) {
         connectButton.isEnabled = true
         val intent = Intent(this, GilrTanoVpnService::class.java)
             .setAction(GilrTanoVpnService.ACTION_START)
             .putExtra(GilrTanoVpnService.EXTRA_CONFIG, config)
+            .putExtra(GilrTanoVpnService.EXTRA_ENGINE, engine)
             .putExtra(GilrTanoVpnService.EXTRA_AUTO, automatic)
         fallbackConfig?.let { intent.putExtra(GilrTanoVpnService.EXTRA_FALLBACK_CONFIG, it) }
         preferredConfig?.let { intent.putExtra(GilrTanoVpnService.EXTRA_PREFERRED_CONFIG, it) }
@@ -1590,14 +1603,16 @@ class MainActivity : Activity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == this.requestCode && resultCode == RESULT_OK) {
             pendingConfig?.let {
-                startVpn(it, pendingFallbackConfig, pendingPreferredConfig, pendingAutomatic)
+                startVpn(it, pendingFallbackConfig, pendingPreferredConfig, pendingAutomatic, pendingEngine)
                 pendingConfig = null
                 pendingFallbackConfig = null
                 pendingPreferredConfig = null
                 pendingAutomatic = false
+                pendingEngine = GilrTanoVpnService.ENGINE_XRAY
             } ?: run { status.text = "Подключение отменено" }
         } else if (requestCode == this.requestCode) {
             pendingConfig = null
+            pendingEngine = GilrTanoVpnService.ENGINE_XRAY
             connectButton.isEnabled = true
             status.text = "Разрешение VPN не предоставлено"
         } else if (requestCode == docxRequestCode && resultCode == RESULT_OK) {
