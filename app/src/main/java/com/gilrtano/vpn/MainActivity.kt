@@ -233,9 +233,15 @@ class MainActivity : Activity() {
                     currentStatus.startsWith("Переключаю") || currentStatus.startsWith("Приостанавливаю") ||
                     currentStatus.startsWith("Возобновляю")
                 if (isConnected) {
-                    status.text = "Приостанавливаю VPN…"
-                    startService(Intent(this@MainActivity, GilrTanoVpnService::class.java)
-                        .setAction(GilrTanoVpnService.ACTION_PAUSE))
+                    if (activeFree) {
+                        status.text = "Отключаю WARP…"
+                        startService(Intent(this@MainActivity, GilrTanoVpnService::class.java)
+                            .setAction(GilrTanoVpnService.ACTION_STOP))
+                    } else {
+                        status.text = "Приостанавливаю VPN…"
+                        startService(Intent(this@MainActivity, GilrTanoVpnService::class.java)
+                            .setAction(GilrTanoVpnService.ACTION_PAUSE))
+                    }
                     return@setOnClickListener
                 }
                 if (isSuspended) {
