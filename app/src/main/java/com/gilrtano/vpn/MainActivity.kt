@@ -163,7 +163,7 @@ class MainActivity : Activity() {
         status = TextView(this).apply { text = "Отключено"; textSize = 14f; maxLines = 2; gravity = android.view.Gravity.CENTER; setPadding(dp(18), dp(4), dp(18), dp(4)) }
         pingStatus = TextView(this).apply { text = "Пинг: —"; textSize = 15f }
         primarySource = EditText(this).apply {
-            hint = "Ссылка подписка, Clash YAML или WireGuard .conf"
+            hint = "Ссылка подписки, Clash YAML или WireGuard .conf"
             minLines = 2
             maxLines = 5
             setText(prefs.getString("subscription_url", ""))
@@ -201,11 +201,11 @@ class MainActivity : Activity() {
         }
 
         val importPrimary = Button(this).apply {
-            text = "Импортировать подписка"
+            text = "Импортировать подписку"
             setOnClickListener { importFrom(primarySource.text.toString().trim(), false) }
         }
         val importDocx = Button(this).apply {
-            text = "Выбрать DOCX подписка"
+            text = "Выбрать DOCX подписки"
             setOnClickListener {
                 val pick = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                     addCategory(Intent.CATEGORY_OPENABLE)
@@ -616,7 +616,7 @@ class MainActivity : Activity() {
         val serverRows = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         serverPage.addView(serverRows)
         fun updateServerPage() {
-            serverState.text = "Режим: " + if (autoMode) "AUTO · подписка с бесплатным резервом" else if (activeFree) "Бесплатный" else "подписка"
+            serverState.text = "Режим: " + if (autoMode) "AUTO · Подписка с бесплатным резервом" else if (activeFree) "Бесплатный" else "Подписка"
             serverRows.removeAllViews()
             val query = proxySearch.text.toString().trim().lowercase()
             val nodes = activeNodes.mapIndexed { index, node -> index to node }.filter { it.second.name.lowercase().contains(query) }
@@ -642,7 +642,7 @@ class MainActivity : Activity() {
                             servers.setSelection(index)
                             prefs.edit().putInt(if (activeFree) "free_selected" else "quattro_selected", index).apply()
                             serverCardTitle.text = node.name
-                            serverCardSubtitle.text = if (activeFree) "Бесплатный" else "подписка"
+                            serverCardSubtitle.text = if (activeFree) "Бесплатный" else "Подписка"
                             serverCardPing.text = ""
                             pingStatus.text = "Пинг: —"
                             updateServerPage()
@@ -696,7 +696,7 @@ class MainActivity : Activity() {
         }, LinearLayout.LayoutParams(0, dp(46), 1f).apply { rightMargin = dp(5) })
         profileActions.addView(actionButton("＋ Добавить") {
             val field = EditText(this@MainActivity).apply {
-                hint = "Ссылка подписка или Clash YAML"
+                hint = "Ссылка подписки или Clash YAML"
                 setText(prefs.getString("subscription_url", ""))
                 setSingleLine(true)
             }
@@ -715,7 +715,7 @@ class MainActivity : Activity() {
             setStroke(dp(1), Color.rgb(62, 65, 76))
         }
         val profileTitle = TextView(this).apply {
-            text = "🔥 подписка VPN"; textSize = 18f
+            text = "🔥 Подписка VPN"; textSize = 18f
             typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE)
         }
         val profileUsage = TextView(this).apply { textSize = 13f; setTextColor(Color.LTGRAY); setPadding(0, dp(8), 0, 0) }
@@ -726,10 +726,10 @@ class MainActivity : Activity() {
         })
         fun refreshProfileCard() {
             profileUsage.text = "Серверов загружено: ${quattroNodes.size}"
-            profileState.text = if (quattroNodes.isNotEmpty()) "✓ Профиль доступен · ${if (activeFree) "сейчас выбран FREE" else "подписка"}" else "Профиль ещё не импортирован"
+            profileState.text = if (quattroNodes.isNotEmpty()) "✓ Профиль доступен · ${if (activeFree) "сейчас выбран FREE" else "Подписка"}" else "Профиль ещё не импортирован"
         }
         refreshProfileCard()
-        profilesPage.addView(actionButton("Импортировать подписка") {
+        profilesPage.addView(actionButton("Импортировать подписку") {
             val value = prefs.getString("subscription_url", "").orEmpty()
             if (value.isNotBlank()) importFrom(value, false)
             else Toast.makeText(this@MainActivity, "Добавьте ссылку через кнопку «Добавить»", Toast.LENGTH_LONG).show()
@@ -739,7 +739,7 @@ class MainActivity : Activity() {
             if (value.isNotBlank()) importFrom(value, false)
             else Toast.makeText(this@MainActivity, "Добавьте ссылку YAML через кнопку «Добавить»", Toast.LENGTH_LONG).show()
         })
-        profilesPage.addView(actionButton("Выбрать DOCX подписка") {
+        profilesPage.addView(actionButton("Выбрать DOCX подписки") {
             val pick = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                 addCategory(Intent.CATEGORY_OPENABLE)
                 type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -879,7 +879,7 @@ class MainActivity : Activity() {
                 val key = if (activeFree) "free_selected" else "quattro_selected"
                 prefs.edit().putInt(key, which).apply()
                 serverCardTitle.text = nodes[which].name
-                serverCardSubtitle.text = if (activeFree) "Бесплатный" else "подписка"
+                serverCardSubtitle.text = if (activeFree) "Бесплатный" else "Подписка"
                 serverCardPing.text = ""
                 pingStatus.text = "Пинг: —"
                 dialog.dismiss()
@@ -1178,7 +1178,7 @@ class MainActivity : Activity() {
         prefs.edit().putString("connection_mode", "auto").apply()
         activeFree = quattroNodes.isEmpty() && freeNodes.isNotEmpty()
         refreshMode()
-        Toast.makeText(this, "Автовыбор включён: подписка в приоритете, бесплатный резерв", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Автовыбор включён: Подписка в приоритете, бесплатный резерв", Toast.LENGTH_SHORT).show()
     }
 
     private fun switchMode(free: Boolean) {
@@ -1190,7 +1190,7 @@ class MainActivity : Activity() {
         if (targetNodes.isEmpty()) {
             Toast.makeText(
                 this,
-                if (free) "Сначала найди бесплатные серверы" else "Сначала импортируй подписка",
+                if (free) "Сначала найди бесплатные серверы" else "Сначала импортируй подписку",
                 Toast.LENGTH_LONG
             ).show()
             return
@@ -1223,7 +1223,7 @@ class MainActivity : Activity() {
                 .putExtra(GilrTanoVpnService.EXTRA_CONFIG, config)
                 .putExtra(GilrTanoVpnService.EXTRA_ENGINE, engine))
         } else {
-            Toast.makeText(this, if (free) "Выбран бесплатный резерв" else "Выбран подписка", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, if (free) "Выбран бесплатный резерв" else "Выбрана подписка", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -1278,10 +1278,10 @@ class MainActivity : Activity() {
             if (child is Button) {
                 val label = child.text.toString()
                 val show = settingsExpanded && (
-                    (!activeFree && (label == "Импортировать подписка" || label == "Выбрать DOCX подписка")) ||
+                    (!activeFree && (label == "Импортировать подписку" || label == "Выбрать DOCX подписки")) ||
                     (activeFree && label == "Импортировать бесплатные серверы")
                 )
-                if (label.startsWith("Импортировать") || label == "Выбрать DOCX подписка") {
+                if (label.startsWith("Импортировать") || label == "Выбрать DOCX подписки") {
                     child.visibility = if (show) View.VISIBLE else View.GONE
                 }
             }
@@ -1295,7 +1295,7 @@ class MainActivity : Activity() {
             Toast.makeText(this, "Укажи ссылку или конфигурацию", Toast.LENGTH_LONG).show()
             return
         }
-        status.text = if (isFree) "Загружаю резерв…" else "Загружаю подписка…"
+        status.text = if (isFree) "Загружаю резерв…" else "Загружаю подписку…"
         Thread {
             try {
                 val imported = SubscriptionImporter.load(source)
@@ -1639,7 +1639,7 @@ class MainActivity : Activity() {
                             activeFree = false
                             prefs.edit().putBoolean("active_free_mode", false).apply()
                             refreshMode()
-                            status.text = "подписка сохранён: ${imported.size} серверов. Импортировать снова не нужно."
+                            status.text = "Подписка сохранена: ${imported.size} серверов. Импортировать снова не нужно."
                             measureSelectedPing()
                         }
                     }
